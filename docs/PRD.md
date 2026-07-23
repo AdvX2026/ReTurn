@@ -195,16 +195,26 @@ todos(id, day_id, text, done, source_node_id)
 └────────────────────────────────┘
 ```
 
+全栈 TypeScript（三个可运行端一种语言、一份合同、任何人可跨端补位；Pi 上负载只是 SQLite + 转发 LLM 调用，Node 绰绰有余）：
+
 | 层 | 选型 | 备注 |
 |---|---|---|
-| 服务端（Pi） | Node.js 20 + Fastify + better-sqlite3 | arm64 直接跑；systemd 常驻；LLM/转写 key 走 Pi 上的环境变量，**不下发客户端、不入 git** |
-| 桌面 UI App | Tauri 2 | Rust 层更薄：仅录音文件落盘等本地能力；采样与主 outbox 移交采样器进程 |
-| 采样器 | 独立 Node 20 常驻进程，launchd 托管开机自启 | 与 Pi 服务端同栈：outbox、Zod schema、上报逻辑直接复用 `shared`；osascript 走 child_process；开发/演示期可直接终端前台跑 |
-| 前端 | React + TypeScript + Vite + Zustand + Tailwind | 业务逻辑尽量放 TS 侧 |
-| iOS 端 | Tauri 2 iOS target，复用同一 React 代码库出只读子集 | 免费开发者账号真机签名；受阻则降级为 Pi 托管移动 Web 页（同一代码） |
-| 合同 | pnpm monorepo：`server` / `desktop` / `shared` | `shared` 放 Zod schema：API 请求/响应 + 发酵 JSON，三端共用一份类型 |
+| 运行时 | Node 22 LTS + tsx（开发与 Pi 上均直接跑 TS，不做构建） | 少一个 build 环节少一类演示事故；不用 Bun（arm64 上多余的风险） |
+| Monorepo | pnpm workspaces：`shared` / `server` / `sampler` / `client` | 不上 Turborepo/Nx；`client` 一份 React 代码库同时出桌面（Tauri）与 iOS（Tauri iOS target） |
+| 合同 | `shared`：Zod schema（API 请求/响应 + 发酵 JSON + kind 枚举）+ 类型化 fetch 客户端（~百行） | 即 T+6h 冻结的"三方合同"的物理形态；不上 tRPC——快捷指令要打裸 HTTP，且 REST 可 curl 调试 |
+| 服务端（Pi） | Fastify + fastify-type-provider-zod；裸 better-sqlite3 + 手写 SQL + 启动时按编号跑迁移 | 5 张表不上 ORM；better-sqlite3 在 arm64 装不顺就换 Node 22 内置 `node:sqlite`（spike ① 验证）；systemd 常驻；LLM/转写 key 走 Pi 环境变量，**不下发客户端、不入 git** |
+| LLM 调用 | Vercel AI SDK（`ai` 包）+ OpenAI-compatible provider，`generateObject` 直接绑 Zod schema | 结构化输出、校验、超时重试原生覆盖；语音走 Whisper 兼容转写接口，全部由 Pi 发起 |
+| 采样器 | 独立 Node 常驻进程（launchd 托管开机自启）：setInterval + execa 调 osascript；localhost 端口用裸 `node:http` | 与服务端同栈，outbox / schema / 上报逻辑复用 `shared`；开发/演示期可终端前台跑 |
+| 桌面 UI App | Tauri 2 | Rust 层更薄：仅录音文件落盘等本地能力；UI 轻量 outbox 用 localStorage JSON 队列，不引 tauri-plugin-sql |
+| iOS 端 | Tauri 2 iOS target，复用 `client` 出只读子集 | 免费开发者账号真机签名；受阻则降级为 Pi 托管移动 Web 页（同一代码） |
+| 前端框架 | React 19 + Vite + TS strict + Tailwind v4 | 业务逻辑尽量放 TS 侧 |
+| 状态管理 | TanStack Query 管全部服务端数据（轮询 `/api/stats/today`、缓存、重试、离线降级展示）；Zustand 只管纯 UI 状态（弹窗、结算动画阶段、视图切换） | 5 个视图用 Zustand 存 `view` 切换即可，不引路由 |
+| 组件/动效 | 少量 Radix 原语（Dialog/Checkbox 等）+ Motion（结算画面数字弹跳、角色状态揭晓） | 不上整套组件库；Motion 是唯一动效依赖，F9 是它的主战场 |
+| 图表 | 手写 SVG：时间轴 / 热力格 / 折线共用一套工具函数 | 零图表依赖（时间轴本就要手写，见 §9.9 定稿） |
+| 质量工具 | Biome（lint + format 一件套）+ TS strict | 快、零配置扯皮，黑客松友好 |
 | 发现 | Pi 起 mDNS（`return.local`）+ 设置页手填 IP 兜底 | 演示用手机热点组网，Pi 配静态 IP |
-| AI | OpenAI-compatible 云端 API（发酵 + Whisper 兼容转写） | 全部由 Pi 发起 |
+
+明确不用：tRPC、ORM、Next.js/SSR、Redux、Electron、tauri-plugin-sql、Recharts（理由见各行备注与 §9.9）。
 
 ### 6.2 API 合同（T+6h 冻结）
 
@@ -248,7 +258,7 @@ iOS 展示端只使用其中的 GET 接口（严格只读）。
 
 ## 8. 里程碑（48h）
 
-- **T+2h**：六个 spike 全部验证通过，跑不通的当场砍或换方案：① Pi 上 Node+SQLite 服务起来，桌面端局域网可达（mDNS/静态 IP）；② AppleScript 采样前台应用+标签页的授权流程；③ 从 Pi 调通云端 LLM 与转写；④ Tauri webview 录音权限（`getUserMedia`）；⑤ 快捷指令读健康数据并 POST 到局域网接口（手机上 10 分钟验证）；⑥ Tauri 2 iOS 空壳真机装机（免费签名跑通即可，受阻当场改判移动 Web 兜底）。
+- **T+2h**：六个 spike 全部验证通过，跑不通的当场砍或换方案：① Pi 上 Node+SQLite 服务起来（含 better-sqlite3 arm64 安装验证，装不顺换 `node:sqlite`），桌面端局域网可达（mDNS/静态 IP）；② AppleScript 采样前台应用+标签页的授权流程；③ 从 Pi 调通云端 LLM 与转写；④ Tauri webview 录音权限（`getUserMedia`）；⑤ 快捷指令读健康数据并 POST 到局域网接口（手机上 10 分钟验证）；⑥ Tauri 2 iOS 空壳真机装机（免费签名跑通即可，受阻当场改判移动 Web 兜底）。
 - **T+6h**：API 合同 + 发酵 JSON schema 冻结（`shared` 包落地）。
 - **T+12h**：Pi 数据层 + nodes 读写 API + 桌面投喂（文本/URL）+ 节点流可用。
 - **T+18h**：采样器独立进程（采样→会话聚合→上报 + localhost"立即采样"接口）+ outbox 离线补传跑通；launchd 自启可后补，开发期终端前台跑即可。
@@ -271,7 +281,7 @@ iOS 展示端只使用其中的 GET 接口（严格只读）。
 6. **语音链路脆弱**：录音权限、上传、云转写三段都可能挂。兜底：文本输入永远可用；转写失败时音频已落盘，标记"待转写"不丢数据。
 7. **冷启动**：第一天没有"昨日"，Continue 无内容。演示已绕开（提前存档一天）；产品上首日展示引导态 + 角色以"日常"状态登场。
 8. **隐私叙事的边界**：原始数据只在 Pi，但发酵会把当日摘要送云端 LLM。答辩说法：数据主权在用户（原始数据不出家门），推理是无状态调用；路线图上 Pi NPU / 家用主机跑本地模型。相比 v0.3（全部依赖云端），叙事已是加分项。
-9. **图表库是新增依赖**：状态一览需要轻量图表（候选 Recharts；或热力格+折线手写 SVG 省依赖）。当日时间轴（F12）无现成图表可套，本就要手写 SVG——若状态一览也手写，可共用一套 SVG 工具函数、零图表依赖。引入前需确认。
+9. **图表方案（已定稿）**：全部手写 SVG——时间轴（F12）本就无现成图表可套，热力格与折线随之共用一套 SVG 工具函数，零图表依赖，不引入 Recharts。
 10. **多设备时序**：两台设备时钟不一致可能导致节点归日错乱。48h 内以 Pi 收到时间为准（`created_at` 服务端盖章），客户端时间仅存 `source_meta` 参考。
 11. **快捷指令链路依赖家庭 Wi-Fi**：定时自动化只有手机在局域网内才够得着 Pi；某天健康数据缺失时，精力公式自动回退纯扣分式，不报错不摆烂。演示时手动触发一次快捷指令即可。
 12. **Coding Agent 会话解析的格式耦合**：`~/.claude/projects` 的 JSONL 结构不是公开合同，版本升级可能变。只取时间戳和项目路径这类最稳的字段，解析失败静默跳过，不影响主流程。
