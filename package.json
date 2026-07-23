@@ -5,6 +5,9 @@
   "packageManager": "pnpm@9.15.0",
   "scripts": {
     "dev:server": "pnpm --filter @return/server dev",
+    "dev:sampler": "pnpm --filter @return/sampler dev",
+    "dev:client": "pnpm --filter @return/client dev",
+    "dev:desktop": "pnpm --filter @return/client tauri:dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
