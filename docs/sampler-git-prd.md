@@ -27,9 +27,9 @@ macOS 常驻 sampler 进程每 5 分钟扫描用户配置的代码目录，把**
 ## 3. 总体数据流（与现有管线同构，server 入库路径零改动）
 
 ```
-git log（配置目录下各仓库，每 tick）
-  → SampleSnapshot.commits                collect.ts 新增字段
-  → snapshotToNodes(): git_commit 节点     确定性 client_uuid（SHA 派生）
+git log --author=<local user.email>（配置目录下各仓库，每 tick）
+  → sources/git.ts SampleSource            collect → map → SHA dedupe → NodeInput[]
+  → collect.ts SOURCES 注册表 fan-out       纯编排，无 feature 逻辑
   → Outbox SQLite（不变）→ FIFO flush → POST /api/nodes（不变）
   → server insertNode 按 client_uuid 去重（不变）
   → scoreOutput 叠加当日提交数（compute.ts 小改）
@@ -41,11 +41,13 @@ git log（配置目录下各仓库，每 tick）
 
 | 文件 | 读什么 |
 |---|---|
-| `packages/sampler/src/collect.ts` | `uuidFromSeed()`（确定性 uuid，**当前未导出，需导出复用**）、`seenAgentKeys` 进程内去重模式、`todayLocal()`、`SampleSnapshot` / `snapshotToNodes()` 结构 |
+| `packages/sampler/src/source.ts` | `SampleSource` 契约、`uuidFromSeed` / `todayLocal` / `createKeyDedupe` |
+| `packages/sampler/src/collect.ts` | SOURCES 注册表；加 source 只 append 一行 |
+| `packages/sampler/src/sources/agents.ts` | 既有 source 范本（collect → map → dedupe） |
 | `packages/sampler/src/config.ts` | env 配置风格（`str`/`num` helper） |
-| `packages/sampler/src/index.ts` | tick 循环如何调用 `collectSnapshot` |
+| `packages/sampler/src/index.ts` | tick 循环如何调用 `collectSample` |
 | `packages/shared/src/domain.ts` | `NodeKind` 枚举 |
-| `packages/server/src/stats/compute.ts` | `scoreOutput` 现状（todo 70 + agent 30） |
+| `packages/server/src/stats/compute.ts` | `scoreOutput` 现状（todo 70 + agent 30，合入后重分配） |
 | `packages/server/src/stats/live.ts` / `packages/server/src/services/save.ts` | `computeStats` 仅有的两个调用点，`nodes` 均已在场 |
 | `packages/sampler/src/collect.test.ts` | sampler 测试风格（`node:test`） |
 
@@ -87,12 +89,13 @@ export function parseGitLog(stdout: string, repo: string, repoPath: string): Git
 
 **仓库发现 `discoverRepos`**：每个 root 下，候选 = root 自身 + root 的直接子目录（跳过隐藏目录与 `node_modules`）；候选路径下存在 `.git`（文件或目录均可，兼容 worktree）即视为仓库。结果进程内缓存（`Map` + 时间戳，TTL 1 小时），不每 tick 走目录树。单目录读取失败静默跳过。
 
-**扫描 `scanTodayCommits`**：对每个仓库执行（`execFile`，timeout 10s，maxBuffer 1MB）：
+**扫描 `scanTodayCommits`**：对每个仓库先读 `git config --get user.email`（无 email → 跳过该仓，避免无 author 过滤）；再执行（`execFile`，timeout 10s，maxBuffer 1MB）：
 
 ```
-git -C <repoPath> log --all --since="<todayLocal()>T00:00:00" --pretty=format:%x1e%H%x1f%aI%x1f%s --shortstat
+git -C <repoPath> log --all --author=<user.email> --since="<todayLocal()>T00:00:00" --pretty=format:%x1e%H%x1f%aI%x1f%s --shortstat
 ```
 
+- `--author` 限定本机配置邮箱，共享仓库不记同事提交。
 - `--all` 覆盖所有本地分支；git 自身按 SHA 去重。
 - `--since` 用本地零点（`todayLocal()` 拼 `T00:00:00`，git 按本地时区解释）。
 - 任何非零退出 / 超时 / 解析异常 → 该仓库返回 `[]`（空仓库、无提交均属正常）。
@@ -102,13 +105,13 @@ git -C <repoPath> log --all --since="<todayLocal()>T00:00:00" --pretty=format:%x
 
 - 按 `\x1e` 切记录；记录首行按 `\x1f` 切出 `sha`、`%aI` author 时间、subject。
 - 记录剩余行匹配 shortstat：`/^\s*(\d+) files? changed(?:, (\d+) insertions?\(\+\))?(?:, (\d+) deletions?\(-\))?/`，缺项为 `null`。
-- **关键坑**：`%aI` 输出带时区偏移（`+08:00`），而 `NodeInput.client_created_at` 的 `z.string().datetime()` 只接受 `Z` 结尾——必须 `new Date(authorIso).toISOString()` 转 UTC，否则上报整批 400。
+- **关键坑**：`%aI` 输出带时区偏移（`+08:00`），而 `NodeInput.client_created_at` 的 `z.string().datetime()` 只接受 `Z` 结尾——先 `Date.parse`，NaN 则 `continue` 跳过该条（**禁止**对 Invalid Date 直接 `toISOString()`，会抛 RangeError 拖垮整仓），再 `new Date(ms).toISOString()` 转 UTC。
 
-### 6.3 接入 `collect.ts`
+### 6.3 接入 pluggable source
 
-1. `SampleSnapshot` 增加 `commits: GitCommit[]`。
-2. `collectSnapshot()` 两条分支（darwin / 非 darwin）都加 `scanTodayCommits(config.gitScanDirs).catch(() => [])`——git 扫描与平台无关，对齐 `parseAgentSessions` 的全平台语义。`gitScanDirs` 为空时直接返回 `[]`，不 spawn 进程。
-3. `snapshotToNodes()` 增加映射分支，进程内 `seenCommitShas: Set<string>` 去重（照抄 `seenAgentKeys` 写法与 `>500 → 保留后 200` 的裁剪逻辑，含 `resetSeenAgentKeys` 同款 test helper）。从 `collect.ts` 导出 `uuidFromSeed` 复用。
+1. 新文件 `packages/sampler/src/sources/git.ts` 实现 `SampleSource`（id=`git`）：`scanTodayCommits` → `commitsToNodes`（进程内 SHA dedupe via `createKeyDedupe`）。
+2. `collect.ts` 的 `SOURCES` 数组 append `gitSource`（约 +2 行 import + 1 行注册）。**禁止**再往 `SampleSnapshot` 塞 `commits` 字段或在 orchestrator 里写映射。
+3. `config.gitScanDirs` 为空时 `scanTodayCommits` 直接 `[]`，不 spawn。
 
 **节点字段映射：**
 
@@ -122,7 +125,7 @@ git -C <repoPath> log --all --since="<todayLocal()>T00:00:00" --pretty=format:%x
 | `client_created_at` | `committedAt`（UTC ISO） |
 | `date` | `todayLocal(new Date(committedAt))`——按提交 author 时间归日，跨零点提交归正确那天 |
 
-`snapshotWithMetaNodes()` 无需单独改——它内含 `snapshotToNodes()`，Save 收尾快照自动带上当日提交。
+Save Today 无需特殊处理 git——source 在每次 tick 都发 closed commits（commit 无 open 语义）。
 
 ### 6.4 失败哲学
 
@@ -146,12 +149,12 @@ git 不存在、目录未配置、单仓库报错 → 一律静默返回空，�
 
 **sampler（`packages/sampler/src/collect-git.test.ts` 新建）：**
 
-1. `parseGitLog` 纯函数：多提交 + shortstat 完整 / 缺 insertions / 单文件（`1 file changed`）/ 空输出 / 垃圾输入。
+1. `parseGitLog` 纯函数：多提交 + shortstat 完整 / 缺 insertions / 单文件（`1 file changed`）/ 空输出 / 垃圾输入 / **坏 author 时间跳过且不拖垮后续记录**。
 2. 时区转换：`+08:00` author 时间 → UTC ISO（Z 结尾）。
 3. 节点映射确定性：同一 `(repoPath, sha)` 两次映射 `client_uuid` 相同；不同 sha 不同。
 4. 归日：23:59 与 00:01（本地）的提交 `date` 字段各归其日。
 5. 集成（tmp 目录建真 git 仓库，CI 是 ubuntu-latest、git 预装）：配置 root → 扫出当日提交；`GIT_SCAN_DIRS` 为空 → 不 spawn、返回空。
-6. `snapshotToNodes` 进程内去重：同一 snapshot 映射两遍，第二遍不出 git 节点；reset helper 后重新出现。
+6. `commitsToNodes` 进程内去重：同一批 commit 映射两遍，第二遍为空；reset helper 后重新出现。
 
 **server（`packages/server/src/stats/compute.test.ts` 更新）：**
 

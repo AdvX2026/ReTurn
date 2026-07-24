@@ -102,6 +102,10 @@ export async function scanTodayCommits(roots: string[]): Promise<GitCommit[]> {
 
 async function scanRepo(repoPath: string, since: string): Promise<GitCommit[]> {
   try {
+    // Only this machine's configured author — shared repos must not score coworkers.
+    const author = await localGitAuthor(repoPath);
+    if (!author) return [];
+
     const { stdout } = await execFileAsync(
       "git",
       [
@@ -109,6 +113,7 @@ async function scanRepo(repoPath: string, since: string): Promise<GitCommit[]> {
         repoPath,
         "log",
         "--all",
+        `--author=${author}`,
         `--since=${since}`,
         "--pretty=format:%x1e%H%x1f%aI%x1f%s",
         "--shortstat",
@@ -121,6 +126,21 @@ async function scanRepo(repoPath: string, since: string): Promise<GitCommit[]> {
     );
   } catch {
     return [];
+  }
+}
+
+/** Repo-local then global `user.email`. Empty → skip repo (no author filter = unsafe). */
+async function localGitAuthor(repoPath: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["-C", repoPath, "config", "--get", "user.email"],
+      { timeout: GIT_TIMEOUT_MS },
+    );
+    const email = String(stdout).trim();
+    return email || null;
+  } catch {
+    return null;
   }
 }
 
@@ -144,8 +164,11 @@ export function parseGitLog(stdout: string, repo: string, repoPath: string): Git
     const subject = subjectParts.join("\x1f");
 
     // %aI is offset-aware; NodeInput.client_created_at requires Z-suffixed datetime.
-    const committedAt = new Date(authorIso).toISOString();
-    if (Number.isNaN(new Date(committedAt).getTime())) continue;
+    // Parse first — Invalid Date throws RangeError on toISOString() and would
+    // abort the whole record loop if left uncaught (scanRepo catches per-repo).
+    const ms = Date.parse(authorIso);
+    if (Number.isNaN(ms)) continue;
+    const committedAt = new Date(ms).toISOString();
 
     let filesChanged: number | null = null;
     let insertions: number | null = null;

@@ -75,6 +75,19 @@ describe("parseGitLog", () => {
     assert.equal(c!.insertions, null);
     assert.equal(c!.deletions, null);
   });
+
+  it("skips bad author time without dropping later records", () => {
+    const stdout = [
+      "\x1ebad\x1fnot-a-date\x1fgarbage header",
+      " 1 file changed, 1 insertion(+)",
+      "\x1egood\x1f2026-07-24T10:00:00Z\x1fok commit",
+      " 1 file changed, 1 insertion(+)",
+    ].join("\n");
+    const commits = parseGitLog(stdout, repo, repoPath);
+    assert.equal(commits.length, 1);
+    assert.equal(commits[0]!.sha, "good");
+    assert.equal(commits[0]!.committedAt, "2026-07-24T10:00:00.000Z");
+  });
 });
 
 describe("git source emission", () => {
