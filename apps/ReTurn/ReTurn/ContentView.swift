@@ -127,11 +127,8 @@ struct ContentView: View {
             spacing: ReTurnDesign.Spacing.medium
         ) {
             Image(systemName: "plus")
+                .font(.title2)
                 .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
-                .frame(
-                    width: ReTurnDesign.Metrics.composerAccessorySize,
-                    height: ReTurnDesign.Metrics.composerAccessorySize
-                )
                 .accessibilityHidden(true)
 
             TextField("Ask Return Anything", text: $composerText, axis: .vertical)
