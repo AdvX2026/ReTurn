@@ -126,10 +126,27 @@ struct ContentView: View {
             alignment: .center,
             spacing: ReTurnDesign.Spacing.medium
         ) {
-            Image(systemName: "plus")
-                .font(.title2)
-                .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
-                .accessibilityHidden(true)
+            Menu {
+                ControlGroup {
+                    Button("Camera", systemImage: "camera") {
+                        // TODO: Present camera capture.
+                    }
+
+                    Button("Photos", systemImage: "photo") {
+                        // TODO: Present the photo picker.
+                    }
+
+                    Button("Files", systemImage: "folder") {
+                        // TODO: Present the file importer.
+                    }
+                }
+            } label: {
+                Label("Add", systemImage: "plus")
+                    .labelStyle(.iconOnly)
+                    .font(.title2)
+                    .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
+            }
+            .menuIndicator(.hidden)
 
             TextField("Ask Return Anything", text: $composerText, axis: .vertical)
                 .font(ReTurnDesign.Typography.composer)
@@ -176,9 +193,6 @@ struct ContentView: View {
             }
         }
         .contentShape(composerShape)
-        .onTapGesture {
-            isComposerFocused = true
-        }
         .animation(
             .spring(
                 response: ReTurnDesign.Motion.composerResponse,
