@@ -31,6 +31,12 @@ Listens on `http://0.0.0.0:8787` by default. SQLite at `$DATA_DIR/return.db`.
 | GET | `/api/timeline?date=` | 24h sessions / feeds / sleep |
 | GET | `/api/days?range=30` | overview |
 | PATCH | `/api/todos/:id` | check → `todo_check` only on false→true |
+| POST | `/api/chat` | triage + workflows (idea/retrieval/question/task) |
+| GET | `/api/messages?cursor=` | Now message stream |
+| PATCH | `/api/messages/:id/intent` | user corrects triage |
+| POST | `/api/resume` | short recap → agent message |
+| GET | `/api/tasks?status=` | sidebar tasks |
+| GET | `/api/cards?direction=before\|future` | bidirectional stream cards |
 
 ## Env
 

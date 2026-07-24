@@ -15,3 +15,11 @@ See root `.env.example`. `LLM_API_KEY` / `HEALTH_TOKEN` never ship to clients.
 - mDNS (`return.local`) not implemented yet — clients use IP for now.
 - URL fetch enrichment (title/body summary on `kind=url`) not done; desktop/server can add later.
 - Ferment without `LLM_API_KEY` always degrades (tests rely on this).
+
+## v0.6 APIs (chat / cards / resume)
+- Tables: `messages`, `tasks`, `cards`, `runtime_state` (pace).
+- Chat triage is keyword-first (no small model required); low confidence asks user to pick intent.
+- Task pipeline runs sync in-request (no worker queue) — fine for demo.
+- Save writes briefing + todo_suggestion + health + auto idea cards; sets night pace until next day 06:00 local.
+- `POST /api/nodes` and `GET /api/ping` return `pace_mode` for sampler.
+- Sampler still needs to *consume* pace_mode (not in this branch).
