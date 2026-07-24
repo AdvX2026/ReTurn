@@ -130,12 +130,12 @@ struct ContentView: View {
                 .focused($isComposerFocused)
 
             Image(systemName: "waveform.mid")
-                .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
+                .foregroundStyle(ReTurnDesign.Colors.voiceButtonForeground)
                 .frame(
                     width: ReTurnDesign.Metrics.waveformButtonSize,
                     height: ReTurnDesign.Metrics.waveformButtonSize
                 )
-                .background(ReTurnDesign.Colors.waveformFill, in: Circle())
+                .background(ReTurnDesign.Colors.voiceButtonBackground, in: Circle())
                 .accessibilityHidden(true)
         }
         .padding(.horizontal, ReTurnDesign.Metrics.composerHorizontalInset)
@@ -151,6 +151,19 @@ struct ContentView: View {
                 : ReTurnDesign.Metrics.composerHeight
         )
         .background(.ultraThinMaterial, in: Capsule())
+        .overlay {
+            Capsule()
+                .strokeBorder(
+                    ReTurnDesign.Colors.composerHighlight,
+                    lineWidth: ReTurnDesign.Metrics.composerHighlightLineWidth
+                )
+        }
+        .shadow(
+            color: ReTurnDesign.Colors.composerGlow,
+            radius: ReTurnDesign.Metrics.composerGlowRadius,
+            x: ReTurnDesign.Metrics.composerGlowX,
+            y: ReTurnDesign.Metrics.composerGlowY
+        )
         .shadow(
             color: ReTurnDesign.Colors.composerShadow,
             radius: ReTurnDesign.Metrics.composerShadowRadius,

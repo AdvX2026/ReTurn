@@ -18,15 +18,18 @@ enum ReTurnDesign {
             #endif
         }
 
-        static var waveformFill: Color {
-            #if os(iOS)
-            Color(uiColor: .tertiarySystemFill)
-            #elseif os(macOS)
-            Color(nsColor: .controlBackgroundColor)
-            #endif
-        }
-
-        static let composerShadow = Color.black.opacity(0.2)
+        static let voiceButtonBackground = Color.black
+        static let voiceButtonForeground = Color.white
+        static let composerHighlight = LinearGradient(
+            colors: [
+                Color.white.opacity(0.8),
+                Color.white.opacity(0.12)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        static let composerGlow = Color.white.opacity(0.55)
+        static let composerShadow = Color.black.opacity(0.1)
     }
 
     enum Spacing {
@@ -50,8 +53,12 @@ enum ReTurnDesign {
         static let mascotMaximumWidth: CGFloat = 195
         static let mascotAspectRatio: CGFloat = 175 / 150
         static let heroOpticalLift: CGFloat = 38
-        static let composerShadowRadius: CGFloat = 20
-        static let composerShadowY: CGFloat = 8
+        static let composerHighlightLineWidth: CGFloat = 1
+        static let composerGlowRadius: CGFloat = 7
+        static let composerGlowX: CGFloat = -1
+        static let composerGlowY: CGFloat = -1
+        static let composerShadowRadius: CGFloat = 12
+        static let composerShadowY: CGFloat = 4
     }
 
     enum Layout {
