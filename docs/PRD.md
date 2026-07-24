@@ -27,7 +27,7 @@
 ### 1.1 评委叙事（Pitch）
 
 - **痛点**：收藏夹吃灰、笔记软件成了信息坟场；「时间去哪了」没人说得清，复盘有价值但没人坚持。
-- **差异**：Rewind / Mem / Obsidian 比拼「更强的记录与搜索」；ReTurn 是**知道你时间去哪了、并且物理地住在你家里的 Agent**——记录不用你动手，使用只需要说话。
+- **差异**：Rewind / Mem / Obsidian 比拼「更强的记录与搜索」；字节开源的 MineContext 验证了「主动式上下文感知助手」这条赛道，但它靠每 5 秒截屏 + VLM 深采集，装进单机笔记本。ReTurn 走元数据轻采集 + 用户主动投喂，是**知道你时间去哪了、并且物理地住在你家里的 Agent**——记录不用你动手，使用只需要说话，原始数据不进任何厂商的云。
 - **硬件叙事**：原始数据（你开过什么应用、看过什么网页、说过什么话）只存在 Pi 上，不进任何厂商的云。演示时把 Orange Pi 实物摆上台，是差异化道具。（发酵调用云端 LLM 的边界与说法见 §9.7。）
 - **一句话**：第二大脑工具解决「存进去」，ReTurn 解决「不用存、张口就能用」。
 
@@ -58,7 +58,7 @@
 | F2 | 后台采样器 + 节奏模式 | 沿用 v0.5 独立进程采样器（osascript 采样 + Coding Agent jsonl 解析 + 主 outbox + localhost :8791 控制面）；**新增节奏模式**：每次上报时顺带从 Pi 拉取当前模式，Save 后转低频，次日固定时间（6:00）恢复 |
 | F3 | 双向流主视图 | 以 Now 为锚点的一条上下滑动流：上刷 Before（briefing 等总结卡片 + 时间线明细段，越刷越早），下刷 Future（灵感卡、todo 建议卡、健康建议卡）；Now 承载对话消息、问候、吉祥物、Task 回传与待确认项（平时折叠/半隐藏，有内容时展开）。左滑 sidebar：空间身份 / 进行中 task / 设置&关于 |
 | F4 | Input 与意图分诊 | Claude App 式底部输入。小模型分诊为 a.灵感 b.检索 c.提问，告知判断结果、可纠正，无法判断时交用户选择。**提问工作流是主线**：取相关节点+会话摘要塞 prompt 回答（“昨天干了什么”“刚刚在干什么”），回答落 Now。语音输入：录音 → Pi 转写 → 转写文本进分诊 |
-| F5 | Save 夜间检查点 + 发酵 | 点 Save（可附一句留言作发酵锚点，可跳过）→ 收尾环境快照 → 夜间发酵：产出次日 briefing 卡（含五维属性、状态、streak + 昨日简报；呈现分层——状态+归因打头，五维收展开层，见 §4.3）、todo 建议卡、健康建议卡、节点标签与连边；属性与状态由纯代码结算。幂等：当日已 Save 直接返回 |
+| F5 | Save 夜间检查点 + 发酵 | 点 Save（可附一句留言作发酵锚点，可跳过）→ 收尾环境快照 → 夜间发酵：产出次日 briefing 卡（含五维属性、状态、streak + 昨日简报；呈现分层——状态+归因打头，五维收展开层，见 §4.3）、todo 建议卡、健康建议卡、节点标签与连边；todo 建议须与提醒事项中未完成项**查重**、并按历史建议的采纳情况校准（偏好回环，见 §6.3）；属性与状态由纯代码结算。幂等：当日已 Save 直接返回 |
 | F6 | Resume 小复盘 | 白天随需触发：最近几小时会话聚合 → 一次小 LLM 调用（或模板兜底）→「你刚才在做 X」即时回 Now，不落卡 |
 | F7 | 时间线回溯 | 时间轴 + 时间点事件；应用/Agent 会话按时间段呈现，持续性事件用段状展示，时间模糊化显示；**跨日可回溯**（好几天/几周前），检索定位可跳转到指定位置。卡片是总结，时间线是想细看时的展开 |
 | F8 | iOS 端 | 与桌面同一 SwiftUI 多平台代码库，**对等全功能**（双向流、Input、Task、Save/Resume）；另负责 HealthKit 健康上报（进前台即上报）。免费账号真机签名，受阻则模拟器演示兜底 |
@@ -78,7 +78,10 @@
 - iOS 采集扩展（HealthKit 扩展指标：锻炼、心率等；iOS 无法采样前台应用，见 §9.10）。
 - 分诊纠错改判（P0 内只做「无法判断 → 用户选择」分支）。
 - 状态驱动吉祥物**动画选择**（如疲惫时打哈欠）：复用状态标签，仅动效代码，不新增立绘。
-- T1 档软件接入（§3.1：Git 提交、VS Code 最近项目、Chrome 当日历史）。
+- T1 档软件接入（§3.1：Git 提交、VS Code 最近项目、Chrome 当日历史、Apple 提醒事项回采）。
+- 周报卡：发酵管线每 7 个 saved day（或周日晚）多产出一张 `weekly` 卡，叙事型周总结，纯复用日 briefing 管线。
+- Input 联想（Intelligent Resurfacing 的廉价等价物）：用户在 Input 记灵感时，拿输入文本查一次 embedding，把相关旧节点浮到 Now（「你三周前记过类似的想法」），复用 F10 检索管线。
+- Token 用量监控：Pi 端每次 LLM/转写/视觉调用记一行 `llm_usage` 表，`GET /api/usage` 聚合返回；不做面板。
 - 当日重复 Save 的覆盖重结算（P0 内 Save 幂等）。
 - 剪贴板监听（复制即候选节点，需用户确认收录）。
 - 断网/恢复的演示化呈现（拔网线 → 补传动画）。
@@ -89,7 +92,7 @@
 - 公网访问（Tailscale/frp）；仅局域网。真推送（APNs）——briefing 是「夜间备好、打开即见」。
 - Future 侧时间线 / 计划轴。
 - 角色美术层：状态立绘、结算画面、角色包（v0.6 砍除；五维属性与状态判定保留，见 §4）。
-- 深度采集（屏幕截图/OCR/键鼠活跃度）。
+- 深度采集（屏幕截图/OCR/键鼠活跃度）；**任何隐蔽/无系统指示的屏幕采集永不做（不限黑客松）**——轻采集是隐私叙事的防御性资产，不是妥协。
 - 流式对话响应、多轮长上下文对话（MVP 单轮 + 最近几条消息窗口）。
 - 知识图谱可视化界面（图只作为内部数据结构）。
 - 任何插件/扩展开发（VS Code 扩展、Chrome extension）。
@@ -107,11 +110,14 @@
 | T0（=F1，必做） | iOS 健康 | 昨夜睡眠时长、当日步数 | iOS App 内 HealthKit 直读，进前台 POST 到 Pi，按日期幂等、重报刷新；备胎：快捷指令定时 POST 同一端点 | 低，「精力」唯一的硬信号 |
 | T0（=F11） | 用户提交资料 | 会议纪要文本、笔记截图 | Input 提交 Task；截图走视觉 API 提取（视时间） | 中，**权重高于自动采集** |
 | T1（P1，按序捞） | Git | 本地仓库当日提交 | 扫描 `git log --since` | 低 |
+| T1 | Apple 提醒事项 | **全部提醒列表**的条目（新增/完成/未完成，含用户手写 todo 与被采纳的 AI 建议） | 采样器 AppleScript 读取，落 `reminder` 节点 | 低，todo 偏好回环的正样本源（见 §6.3） |
 | T1 | VS Code | 最近打开的项目/文件 | 读 `state.vscdb` | 低 |
 | T1 | Chrome | 当日浏览历史 | 拷贝 `History` SQLite 后读 | 中 |
 | T2（黑客松后） | 日历 / Obsidian / 音乐 | 日程 / 当日笔记 / 听歌氛围 | AppleScript / 文件扫描 | 中 |
 
-采集条目一律落为 node（`kind`：`app_sample`、`tab_sample`、`agent_session`、`health_daily`、`idea`、`image` 等），进入同一发酵管线；采样类节点在发酵 prompt 中作为「环境上下文」而非「知识」处理；用户提交资料（Task 产物、显式灵感）权重最高。
+采集条目一律落为 node（`kind`：`app_sample`、`tab_sample`、`agent_session`、`health_daily`、`idea`、`image`、`reminder` 等），进入同一发酵管线；采样类节点在发酵 prompt 中作为「环境上下文」而非「知识」处理；用户提交资料（Task 产物、显式灵感）权重最高。
+
+Apple 提醒事项是**双向**接入：读取侧回采全部提醒列表（已拍板——采样的定位就是收集）；写入侧是 AI todo 建议卡上的「采纳」动作，由 UI 端经 EventKit 写入提醒事项（需写权限），随后被采样器回采，构成偏好正样本（回环设计见 §6.3）。
 
 ## 4. 吉祥物与五维属性（原角色系统的拆分：数值层保留，美术层砍掉）
 
@@ -158,7 +164,7 @@
 devices(id, name, platform, last_seen_at)
 nodes(id, day_id, device_id, kind, title, content, source_meta, client_uuid, created_at)
   -- kind: text | url | voice | save_note | app_sample | tab_sample | agent_session
-  --       | health_daily | snapshot | todo_check | idea | image
+  --       | health_daily | snapshot | todo_check | idea | image | reminder
   -- idea 节点 source_meta 记 provenance: user(显式记录) | auto(采集/发酵抽取)
   -- client_uuid: 客户端生成的幂等键，补传去重用
 edges(id, src_node_id, dst_node_id, relation, created_by_day_id)
@@ -168,7 +174,7 @@ messages(id, role /* user|agent */, content, intent /* idea|retrieval|question|N
          task_id, created_at)          -- Now 区对话流
 tasks(id, type, status /* queued|running|done|failed */,
       input_json, result_message_id, created_at, finished_at)
-cards(id, type /* briefing|idea|todo_suggestion|health */, date,
+cards(id, type /* briefing|idea|todo_suggestion|health|weekly */, date,
       content_json, created_at)        -- 双向流分页需要稳定实体，卡片落库
 ```
 
@@ -256,7 +262,8 @@ GET  /api/ping                      → outbox 探活
 - **提问**：相关节点 + 会话摘要塞 prompt → 主模型回答 → 落 message。
 - **Task**：纪要文本 /（截图 → 视觉 API）→ 提取落高权重节点 → 完成消息回 Now；失败降级不丢输入。
 - **Resume**：最近几小时会话聚合（复用 sessions 代码）→ 小模型一句话复盘（或模板兜底）→ 即时返回。
-- **夜间发酵（Save 触发）**：1~2 次主模型调用，输入「当日节点 + 对话 + 高权重资料 + 留言锚点 + 近几日摘要」，输出结构化 JSON：`{ summary, briefing, review_points[], todos[], health_advice, ideas[], node_tags{}, edges[] }` → Zod 校验 → 落 cards/edges/todos → 纯代码结算五维属性与状态。采样节点只作「环境上下文」。
+- **夜间发酵（Save 触发）**：1~2 次主模型调用，输入「当日节点 + 对话 + 高权重资料 + 留言锚点 + 近几日摘要 + 历史 todo 建议及其采纳情况」，输出结构化 JSON：`{ summary, briefing, review_points[], todos[], health_advice, ideas[], node_tags{}, edges[] }` → Zod 校验 → 落 cards/edges/todos → 纯代码结算五维属性与状态。采样节点只作「环境上下文」。
+- **Todo 偏好回环（与 F5 联动）**：AI todo 建议卡上的「采纳」动作 → UI 端经 EventKit 写入 Apple 提醒事项；提醒事项被采样器回采（`reminder` 节点）构成**正样本**（进了提醒事项 = 用户认可，无需额外打分 UI）；历史建议与提醒事项的差集构成**负样本**（建议了但未采纳 = 不买账）。发酵生成 todo 时把两类样本喂回 prompt 校准，同时天然实现去重——已在提醒事项里的不重复建议。
 - 所有 LLM 调用带超时 + 一次重试 + Zod 校验；发酵失败降级回放上一次已落库结果，不阻塞 Save 主流程。
 
 ## 7. 演示脚本（3 分钟）
@@ -297,3 +304,4 @@ v0.5 已完成：shared 合同（v0.5 面）、server（路由/SQLite/发酵/统
 15. **健康同步依赖「当天打开过 iOS App」**：哪天没开 App、备胎快捷指令也没触发，当天就没有精力硬信号——精力公式自动回退纯扣分式，不报错。演示当天打开一次 iOS App 即可。
 16. **视觉 API 链路可选**：截图提取失败或没时间接入时，降级为「请粘贴文本」，Task 主链路不依赖视觉。
 17. **吉祥物形象未定**：本体形象（形态/性格）需尽早进美术排期——它是 Now 区的门面；表情图与微动效都要等形象定稿才能动工，是前端主线（§8 第 3 步）的前置依赖。
+18. **提醒事项全量回采的隐私敏感度**：已拍板回采全部提醒列表（采样的定位就是收集），其中含纯生活项（买菜/吃药等），会进入 Pi 并可能随发酵摘要送云端 LLM。叙事与 §9.7 一致：原始数据只在家里，推理是无状态调用；发酵 prompt 中提醒事项只用于 todo 偏好校准与环境上下文，briefing 文案不主动展开个人生活条目。
