@@ -3,7 +3,7 @@ import { config } from "../config.js";
 import { listNodesByDate } from "../db/repo.js";
 import type { Db } from "../db/schema.js";
 import { extractHealth } from "../stats/compute.js";
-import { allSessions } from "../stats/sessions.js";
+import { allSessions, nodeEventTime } from "../stats/sessions.js";
 import { parseDate } from "../util/time.js";
 
 /** App → coarse category for timeline coloring. */
@@ -44,13 +44,14 @@ export function buildTimeline(db: Db, date: string): TimelineResponse {
     });
   }
 
-  // Feed dots (active nodes)
+  // Feed dots (active nodes) — use client event time when present (offline buffer).
   for (const n of nodes) {
     if (!["text", "url", "voice", "save_note"].includes(n.kind)) continue;
+    const at = nodeEventTime(n);
     segments.push({
       kind: "feed",
-      start: n.created_at,
-      end: n.created_at,
+      start: at,
+      end: at,
       label: n.title || n.kind,
       node_id: n.id,
       category: n.kind,

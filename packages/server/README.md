@@ -1,6 +1,6 @@
 # @return/server
 
-Orange Pi home-server for ReTurn. Node ≥ 22.5 + Fastify + `node:sqlite`.
+Orange Pi home-server for ReTurn. Node ≥ 22.13 + Fastify + `node:sqlite`.
 
 ## Run
 
