@@ -7,7 +7,7 @@ struct TimelineEventDetailsView: View {
     var body: some View {
         let tint = TimelineDesign.Colors.accent(for: item)
 
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Label(item.categoryLabel, systemImage: item.symbolName)
                     .font(TimelineDesign.Typography.eventCategory)
