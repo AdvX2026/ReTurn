@@ -169,11 +169,13 @@ segmented `Picker` → 三个纯文字 label；静止 1.5s 后淡到 0.3（不�
 
 ---
 
-## 五、待确认（阻塞开工）🔵
+## 五、早报卡的数据决策 🟡
 
-### A. 五维数值的语义与契约
+三条均已拍板，**全部需要后端配合**，构成一次契约变更。前端在字段到位前用假数据占位推进。
 
-契约现状（`packages/shared` → `Models.swift`）：
+### A. 五维数值：不算总分 ✅ 已定
+
+沿用契约现状——五维各自独立展示，**不求和、不设总分**。
 
 ```swift
 /// Five-dimensional stats, all 0–100. Computed by code on the Pi, never LLM.
@@ -182,30 +184,25 @@ struct Stats: Codable, Equatable {
 }
 ```
 
-设计参照（睡眠评分）用的是 **`得分/满分`** 形式（`50/50`、`26/30`、`18/20`，总分 94 = 三项之和）。
+与参照物的差异：Apple 睡眠评分是 `得分/满分` 且总分为三项之和（`94 = 50+26+18`）；ReTurn **只借鉴其行式布局，不借鉴总分机制**。设计稿中卡片顶部不出现总分数字。
 
-**待定**：
-1. 五维展示为 0–100 分，还是各维 `得分/满分` 加权求和？
-2. 若采用后者，各维满分权重由谁定义？契约需新增字段。
-
-### B. 归因文案的来源
+### B. 归因文案：Server 出数据，前端套模板 ✅ 已定
 
 「收入了 17 个 idea、10 张图片」「做了 6/17 个 Todo，Agent 为你工作了 10 小时」
 
-**待定**：server 直接产出文案，还是 server 给**分项计数**、客户端套模板？
+**分工**：server 提供**分项计数**，客户端持有文案模板并本地化。
 
-无论哪种，**契约都缺字段**——现有 `BriefingCardContent` 只有 `summary / openingLine / briefing / reviewPoints / stats / characterState`。
+**契约影响**：`BriefingCardContent` 需新增分项计数字段。现有字段只有 `summary / openingLine / briefing / reviewPoints / stats / characterState / nodeIds`，无法拼出上述任何一句。
 
-### C. 职业字段归属
+**待后端明确**：每个维度分别需要哪些计数项（如 intake → idea 数、图片数；output → todo 完成数/总数、agent 工作时长）。这决定模板的形参，前端需要这份清单才能定稿模板。
 
-**待定**（用户将向后端提建议）：
+### C. 职业字段：Server 下发 ✅ 已定
 
-| 方案 | 代价 |
-|---|---|
-| 客户端从 `stats` 推导（五维取最高 → 职业名） | 零契约变更，前端可独立推进；判定逻辑固化在客户端 |
-| server 计算并下发 | 需改 Zod schema + `Models.swift` 镜像（AGENTS.md 要求同一 commit）+ server 结算逻辑 |
+不采用客户端推导。
 
-按 PRD §4.2「五维全部由代码确定性计算，LLM 不打分」的原则，职业本身也应是确定性映射，故客户端推导不违背原则。
+**契约影响**：`BriefingCardContent` 新增职业字段；需同步 `packages/shared` Zod schema 与 `Models.swift` 镜像（AGENTS.md 要求同一 commit）。
+
+**建议**：职业按 PRD §4.2「五维由代码确定性计算、LLM 不打分」的原则，在 server 侧也应是**确定性映射**而非 LLM 判定。枚举值建议在 shared 中固化，客户端按 `TolerantEnum` 容错（未知职业回落到默认展示），避免后端新增职业时旧版客户端崩溃。
 
 ---
 
@@ -218,7 +215,7 @@ struct Stats: Codable, Equatable {
 - [ ] §4.1：修订「表情图 1~3 张封顶」以容纳分层动效资产
 - [ ] §4.3：修订「五维数值收在展开/详情层」
 - [ ] §4.3：状态标签由「打头」改为「卡内 tag」
-- [ ] §4.2 / §5：五维数值语义（分数 vs 得分/满分）
-- [ ] §5 API：`BriefingCardContent` 新增职业、分项计数或归因文案字段
+- [ ] §5 API：`BriefingCardContent` 新增职业字段（server 下发，确定性映射，枚举入 shared）
+- [ ] §5 API：`BriefingCardContent` 新增五维分项计数字段（文案模板在客户端）
 - [ ] §7：补充 Apple 健康 / 手记作为设计参照系
 - [ ] §3 F3：补充 Now 四态状态机
