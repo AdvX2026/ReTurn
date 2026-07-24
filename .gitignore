@@ -15,3 +15,5 @@ coverage/
 .pnpm-store/
 
 *.tsbuildinfo
+target/
+src-tauri/target/
