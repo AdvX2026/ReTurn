@@ -297,6 +297,39 @@ describe("index + search integration", () => {
     assert.equal(hits[0]?.doc_id, `node:${n1.node.id}`);
     assert.ok((hits[0]?.score ?? 0) > (hits[1]?.score ?? 0));
   });
+
+  it("semantic top-k filters before cutting k", () => {
+    const db = openMemoryDb();
+    // Global best is old; in-range is second. Post-hoc filter on top-1 would drop both.
+    const old = insertNode(db, {
+      client_uuid: crypto.randomUUID(),
+      kind: "text",
+      content: "old alpha",
+      date: "2026-06-01",
+    });
+    const recent = insertNode(db, {
+      client_uuid: crypto.randomUUID(),
+      kind: "text",
+      content: "recent alpha",
+      date: "2026-07-24",
+    });
+    putEmbedding(db, old.node.id, Float32Array.from([1, 0, 0]), "test-model");
+    putEmbedding(db, recent.node.id, Float32Array.from([0.9, 0.1, 0]), "test-model");
+
+    const global = semanticTopK(db, Float32Array.from([1, 0, 0]), 1, "test-model");
+    assert.equal(global[0]?.doc_id, `node:${old.node.id}`);
+
+    const allowed = new Set([`node:${recent.node.id}`]);
+    const filtered = semanticTopK(
+      db,
+      Float32Array.from([1, 0, 0]),
+      1,
+      "test-model",
+      (id) => allowed.has(id),
+    );
+    assert.equal(filtered.length, 1);
+    assert.equal(filtered[0]?.doc_id, `node:${recent.node.id}`);
+  });
 });
 
 describe("ask citation validation", () => {

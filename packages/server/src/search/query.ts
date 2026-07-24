@@ -87,17 +87,22 @@ export async function search(db: Db, opts: SearchOptions): Promise<SearchRespons
   if (useSemantic) {
     try {
       const qVec = await embedQuery(parsed.text);
-      let hits = semanticTopK(db, qVec, CHANNEL_TOP, config.embedding.model);
-      // Apply date/kind filters post-hoc (embeddings table has no date column).
-      hits = hits.filter((h) => {
-        const info = resolveMeta(db, h.doc_id, meta);
-        if (!info) return false;
-        if (parsed.from && info.day_date < parsed.from) return false;
-        if (parsed.to && info.day_date > parsed.to) return false;
-        if (kindsFilter && !kindsFilter.has(info.kind)) return false;
-        meta.set(h.doc_id, info);
-        return true;
-      });
+      // Filter before top-k so date/kind constraints cannot empty a global top-50.
+      const hits = semanticTopK(
+        db,
+        qVec,
+        CHANNEL_TOP,
+        config.embedding.model,
+        (docId) => {
+          const info = resolveMeta(db, docId, meta);
+          if (!info) return false;
+          if (parsed.from && info.day_date < parsed.from) return false;
+          if (parsed.to && info.day_date > parsed.to) return false;
+          if (kindsFilter && !kindsFilter.has(info.kind)) return false;
+          meta.set(docId, info);
+          return true;
+        },
+      );
       hits.forEach((h, i) => {
         semanticRanks.set(h.doc_id, i + 1);
       });
