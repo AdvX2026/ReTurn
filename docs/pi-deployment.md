@@ -80,7 +80,8 @@ Update the clean checkout to a reviewed commit, then run:
 
 The deployment records the exact commit, verifies shared/server, publishes a
 new release, atomically changes `/opt/return/current`, and checks `/api/ping`.
-If the new process fails its health check, the previous symlink is restored.
+If systemd cannot restart the new process or the process fails its health
+check, the previous symlink is restored and the old release is restarted.
 After a successful health check, only the current and immediately previous
 release are retained. Data under `/var/lib/return` is never part of a code
 release.

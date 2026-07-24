@@ -134,34 +134,52 @@ if sudo test -L /opt/return/current; then
 fi
 
 new_link="/opt/return/.current.$version"
+sudo systemctl enable return-server.service >/dev/null
 sudo ln -s "$release_dir" "$new_link"
 sudo mv -Tf "$new_link" /opt/return/current
 
-sudo systemctl enable return-server.service >/dev/null
-sudo systemctl restart return-server.service
+restart_succeeded=0
+if sudo systemctl restart return-server.service; then
+  restart_succeeded=1
+fi
 
 healthy=0
 attempt=1
-while [ "$attempt" -le 15 ]; do
-  if curl --fail --silent --show-error --max-time 2 \
-    http://127.0.0.1:8787/api/ping >/dev/null; then
-    healthy=1
-    break
-  fi
-  sleep 1
-  attempt=$((attempt + 1))
-done
+if [ "$restart_succeeded" -eq 1 ]; then
+  while [ "$attempt" -le 15 ]; do
+    if curl --fail --silent --show-error --max-time 2 \
+      http://127.0.0.1:8787/api/ping >/dev/null; then
+      healthy=1
+      break
+    fi
+    sleep 1
+    attempt=$((attempt + 1))
+  done
+fi
 
 if [ "$healthy" -ne 1 ]; then
-  echo "error: new release failed health check; rolling back" >&2
+  if [ "$restart_succeeded" -eq 1 ]; then
+    echo "error: new release failed health check; rolling back" >&2
+  else
+    echo "error: new release failed to restart; rolling back" >&2
+  fi
   if [ -n "$previous" ] && sudo test -d "$previous"; then
     rollback_link="/opt/return/.rollback.$version"
-    sudo ln -s "$previous" "$rollback_link"
-    sudo mv -Tf "$rollback_link" /opt/return/current
-    sudo systemctl restart return-server.service
+    if sudo ln -s "$previous" "$rollback_link" && \
+      sudo mv -Tf "$rollback_link" /opt/return/current; then
+      if ! sudo systemctl restart return-server.service; then
+        echo "error: previous release link restored, but service failed to restart" >&2
+      fi
+    else
+      echo "error: failed to restore previous release link: $previous" >&2
+    fi
   else
-    sudo systemctl stop return-server.service
-    sudo unlink /opt/return/current
+    if ! sudo systemctl stop return-server.service; then
+      echo "error: failed to stop service after first deployment failure" >&2
+    fi
+    if ! sudo unlink /opt/return/current; then
+      echo "error: failed to remove unusable current release link" >&2
+    fi
   fi
   exit 1
 fi
