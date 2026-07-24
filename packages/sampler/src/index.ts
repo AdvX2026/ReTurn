@@ -1,3 +1,9 @@
+import {
+  type SampleSnapshot,
+  collectSnapshot,
+  snapshotToNodes,
+  snapshotWithMetaNodes,
+} from "./collect.js";
 /**
  * Independent sampler process (PRD F2).
  * - setInterval sample → main outbox SQLite → flush to Pi
@@ -5,15 +11,9 @@
  * - UI closed does not stop this process
  */
 import { config } from "./config.js";
-import { Outbox } from "./outbox.js";
-import {
-  collectSnapshot,
-  snapshotToNodes,
-  snapshotWithMetaNodes,
-  type SampleSnapshot,
-} from "./collect.js";
-import { flushOutbox, pingPi } from "./pi.js";
 import { startLocalServer } from "./local-server.js";
+import { Outbox } from "./outbox.js";
+import { flushOutbox, pingPi } from "./pi.js";
 
 const outbox = new Outbox();
 let lastSnapshot: SampleSnapshot | null = null;

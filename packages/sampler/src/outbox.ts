@@ -1,11 +1,11 @@
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 /**
  * Main outbox (PRD §5.2) — sampler process owns this SQLite queue.
  * Sample / agent nodes land here first, then flush FIFO to Pi.
  * Server dedupes on client_uuid.
  */
 import { DatabaseSync } from "node:sqlite";
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
 import type { NodeInput } from "@return/shared";
 import { config } from "./config.js";
 
@@ -66,9 +66,7 @@ export class Outbox {
 
   fail(id: string, err: string): void {
     this.db
-      .prepare(
-        `UPDATE outbox SET attempts = attempts + 1, last_error = ? WHERE id = ?`,
-      )
+      .prepare(`UPDATE outbox SET attempts = attempts + 1, last_error = ? WHERE id = ?`)
       .run(err, id);
   }
 

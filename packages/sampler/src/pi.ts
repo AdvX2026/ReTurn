@@ -1,6 +1,6 @@
-import type { NodeInput } from "@return/shared";
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import type { NodeInput } from "@return/shared";
 import { config } from "./config.js";
 import type { Outbox } from "./outbox.js";
 
@@ -30,10 +30,7 @@ function saveDeviceId(id: string): void {
   cachedDeviceId = id;
 }
 
-async function fetchJson<T>(
-  path: string,
-  init?: RequestInit,
-): Promise<T> {
+async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${config.serverUrl}${path}`, {
     ...init,
     headers: {
@@ -71,10 +68,7 @@ export async function ensureDevice(): Promise<string> {
   return res.device_id;
 }
 
-export async function postNodes(
-  deviceId: string,
-  nodes: NodeInput[],
-): Promise<void> {
+export async function postNodes(deviceId: string, nodes: NodeInput[]): Promise<void> {
   await fetchJson("/api/nodes", {
     method: "POST",
     body: JSON.stringify({ device_id: deviceId, nodes }),
