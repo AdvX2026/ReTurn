@@ -155,7 +155,12 @@ struct ContentView: View {
                 }
             }
         } label: {
+            #if os(iOS)
             addButtonLabel
+                .opacity(0.001)
+            #else
+            addButtonLabel
+            #endif
         }
         .menuIndicator(.hidden)
         .buttonBorderShape(.circle)
@@ -166,7 +171,6 @@ struct ContentView: View {
         ) {
             #if os(iOS)
             addButtonLabel
-                .hidden()
                 .accessibilityHidden(true)
             #else
             attachmentMenu
