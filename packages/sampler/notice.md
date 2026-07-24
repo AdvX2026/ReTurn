@@ -45,5 +45,5 @@ UI closed must not stop sampling. Dev: `pnpm dev:sampler`. Prod later: launchd.
 - Source: `sources/reminders.ts` + `collect-reminders.ts`
 - **darwin only**; non-mac always empty. Opt-out: `REMINDERS_ENABLED=0`.
 - Read-only JXA; never writes. Emits `kind: "reminder"` (open + completed).
-- `client_uuid` = sha256 seed `reminder:{id}:{0|1}` — completed flip → new node.
+- `client_uuid` = sha256 seed `reminder:{date}:{id}:{0|1}` — daily snapshot + completed flip → new node.
 - `source_meta`: `{ list, completed, due, reminder_id, creation_date, modification_date }`

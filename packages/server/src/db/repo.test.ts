@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, it } from "node:test";
 import type { Stats } from "@return/shared";
 import {
@@ -24,7 +28,7 @@ import {
   todoCompletionRate,
   upsertDevice,
 } from "./repo.js";
-import { type Db, openMemoryDb } from "./schema.js";
+import { type Db, openDb, openMemoryDb } from "./schema.js";
 
 describe("repo", () => {
   let db: Db;
@@ -237,6 +241,55 @@ describe("repo", () => {
     assert.equal(deleteNode(db, a.id), true);
     assert.equal(getNodeById(db, a.id), undefined);
     assert.ok(getNodeById(db, b.id));
+  });
+
+  it("openDb migrates legacy todos missing status column", () => {
+    // Pre-loop DBs have todos without status. SCHEMA must not create
+    // idx_todos_status before migrate ALTERs the column in (Codex P1).
+    const dir = mkdtempSync(join(tmpdir(), "return-mig-"));
+    try {
+      const raw = new DatabaseSync(join(dir, "return.db"));
+      raw.exec(`
+        PRAGMA foreign_keys = ON;
+        CREATE TABLE days (
+          id TEXT PRIMARY KEY, date TEXT NOT NULL UNIQUE,
+          saved_at TEXT, save_note_node_id TEXT, summary TEXT,
+          opening_line TEXT, review_points_json TEXT, stats_json TEXT,
+          character_state TEXT
+        );
+        CREATE TABLE devices (
+          id TEXT PRIMARY KEY, name TEXT NOT NULL,
+          platform TEXT NOT NULL DEFAULT 'unknown', last_seen_at TEXT NOT NULL
+        );
+        CREATE TABLE nodes (
+          id TEXT PRIMARY KEY, day_id TEXT NOT NULL REFERENCES days(id),
+          device_id TEXT, kind TEXT NOT NULL, title TEXT, content TEXT,
+          source_meta TEXT, client_uuid TEXT NOT NULL, created_at TEXT NOT NULL,
+          UNIQUE(client_uuid)
+        );
+        CREATE TABLE todos (
+          id TEXT PRIMARY KEY, day_id TEXT NOT NULL REFERENCES days(id),
+          text TEXT NOT NULL, done INTEGER NOT NULL DEFAULT 0,
+          source_node_id TEXT
+        );
+        CREATE INDEX idx_todos_day ON todos(day_id);
+      `);
+      raw.close();
+
+      const upgraded = openDb(dir);
+      const day = ensureDay(upgraded, "2026-07-24");
+      const t = insertTodo(upgraded, { day_id: day.id, text: "migrated" });
+      assert.equal(t.status, "suggested");
+      const idx = upgraded
+        .prepare(
+          `SELECT name FROM sqlite_master WHERE type='index' AND name='idx_todos_status'`,
+        )
+        .get() as { name: string } | undefined;
+      assert.equal(idx?.name, "idx_todos_status");
+      upgraded.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("device upsert reuses id", () => {

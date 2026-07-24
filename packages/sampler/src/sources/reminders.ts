@@ -5,8 +5,9 @@
  * the todo preference loop (PRD §6.3). Silent on non-darwin / disabled /
  * osascript failure. Never writes to Reminders.
  *
- * client_uuid seed includes completed flag so incomplete→complete emits a
- * new node (server is insert-only on client_uuid).
+ * client_uuid seed includes local date + completed so:
+ * - incomplete→complete emits a new node (server insert-only on client_uuid)
+ * - same open reminder re-snapshots each calendar day (daily completion rate)
  */
 import type { NodeInput } from "@return/shared";
 import { type ReminderItem, collectReminders } from "../collect-reminders.js";
@@ -28,21 +29,29 @@ export function resetSeenReminderKeys(): void {
   seen.clear();
 }
 
-/** Stable seed — includes completed so state flip produces a new uuid. */
-export function reminderSeed(item: Pick<ReminderItem, "id" | "completed">): string {
-  return `reminder:${item.id}:${item.completed ? 1 : 0}`;
+/**
+ * Stable seed for one day-state of a reminder.
+ * date keeps daily snapshots distinct under global client_uuid uniqueness.
+ */
+export function reminderSeed(
+  item: Pick<ReminderItem, "id" | "completed">,
+  date: string,
+): string {
+  return `reminder:${date}:${item.id}:${item.completed ? 1 : 0}`;
 }
 
 export function remindersToNodes(
   items: ReminderItem[],
-  opts: { at: string; dedupe?: KeyDedupe } = { at: new Date().toISOString() },
+  opts: { at: string; date?: string; dedupe?: KeyDedupe } = {
+    at: new Date().toISOString(),
+  },
 ): NodeInput[] {
   const dedupe = opts.dedupe ?? seen;
   const nodes: NodeInput[] = [];
-  const date = todayLocal();
+  const date = opts.date ?? todayLocal();
 
   for (const item of items) {
-    const seed = reminderSeed(item);
+    const seed = reminderSeed(item, date);
     if (!dedupe.tryAdd(seed)) continue;
 
     const title =

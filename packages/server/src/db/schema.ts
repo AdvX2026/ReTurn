@@ -66,7 +66,6 @@ CREATE TABLE IF NOT EXISTS todos (
 );
 
 CREATE INDEX IF NOT EXISTS idx_todos_day ON todos(day_id);
-CREATE INDEX IF NOT EXISTS idx_todos_status ON todos(status);
 `;
 
 /**

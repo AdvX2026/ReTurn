@@ -123,16 +123,18 @@ describe("reminders source emission", () => {
   }
 
   it("maps items to reminder nodes with deterministic uuid", () => {
+    const date = "2026-07-24";
     const nodes = remindersToNodes(
       [item({ id: "r1", name: "Task A", body: "notes", completed: false })],
-      { at },
+      { at, date },
     );
     assert.equal(nodes.length, 1);
     const n = nodes[0]!;
     assert.equal(n.kind, "reminder");
     assert.equal(n.title, "Task A");
     assert.equal(n.content, "notes");
-    assert.equal(n.client_uuid, uuidFromSeed("reminder:r1:0"));
+    assert.equal(n.client_uuid, uuidFromSeed("reminder:2026-07-24:r1:0"));
+    assert.equal(n.date, date);
     assert.equal(n.client_created_at, "2026-07-21T00:00:00.000Z");
     assert.deepEqual(n.source_meta, {
       list: "Inbox",
@@ -145,25 +147,36 @@ describe("reminders source emission", () => {
   });
 
   it("completed flag changes uuid (positive-sample on complete)", () => {
+    const date = "2026-07-24";
     const open = item({ id: "r1", name: "Task", completed: false });
     const done = item({ id: "r1", name: "Task", completed: true });
-    assert.notEqual(reminderSeed(open), reminderSeed(done));
-    assert.equal(reminderSeed(open), "reminder:r1:0");
-    assert.equal(reminderSeed(done), "reminder:r1:1");
+    assert.notEqual(reminderSeed(open, date), reminderSeed(done, date));
+    assert.equal(reminderSeed(open, date), "reminder:2026-07-24:r1:0");
+    assert.equal(reminderSeed(done, date), "reminder:2026-07-24:r1:1");
 
-    const nOpen = remindersToNodes([open], { at })[0]!;
+    const nOpen = remindersToNodes([open], { at, date })[0]!;
     resetSeenReminderKeys();
-    const nDone = remindersToNodes([done], { at })[0]!;
+    const nDone = remindersToNodes([done], { at, date })[0]!;
     assert.notEqual(nOpen.client_uuid, nDone.client_uuid);
-    assert.equal(nDone.client_uuid, uuidFromSeed("reminder:r1:1"));
+    assert.equal(nDone.client_uuid, uuidFromSeed("reminder:2026-07-24:r1:1"));
+  });
+
+  it("same open reminder re-emits on a new calendar day", () => {
+    const items = [item({ id: "same", name: "once" })];
+    const d1 = remindersToNodes(items, { at, date: "2026-07-24" });
+    const d2 = remindersToNodes(items, { at, date: "2026-07-25" });
+    assert.equal(d1.length, 1);
+    assert.equal(d2.length, 1);
+    assert.notEqual(d1[0]!.client_uuid, d2[0]!.client_uuid);
   });
 
   it("dedupes in-process; reset re-emits", () => {
     const items = [item({ id: "same", name: "once" })];
-    assert.equal(remindersToNodes(items, { at }).length, 1);
-    assert.equal(remindersToNodes(items, { at }).length, 0);
+    const date = "2026-07-24";
+    assert.equal(remindersToNodes(items, { at, date }).length, 1);
+    assert.equal(remindersToNodes(items, { at, date }).length, 0);
     resetSeenReminderKeys();
-    assert.equal(remindersToNodes(items, { at }).length, 1);
+    assert.equal(remindersToNodes(items, { at, date }).length, 1);
   });
 
   it("truncates title to 500 chars", () => {
