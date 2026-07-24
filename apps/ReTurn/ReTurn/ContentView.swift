@@ -128,6 +128,10 @@ struct ContentView: View {
         ) {
             Image(systemName: "plus")
                 .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
+                .frame(
+                    width: ReTurnDesign.Metrics.composerAccessorySize,
+                    height: ReTurnDesign.Metrics.composerAccessorySize
+                )
                 .accessibilityHidden(true)
 
             TextField("Ask Return Anything", text: $composerText, axis: .vertical)
@@ -140,8 +144,8 @@ struct ContentView: View {
             Image(systemName: "waveform.mid")
                 .foregroundStyle(ReTurnDesign.Colors.voiceButtonForeground)
                 .frame(
-                    width: ReTurnDesign.Metrics.waveformButtonSize,
-                    height: ReTurnDesign.Metrics.waveformButtonSize
+                    width: ReTurnDesign.Metrics.composerAccessorySize,
+                    height: ReTurnDesign.Metrics.composerAccessorySize
                 )
                 .background(ReTurnDesign.Colors.voiceButtonBackground, in: Circle())
                 .accessibilityHidden(true)

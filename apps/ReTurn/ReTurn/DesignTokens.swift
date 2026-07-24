@@ -40,7 +40,7 @@ enum ReTurnDesign {
         static let composerHorizontalInset: CGFloat = 17
         static let screenHorizontalInset: CGFloat = 20
         static let focusedScreenHorizontalInset: CGFloat = 12
-        static let waveformButtonSize: CGFloat = 30
+        static let composerAccessorySize: CGFloat = 30
         static let mascotWidthRatio: CGFloat = 0.435
         static let mascotMinimumWidth: CGFloat = 150
         static let mascotMaximumWidth: CGFloat = 195
