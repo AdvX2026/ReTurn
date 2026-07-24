@@ -1,7 +1,14 @@
 # apps/ReTurn — Agent Notice
 
-- SwiftUI multiplatform Xcode project (deployment targets iOS 17.0 / macOS 14.0). Built with Xcode 26; system components auto-adopt Liquid Glass on OS 26 and auto-fallback on older OSes. Demo is only ever verified on OS 26. Avoid OS-26-only APIs by default; the explicitly approved exception is the composer surface, which uses one localized `#available` branch for native Liquid Glass and standard Material fallback. visionOS removed. macOS App Sandbox is OFF per PRD §6.1 (sandbox without outgoing-network entitlement blocks LAN access to Pi/sampler).
+- SwiftUI multiplatform Xcode project (deployment targets iOS 17.0 / macOS 14.0), built with Xcode 26. MVP UI implementation and demo verification prioritize iOS/macOS 26. Prefer native OS-26 SwiftUI behavior over hand-drawn approximations; preserve the older deployment targets with small, localized `#available` branches and standard-system fallbacks unless the user explicitly changes the minimum versions. visionOS removed. macOS App Sandbox is OFF per PRD §6.1 (sandbox without outgoing-network entitlement blocks LAN access to Pi/sampler).
 - `project.pbxproj` uses synchronized folder groups: any file added under `ReTurn/` / `ReTurnTests/` is picked up automatically — never hand-edit the pbxproj to add files.
+
+## iOS/macOS 26 UI policy
+
+- Prefer system components that adopt Liquid Glass automatically. For eligible custom navigation/control surfaces, use native APIs such as `glassEffect`, `GlassEffectContainer`, and glass transitions instead of recreating highlights, refraction, glow, or shadows.
+- Keep Liquid Glass in the functional navigation/control layer. Plain `Label`, text, symbols, and content backgrounds do not receive glass directly; they use semantic foreground styles inside the glass-bearing control or surface.
+- Use `.interactive()` for genuinely interactive custom glass controls. Choose `regular` by default and reserve `clear` for media-rich backgrounds where its contrast requirements are satisfied.
+- Do not layer custom highlight, glow, blur, or shadow artwork on top of native Liquid Glass. Older systems may use a simple standard Material fallback, without attempting to perfectly imitate OS 26.
 
 ## Models.swift (shared-contract mirror)
 
