@@ -115,6 +115,10 @@ struct ContentView: View {
         .task(id: selectedPage) {
             isNavigationDimmed = false
             try? await Task.sleep(for: .seconds(ReTurnDesign.Motion.navigationDimDelay))
+            // `try?` swallows the cancellation error, so a superseded timer
+            // would otherwise still dim -- immediately after the task that
+            // replaced it restored full strength.
+            guard !Task.isCancelled else { return }
             isNavigationDimmed = true
         }
     }
