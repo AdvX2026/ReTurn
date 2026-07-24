@@ -65,3 +65,14 @@ UI closed must not stop sampling. Dev: `pnpm dev:sampler`. Prod later: launchd.
 - `client_uuid` = sha256 seed `vscode:{editor}:{kind}:{uri}`
 - `source_meta`: `{ uri, path, entry_kind, editor }` (`entry_kind`: folder | file | workspace)
 - Kind `vscode_recent` — not an active feed. Failures silent.
+
+## Chrome browse history (today's visits)
+- Source: `sources/chrome-history.ts` + `collect-chrome-history.ts`
+- Kind: `browse_history` (not in ACTIVE_FEED_KINDS — environment context, denser than open tabs)
+- **Must copy** History SQLite to temp before open (Chrome locks the live file); `node:sqlite` DatabaseSync only.
+- Timestamps: Chrome WebKit µs since 1601-01-01 UTC → ISO via `chromeTimeToIso`. Day filter uses local midnight range. µs exceed `Number.MAX_SAFE_INTEGER` — use `bigint` + `DatabaseSync({ readBigInts: true })` for visit_time / range bounds.
+- Auto-detect (first existing, max 4 DBs): Chrome / Chromium / Edge / Brave under OS-standard user-data dirs; profiles Default + Profile 1..3.
+- `CHROME_HISTORY_PATH` override (single file, skips auto-detect). `CHROME_HISTORY_ENABLED=0|false` disables. `CHROME_HISTORY_LIMIT` default 100 total/tick.
+- `client_uuid` = sha256 seed `browse:{browser}:{profile}:{visitId}` — visit id stable within a profile DB.
+- `source_meta`: `{ url, title, visited_at, visit_id, browser, profile }`; `content` = url; `date` = local day of visitedAt.
+- Failures silent; never blocks sample main path or outbox flush.

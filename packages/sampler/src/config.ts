@@ -79,4 +79,16 @@ export const config = {
    * set `VSCODE_ENABLED=0` / `false` to disable.
    */
   vscodeEnabled: bool("VSCODE_ENABLED", true),
+  /**
+   * Optional absolute path override for a single Chrome History SQLite file.
+   * When set, auto-detect is skipped.
+   */
+  chromeHistoryPath: str("CHROME_HISTORY_PATH", ""),
+  /**
+   * Default on when History file(s) exist. Set "0"/"false" to disable.
+   * (Existence check happens at sample time; this flag only forces off.)
+   */
+  chromeHistoryEnabled: bool("CHROME_HISTORY_ENABLED", true),
+  /** Max visits per sample tick across all History DBs. */
+  chromeHistoryLimit: num("CHROME_HISTORY_LIMIT", 100),
 } as const;

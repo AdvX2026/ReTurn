@@ -13,6 +13,7 @@ import {
   todayLocal,
 } from "./source.js";
 import { agentsSource } from "./sources/agents.js";
+import { chromeHistorySource } from "./sources/chrome-history.js";
 import { envSource, getLastEnv } from "./sources/env.js";
 import { gitSource } from "./sources/git.js";
 import { remindersSource } from "./sources/reminders.js";
@@ -20,6 +21,7 @@ import { vscodeSource } from "./sources/vscode.js";
 
 export { todayLocal, uuidFromSeed } from "./source.js";
 export { resetSeenAgentKeys } from "./sources/agents.js";
+export { resetSeenVisits } from "./sources/chrome-history.js";
 export { resetSeenCommitShas } from "./sources/git.js";
 export { resetSeenReminderKeys } from "./sources/reminders.js";
 export { resetSeenVscodeKeys } from "./sources/vscode.js";
@@ -34,6 +36,7 @@ const SOURCES: SampleSource[] = [
   gitSource,
   remindersSource,
   vscodeSource,
+  chromeHistorySource,
 ];
 
 /**
