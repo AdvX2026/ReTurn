@@ -151,6 +151,12 @@ Restore only after verifying the selected archive path:
 sudo ./deploy/restore.sh --yes /var/backups/return/return-backup-TIMESTAMP.tar.gz
 ```
 
+Before replacing live data, the restore script runs SQLite `integrity_check` on
+the extracted database. If copying, ownership repair, service startup, or the
+HTTP health check fails, it restores the previous data directory and restarts
+the service automatically. The failed restored directory is retained for
+diagnosis when possible.
+
 Restore creates another safety backup and retains the replaced data directory.
 Remove that directory manually only after checking nodes, days, and audio.
 
