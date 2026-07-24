@@ -131,6 +131,23 @@ struct ContentView: View {
         .padding(.bottom, ReTurnDesign.Metrics.heroOpticalLift * 2)
     }
 
+    @ViewBuilder
+    private var attachmentMenuItems: some View {
+        ControlGroup {
+            Button("Camera", systemImage: "camera") {
+                // TODO: Present camera capture.
+            }
+
+            Button("Photos", systemImage: "photo") {
+                // TODO: Present the photo picker.
+            }
+
+            Button("Files", systemImage: "folder") {
+                // TODO: Present the file importer.
+            }
+        }
+    }
+
     private func composer(containerWidth: CGFloat) -> some View {
         let composerShape = RoundedRectangle(
             cornerRadius: ReTurnDesign.Metrics.composerCornerRadius,
@@ -140,31 +157,38 @@ struct ContentView: View {
             .labelStyle(.iconOnly)
             .font(.title2)
             .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
+            .frame(
+                width: ReTurnDesign.Metrics.composerAccessorySize,
+                height: ReTurnDesign.Metrics.composerAccessorySize
+            )
+
+        #if os(iOS)
+        // The visible plus lives in the glass content layer, so this menu only
+        // supplies hit testing, the presentation anchor and accessibility. Its
+        // label is sized to the HIG minimum target instead of the glyph bounds;
+        // a clip or content shape around the glyph would shrink it back below 44.
         let attachmentMenu = Menu {
-            ControlGroup {
-                Button("Camera", systemImage: "camera") {
-                    // TODO: Present camera capture.
-                }
-
-                Button("Photos", systemImage: "photo") {
-                    // TODO: Present the photo picker.
-                }
-
-                Button("Files", systemImage: "folder") {
-                    // TODO: Present the file importer.
-                }
-            }
+            attachmentMenuItems
         } label: {
-            #if os(iOS)
             addButtonLabel
                 .opacity(0.001)
-            #else
+                .frame(
+                    width: ReTurnDesign.Metrics.composerAccessoryHitSize,
+                    height: ReTurnDesign.Metrics.composerAccessoryHitSize
+                )
+                .contentShape(.rect)
+        }
+        .menuIndicator(.hidden)
+        #else
+        let attachmentMenu = Menu {
+            attachmentMenuItems
+        } label: {
             addButtonLabel
-            #endif
         }
         .menuIndicator(.hidden)
         .buttonBorderShape(.circle)
-        .clipShape(Circle())
+        #endif
+
         let composerContent = HStack(
             alignment: .center,
             spacing: ReTurnDesign.Spacing.medium
@@ -221,9 +245,16 @@ struct ContentView: View {
                     )
             }
         }
+        // Placed before the menu overlay so the plus keeps hit priority: the
+        // TextField only covers one line of the surface, leaving the vertical
+        // padding dead unless the whole shape raises the keyboard.
+        .contentShape(composerShape)
+        .onTapGesture {
+            isComposerFocused = true
+        }
         .overlay(alignment: .leading) {
             attachmentMenu
-                .padding(.leading, ReTurnDesign.Metrics.composerHorizontalInset)
+                .padding(.leading, ReTurnDesign.Metrics.composerAttachmentHitInset)
         }
         #else
         let surfacedComposer = composerContent

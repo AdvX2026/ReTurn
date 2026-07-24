@@ -41,6 +41,13 @@ enum ReTurnDesign {
         static let screenHorizontalInset: CGFloat = 20
         static let focusedScreenHorizontalInset: CGFloat = 12
         static let composerAccessorySize: CGFloat = 30
+        static let composerAccessoryHitSize: CGFloat = 44
+
+        /// Leading inset that keeps the enlarged transparent attachment hit
+        /// target centred on the visible plus glyph inside the glass layer.
+        static var composerAttachmentHitInset: CGFloat {
+            composerHorizontalInset - (composerAccessoryHitSize - composerAccessorySize) / 2
+        }
         static let mascotWidthRatio: CGFloat = 0.435
         static let mascotMinimumWidth: CGFloat = 150
         static let mascotMaximumWidth: CGFloat = 195
