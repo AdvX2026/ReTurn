@@ -17,3 +17,5 @@ coverage/
 *.tsbuildinfo
 target/
 src-tauri/target/
+
+xcuserdata/
