@@ -4,12 +4,21 @@ import Fastify from "fastify";
 import { config } from "./config.js";
 import type { Db } from "./db/schema.js";
 import { registerRoutes } from "./routes.js";
+import { MeetingTaskRunner } from "./services/meeting-tasks.js";
 
 /** Build Fastify app without listening — used by smoke tests via inject(). */
-export async function createApp(db: Db) {
+export async function createApp(
+  db: Db,
+  options?: { meetingTaskRunner?: MeetingTaskRunner },
+) {
   const app = Fastify({
     logger: false,
     bodyLimit: 25 * 1024 * 1024,
+  });
+  const meetingTasks = options?.meetingTaskRunner ?? new MeetingTaskRunner(db);
+  meetingTasks.start();
+  app.addHook("onClose", async () => {
+    await meetingTasks.close();
   });
 
   const origins = config.corsOrigins;
@@ -42,6 +51,6 @@ export async function createApp(db: Db) {
     });
   }
 
-  await registerRoutes(app, db);
+  await registerRoutes(app, db, meetingTasks);
   return app;
 }

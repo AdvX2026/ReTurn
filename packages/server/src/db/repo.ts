@@ -1,12 +1,28 @@
 import type {
+  CadenceMode,
+  CardRecord,
+  CardType,
   CharacterState,
+  ChatIntent,
+  MessageRecord,
+  MessageRole,
   NodeKind,
   NodeRecord,
   ReviewPoint,
   Stats,
+  TaskRecord,
+  TaskStatus,
+  TaskType,
   TodoRecord,
   TodoStatus,
 } from "@return/shared";
+import {
+  deleteNodeFts,
+  enqueueEmbed,
+  isEmbeddableKind,
+  upsertDayFts,
+  upsertNodeFts,
+} from "../search/index.js";
 import { nowIso, todayDate, uuid } from "../util/time.js";
 import type { Db } from "./schema.js";
 
@@ -245,6 +261,15 @@ export function markDaySaved(
     payload.character_state,
     dayId,
   );
+
+  // Refresh day_summary FTS doc + embed queue in the same writer path.
+  const day = getDayById(db, dayId);
+  if (day) {
+    upsertDayFts(db, day);
+    if (day.summary) {
+      enqueueEmbed(db, `day:${day.date}`, payload.saved_at);
+    }
+  }
 }
 
 // ── nodes ────────────────────────────────────────────────
@@ -292,6 +317,19 @@ export function insertNode(
     input.client_uuid,
     created_at,
   );
+
+  // Keep search_fts in the same transaction as the authority row (PRD §6.3).
+  upsertNodeFts(db, {
+    id,
+    kind: String(input.kind),
+    date,
+    title: input.title ?? null,
+    content: input.content ?? null,
+    source_meta: input.source_meta ?? null,
+  });
+  if (isEmbeddableKind(String(input.kind))) {
+    enqueueEmbed(db, id, created_at);
+  }
 
   return {
     node: {
@@ -368,8 +406,29 @@ export function deleteNode(db: Db, id: string): boolean {
     db.prepare(`DELETE FROM edges WHERE src_node_id = ? OR dst_node_id = ?`).run(id, id);
     db.prepare(`UPDATE todos SET source_node_id = NULL WHERE source_node_id = ?`).run(id);
     changes = db.prepare(`DELETE FROM nodes WHERE id = ?`).run(id).changes;
+    if (changes > 0) deleteNodeFts(db, id);
   })();
   return changes > 0;
+}
+
+/** Re-index an existing node after in-place content updates (e.g. health refresh, tags). */
+export function reindexNode(db: Db, nodeId: string): void {
+  const node = getNodeById(db, nodeId);
+  if (!node) {
+    deleteNodeFts(db, nodeId);
+    return;
+  }
+  upsertNodeFts(db, {
+    id: node.id,
+    kind: node.kind,
+    date: node.date,
+    title: node.title,
+    content: node.content,
+    source_meta: node.source_meta,
+  });
+  if (isEmbeddableKind(node.kind)) {
+    enqueueEmbed(db, node.id, nowIso());
+  }
 }
 
 // ── edges ────────────────────────────────────────────────
@@ -547,6 +606,417 @@ export function todoCompletionRate(
     .get(dayId) as { total: number; done: number };
   const rate = row.total === 0 ? 0 : row.done / row.total;
   return { total: row.total, done: row.done, rate };
+}
+
+// ── cadence (sampler rhythm) ─────────────────────────────
+
+/** Night mode if today is already saved; else active. */
+export function currentCadence(db: Db, date = todayDate()): CadenceMode {
+  const day = getDayByDate(db, date);
+  return day?.saved_at ? "night" : "active";
+}
+
+// ── messages ─────────────────────────────────────────────
+
+interface MessageRow {
+  id: string;
+  role: string;
+  content: string;
+  intent: string | null;
+  task_id: string | null;
+  meta_json: string | null;
+  created_at: string;
+}
+
+function messageToRecord(row: MessageRow): MessageRecord {
+  return {
+    id: row.id,
+    role: row.role as MessageRole,
+    content: row.content,
+    intent: (row.intent as ChatIntent | null) ?? null,
+    task_id: row.task_id,
+    created_at: row.created_at,
+    meta: parseJson<Record<string, unknown> | null>(row.meta_json, null),
+  };
+}
+
+export function insertMessage(
+  db: Db,
+  input: {
+    role: MessageRole | string;
+    content: string;
+    intent?: ChatIntent | string | null;
+    task_id?: string | null;
+    meta?: Record<string, unknown> | null;
+    created_at?: string;
+  },
+): MessageRecord {
+  const id = uuid();
+  const created_at = input.created_at ?? nowIso();
+  db.prepare(
+    `INSERT INTO messages (id, role, content, intent, task_id, meta_json, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    id,
+    input.role,
+    input.content,
+    input.intent ?? null,
+    input.task_id ?? null,
+    input.meta ? JSON.stringify(input.meta) : null,
+    created_at,
+  );
+  return {
+    id,
+    role: input.role as MessageRole,
+    content: input.content,
+    intent: (input.intent as ChatIntent | null) ?? null,
+    task_id: input.task_id ?? null,
+    created_at,
+    meta: input.meta ?? null,
+  };
+}
+
+export function getMessage(db: Db, id: string): MessageRecord | undefined {
+  const row = db.prepare(`SELECT * FROM messages WHERE id = ?`).get(id) as
+    | MessageRow
+    | undefined;
+  return row ? messageToRecord(row) : undefined;
+}
+
+export function setMessageIntent(
+  db: Db,
+  id: string,
+  intent: ChatIntent | string,
+): MessageRecord | undefined {
+  db.prepare(`UPDATE messages SET intent = ? WHERE id = ?`).run(intent, id);
+  return getMessage(db, id);
+}
+
+/** Cursor = created_at|id of last item; returns newer-to-older page. */
+export function listMessages(
+  db: Db,
+  opts?: { cursor?: string; limit?: number },
+): { messages: MessageRecord[]; next_cursor: string | null } {
+  const limit = Math.min(Math.max(opts?.limit ?? 50, 1), 100);
+  const cur = decodeTimeIdCursor(opts?.cursor);
+  const rows = (
+    cur
+      ? db
+          .prepare(
+            `SELECT * FROM messages
+             WHERE created_at < ? OR (created_at = ? AND id < ?)
+             ORDER BY created_at DESC, id DESC
+             LIMIT ?`,
+          )
+          .all(cur.created_at, cur.created_at, cur.id, limit)
+      : db
+          .prepare(`SELECT * FROM messages ORDER BY created_at DESC, id DESC LIMIT ?`)
+          .all(limit)
+  ) as MessageRow[];
+  const messages = rows.map(messageToRecord);
+  const last = messages[messages.length - 1];
+  const next_cursor =
+    messages.length === limit && last
+      ? encodeTimeIdCursor(last.created_at, last.id)
+      : null;
+  return { messages, next_cursor };
+}
+
+// ── tasks ────────────────────────────────────────────────
+
+interface TaskRow {
+  id: string;
+  type: string;
+  status: string;
+  input_json: string;
+  result_message_id: string | null;
+  created_at: string;
+  finished_at: string | null;
+}
+
+function taskToRecord(row: TaskRow): TaskRecord {
+  return {
+    id: row.id,
+    type: row.type as TaskType,
+    status: row.status as TaskStatus,
+    input: parseJson<Record<string, unknown>>(row.input_json, {}),
+    result_message_id: row.result_message_id,
+    created_at: row.created_at,
+    finished_at: row.finished_at,
+  };
+}
+
+export function insertTask(
+  db: Db,
+  input: {
+    type: TaskType | string;
+    status?: TaskStatus | string;
+    input: Record<string, unknown>;
+  },
+): TaskRecord {
+  const id = uuid();
+  const created_at = nowIso();
+  const status = input.status ?? "queued";
+  db.prepare(
+    `INSERT INTO tasks (id, type, status, input_json, result_message_id, created_at, finished_at)
+     VALUES (?, ?, ?, ?, NULL, ?, NULL)`,
+  ).run(id, input.type, status, JSON.stringify(input.input), created_at);
+  return {
+    id,
+    type: input.type as TaskType,
+    status: status as TaskStatus,
+    input: input.input,
+    result_message_id: null,
+    created_at,
+    finished_at: null,
+  };
+}
+
+export function updateTask(
+  db: Db,
+  id: string,
+  patch: {
+    status?: TaskStatus | string;
+    result_message_id?: string | null;
+    finished_at?: string | null;
+  },
+): TaskRecord | undefined {
+  const existing = db.prepare(`SELECT * FROM tasks WHERE id = ?`).get(id) as
+    | TaskRow
+    | undefined;
+  if (!existing) return undefined;
+  const status = patch.status ?? existing.status;
+  const result_message_id =
+    patch.result_message_id !== undefined
+      ? patch.result_message_id
+      : existing.result_message_id;
+  const finished_at =
+    patch.finished_at !== undefined ? patch.finished_at : existing.finished_at;
+  db.prepare(
+    `UPDATE tasks SET status = ?, result_message_id = ?, finished_at = ? WHERE id = ?`,
+  ).run(status, result_message_id, finished_at, id);
+  return getTask(db, id);
+}
+
+export function getTask(db: Db, id: string): TaskRecord | undefined {
+  const row = db.prepare(`SELECT * FROM tasks WHERE id = ?`).get(id) as
+    | TaskRow
+    | undefined;
+  return row ? taskToRecord(row) : undefined;
+}
+
+export function listTasks(db: Db, opts?: { status?: TaskStatus | string }): TaskRecord[] {
+  const rows = (
+    opts?.status
+      ? db
+          .prepare(`SELECT * FROM tasks WHERE status = ? ORDER BY created_at DESC`)
+          .all(opts.status)
+      : db.prepare(`SELECT * FROM tasks ORDER BY created_at DESC LIMIT 100`).all()
+  ) as TaskRow[];
+  return rows.map(taskToRecord);
+}
+
+/** Requeue interrupted work on process startup; SQLite is the task authority. */
+export function requeueRunningMeetingTasks(db: Db): number {
+  const result = db
+    .prepare(
+      `UPDATE tasks
+       SET status = 'queued', result_message_id = NULL, finished_at = NULL
+       WHERE type = 'meeting_notes' AND status = 'running'`,
+    )
+    .run();
+  return Number(result.changes ?? 0);
+}
+
+/** Atomically claim the oldest queued meeting-notes Task for this process. */
+export function claimNextMeetingTask(db: Db): TaskRecord | undefined {
+  let claimed: TaskRecord | undefined;
+  db.transaction(() => {
+    const row = db
+      .prepare(
+        `SELECT * FROM tasks
+         WHERE type = 'meeting_notes' AND status = 'queued'
+         ORDER BY created_at ASC, id ASC
+         LIMIT 1`,
+      )
+      .get() as TaskRow | undefined;
+    if (!row) return;
+
+    const result = db
+      .prepare(
+        `UPDATE tasks
+         SET status = 'running', result_message_id = NULL, finished_at = NULL
+         WHERE id = ? AND status = 'queued'`,
+      )
+      .run(row.id);
+    if (Number(result.changes ?? 0) !== 1) return;
+    claimed = taskToRecord({
+      ...row,
+      status: "running",
+      result_message_id: null,
+      finished_at: null,
+    });
+  })();
+  return claimed;
+}
+
+// ── cards ────────────────────────────────────────────────
+
+interface CardRow {
+  id: string;
+  type: string;
+  date: string;
+  content_json: string;
+  created_at: string;
+}
+
+function cardToRecord(row: CardRow): CardRecord {
+  return {
+    id: row.id,
+    type: row.type as CardType,
+    date: row.date,
+    content: parseJson<Record<string, unknown>>(row.content_json, {}),
+    created_at: row.created_at,
+  };
+}
+
+export function insertCard(
+  db: Db,
+  input: {
+    type: CardType | string;
+    date: string;
+    content: Record<string, unknown>;
+  },
+): CardRecord {
+  const id = uuid();
+  const created_at = nowIso();
+  db.prepare(
+    `INSERT INTO cards (id, type, date, content_json, created_at) VALUES (?, ?, ?, ?, ?)`,
+  ).run(id, input.type, input.date, JSON.stringify(input.content), created_at);
+  return {
+    id,
+    type: input.type as CardType,
+    date: input.date,
+    content: input.content,
+    created_at,
+  };
+}
+
+/**
+ * before = cards on dates ≤ today, newest first (past / briefing).
+ * future = idea / todo_suggestion / health cards, newest first.
+ * cursor encodes sort keys: time|id (future) or date|created_at|id (before).
+ */
+export function listCards(
+  db: Db,
+  opts: { direction: "before" | "future"; cursor?: string; limit?: number },
+): { cards: CardRecord[]; next_cursor: string | null } {
+  const limit = Math.min(Math.max(opts.limit ?? 30, 1), 100);
+  const today = todayDate();
+  let rows: CardRow[];
+  if (opts.direction === "before") {
+    const cur = decodeDateTimeIdCursor(opts.cursor);
+    rows = (
+      cur
+        ? db
+            .prepare(
+              `SELECT * FROM cards
+               WHERE date <= ?
+                 AND (
+                   date < ?
+                   OR (date = ? AND created_at < ?)
+                   OR (date = ? AND created_at = ? AND id < ?)
+                 )
+               ORDER BY date DESC, created_at DESC, id DESC
+               LIMIT ?`,
+            )
+            .all(
+              today,
+              cur.date,
+              cur.date,
+              cur.created_at,
+              cur.date,
+              cur.created_at,
+              cur.id,
+              limit,
+            )
+        : db
+            .prepare(
+              `SELECT * FROM cards WHERE date <= ?
+               ORDER BY date DESC, created_at DESC, id DESC LIMIT ?`,
+            )
+            .all(today, limit)
+    ) as CardRow[];
+  } else {
+    const cur = decodeTimeIdCursor(opts.cursor);
+    rows = (
+      cur
+        ? db
+            .prepare(
+              `SELECT * FROM cards
+               WHERE type IN ('idea','todo_suggestion','health')
+                 AND (created_at < ? OR (created_at = ? AND id < ?))
+               ORDER BY created_at DESC, id DESC
+               LIMIT ?`,
+            )
+            .all(cur.created_at, cur.created_at, cur.id, limit)
+        : db
+            .prepare(
+              `SELECT * FROM cards
+               WHERE type IN ('idea','todo_suggestion','health')
+               ORDER BY created_at DESC, id DESC LIMIT ?`,
+            )
+            .all(limit)
+    ) as CardRow[];
+  }
+  const cards = rows.map(cardToRecord);
+  const last = cards[cards.length - 1];
+  let next_cursor: string | null = null;
+  if (cards.length === limit && last) {
+    next_cursor =
+      opts.direction === "before"
+        ? encodeDateTimeIdCursor(last.date, last.created_at, last.id)
+        : encodeTimeIdCursor(last.created_at, last.id);
+  }
+  return { cards, next_cursor };
+}
+
+// ── pagination cursors (stable composite keys) ───────────
+
+/** created_at|id — for messages / future cards. */
+export function encodeTimeIdCursor(created_at: string, id: string): string {
+  return `${created_at}|${id}`;
+}
+
+export function decodeTimeIdCursor(
+  cursor?: string,
+): { created_at: string; id: string } | null {
+  if (!cursor) return null;
+  const i = cursor.indexOf("|");
+  if (i <= 0 || i === cursor.length - 1) return null;
+  return { created_at: cursor.slice(0, i), id: cursor.slice(i + 1) };
+}
+
+/** date|created_at|id — for before cards (matches ORDER BY date, created_at, id). */
+export function encodeDateTimeIdCursor(
+  date: string,
+  created_at: string,
+  id: string,
+): string {
+  return `${date}|${created_at}|${id}`;
+}
+
+export function decodeDateTimeIdCursor(
+  cursor?: string,
+): { date: string; created_at: string; id: string } | null {
+  if (!cursor) return null;
+  const parts = cursor.split("|");
+  if (parts.length < 3) return null;
+  const date = parts[0]!;
+  const id = parts[parts.length - 1]!;
+  const created_at = parts.slice(1, -1).join("|");
+  if (!date || !created_at || !id) return null;
+  return { date, created_at, id };
 }
 
 /**
