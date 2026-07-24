@@ -68,6 +68,7 @@ import type { Db } from "./db/schema.js";
 import { AskConfigError, ask } from "./search/ask.js";
 import { search } from "./search/query.js";
 import { ChatError, handleChat } from "./services/chat.js";
+import type { MeetingTaskDispatcher } from "./services/meeting-tasks.js";
 import { handleResume } from "./services/resume.js";
 import { saveToday } from "./services/save.js";
 import { TimelineRangeError, buildTimeline } from "./services/timeline.js";
@@ -94,7 +95,11 @@ function unauthorized(message: string) {
   return { statusCode: 401 as const, error: "Unauthorized", message };
 }
 
-export async function registerRoutes(app: FastifyInstance, db: Db): Promise<void> {
+export async function registerRoutes(
+  app: FastifyInstance,
+  db: Db,
+  meetingTasks: MeetingTaskDispatcher,
+): Promise<void> {
   // ── ping ──────────────────────────────────────────────
   app.get("/api/ping", async () => {
     const body: PingResponse = {
@@ -261,10 +266,14 @@ export async function registerRoutes(app: FastifyInstance, db: Db): Promise<void
     // v0.6: if we have a transcript, also run chat triage (same semantics as /api/chat).
     if (transcript?.trim() && !pending) {
       try {
-        await handleChat(db, {
-          text: transcript,
-          device_id: deviceId,
-        });
+        await handleChat(
+          db,
+          {
+            text: transcript,
+            device_id: deviceId,
+          },
+          meetingTasks,
+        );
       } catch (err) {
         console.warn(
           "[voice] chat triage after transcript failed:",
@@ -567,7 +576,7 @@ export async function registerRoutes(app: FastifyInstance, db: Db): Promise<void
     }
     if (parsed.data.device_id) touchDevice(db, parsed.data.device_id);
     try {
-      const body: ChatResponse = await handleChat(db, parsed.data);
+      const body: ChatResponse = await handleChat(db, parsed.data, meetingTasks);
       return body;
     } catch (err) {
       if (err instanceof ChatError) {
@@ -614,10 +623,14 @@ export async function registerRoutes(app: FastifyInstance, db: Db): Promise<void
       parsed.data.intent !== "unknown"
     ) {
       try {
-        follow = await handleChat(db, {
-          text: existing.content,
-          intent: parsed.data.intent,
-        });
+        follow = await handleChat(
+          db,
+          {
+            text: existing.content,
+            intent: parsed.data.intent,
+          },
+          meetingTasks,
+        );
       } catch (err) {
         console.warn(
           "[messages] re-chat after intent patch failed:",

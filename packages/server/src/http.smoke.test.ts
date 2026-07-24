@@ -8,20 +8,42 @@ import { join } from "node:path";
  */
 import { after, before, describe, it } from "node:test";
 import type { FastifyInstance } from "fastify";
+import type { MeetingNotesResult } from "./ai/meeting-notes.js";
 import { createApp } from "./app.js";
 import { type Db, openDb } from "./db/schema.js";
+import { MeetingTaskRunner } from "./services/meeting-tasks.js";
 
 describe("http smoke", () => {
   let app: FastifyInstance;
   let db: Db;
   let dir: string;
   let deviceId: string;
+  let meetingRunner: MeetingTaskRunner;
+  let meetingStarted: Promise<void>;
+  let releaseMeeting: (() => void) | undefined;
   const date = "2026-07-24";
 
   before(async () => {
     dir = mkdtempSync(join(tmpdir(), "return-smoke-"));
     db = openDb(dir, "smoke.db");
-    app = await createApp(db);
+    let markMeetingStarted!: () => void;
+    meetingStarted = new Promise<void>((resolve) => {
+      markMeetingStarted = resolve;
+    });
+    const meetingGate = new Promise<void>((resolve) => {
+      releaseMeeting = resolve;
+    });
+    meetingRunner = new MeetingTaskRunner(db, async (): Promise<MeetingNotesResult> => {
+      markMeetingStarted();
+      await meetingGate;
+      return {
+        title: "HTTP Task 测试",
+        summary: "HTTP 客户端观察到正在执行的 Task。",
+        decisions: ["使用持久化队列"],
+        action_items: ["验证完成消息"],
+      };
+    });
+    app = await createApp(db, { meetingTaskRunner: meetingRunner });
     process.env.HEALTH_TOKEN = "test-token";
     // config already loaded at import — health route reads config.healthToken.
     // For smoke we use whatever is in env at process start; set before routes
@@ -30,6 +52,7 @@ describe("http smoke", () => {
   });
 
   after(async () => {
+    releaseMeeting?.();
     await app.close();
     db.close();
     rmSync(dir, { recursive: true, force: true });
@@ -246,6 +269,47 @@ describe("http smoke", () => {
       url: "/api/cards?direction=future",
     });
     assert.equal(cards.statusCode, 200);
+  });
+
+  it("POST /api/chat exposes a running meeting Task before completion", async () => {
+    const notes = `会议纪要\n${"1. 对齐 Task API\n2. 验证恢复流程\n".repeat(30)}`;
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/chat",
+      payload: { text: notes },
+    });
+    assert.equal(res.statusCode, 200, res.body);
+    const accepted = res.json() as { task_id: string; reply: string };
+    assert.ok(accepted.task_id);
+    assert.match(accepted.reply, /正在整理/);
+
+    await meetingStarted;
+    const runningRes = await app.inject({
+      method: "GET",
+      url: "/api/tasks?status=running",
+    });
+    const running = runningRes.json() as {
+      tasks: Array<{ id: string; status: string }>;
+    };
+    assert.ok(
+      running.tasks.some(
+        (task) => task.id === accepted.task_id && task.status === "running",
+      ),
+    );
+
+    releaseMeeting?.();
+    releaseMeeting = undefined;
+    await meetingRunner.waitForIdle();
+    const doneRes = await app.inject({
+      method: "GET",
+      url: "/api/tasks?status=done",
+    });
+    const done = doneRes.json() as {
+      tasks: Array<{ id: string; status: string }>;
+    };
+    assert.ok(
+      done.tasks.some((task) => task.id === accepted.task_id && task.status === "done"),
+    );
   });
 
   it("POST /api/resume + GET /api/tasks", async () => {

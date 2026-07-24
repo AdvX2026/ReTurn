@@ -1,20 +1,19 @@
 import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
+import { parseMeetingNotesResult } from "../ai/meeting-notes.js";
 import {
   insertCard,
   insertMessage,
   insertNode,
+  insertTask,
   listCards,
   listMessages,
+  listNodesByDate,
   listTasks,
 } from "../db/repo.js";
 import { type Db, openMemoryDb } from "../db/schema.js";
-import {
-  flushMeetingJobs,
-  handleChat,
-  parseTriageJson,
-  triageHeuristic,
-} from "./chat.js";
+import { handleChat, parseTriageJson, triageHeuristic } from "./chat.js";
+import { MeetingTaskRunner } from "./meeting-tasks.js";
 import { handleResume } from "./resume.js";
 import { saveToday } from "./save.js";
 import { TimelineRangeError, buildTimeline } from "./timeline.js";
@@ -36,6 +35,28 @@ describe("triage", () => {
       "unknown",
     );
     assert.equal(parseTriageJson('{"intent":"nope","confidence":1}').intent, "unknown");
+  });
+});
+
+describe("meeting notes extraction", () => {
+  it("validates structured LLM output", () => {
+    const result = parseMeetingNotesResult(
+      JSON.stringify({
+        title: "ReTurn API 评审",
+        summary: "团队确认了持久化 Task 管线。",
+        decisions: ["SQLite 是 Task 权威数据源"],
+        action_items: ["补充恢复测试"],
+      }),
+    );
+    assert.equal(result.title, "ReTurn API 评审");
+    assert.deepEqual(result.decisions, ["SQLite 是 Task 权威数据源"]);
+  });
+
+  it("rejects incomplete LLM output", () => {
+    assert.throws(
+      () => parseMeetingNotesResult('{"title":"缺少摘要"}'),
+      /validation failed/,
+    );
   });
 });
 
@@ -70,28 +91,140 @@ describe("v0.6 chat / cards / tasks / resume / timeline range", () => {
 
   it("meeting notes stay running until async process completes", async () => {
     const notes = `会议纪要\n${"1. 讨论第二大脑\n2. 对齐 v0.6 API\n".repeat(30)}`;
-    const r = await handleChat(db, { text: notes });
-    assert.ok(r.task_id);
-    assert.match(r.reply, /正在整理/);
-    let tasks = listTasks(db);
-    assert.ok(
-      tasks.some((t) => t.id === r.task_id && t.status === "running"),
-      "client must see running task before completion",
-    );
+    let markStarted!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const runner = new MeetingTaskRunner(db, async () => {
+      markStarted();
+      await gate;
+      return {
+        title: "第二大脑 API 评审",
+        summary: "团队完成了 API 方案评审。",
+        decisions: ["使用 SQLite 持久化 Task"],
+        action_items: ["补充恢复测试"],
+      };
+    });
+    runner.start();
 
-    await flushMeetingJobs();
+    try {
+      const r = await handleChat(db, { text: notes }, runner);
+      assert.ok(r.task_id);
+      assert.match(r.reply, /正在整理/);
+      assert.equal(
+        listTasks(db).find((t) => t.id === r.task_id)?.status,
+        "queued",
+        "acceptance must commit before background processing starts",
+      );
 
-    tasks = listTasks(db);
-    const done = tasks.find((t) => t.id === r.task_id);
-    assert.ok(done);
-    assert.equal(done!.status, "done");
-    assert.ok(done!.result_message_id);
-    const msgs = listMessages(db);
-    assert.ok(
-      msgs.messages.some(
-        (m) => m.role === "agent" && /已整理并入库/.test(m.content),
-      ),
-      "completion message should land on Now after processing",
+      await started;
+      assert.equal(
+        listTasks(db).find((t) => t.id === r.task_id)?.status,
+        "running",
+        "client must be able to observe in-progress work",
+      );
+
+      let closeSettled = false;
+      const closing = runner.close().then(() => {
+        closeSettled = true;
+      });
+      await Promise.resolve();
+      assert.equal(closeSettled, false, "shutdown must wait for active processing");
+      release();
+      await closing;
+
+      const done = listTasks(db).find((t) => t.id === r.task_id);
+      assert.equal(done?.status, "done");
+      assert.ok(done?.result_message_id);
+      const node = listNodesByDate(db, "2026-07-24").find(
+        (item) => item.client_uuid === r.task_id,
+      );
+      assert.ok(node);
+      assert.equal(node.title, "第二大脑 API 评审");
+      assert.match(node.content ?? "", /## 摘要/);
+      assert.match(node.content ?? "", /使用 SQLite 持久化 Task/);
+      assert.match(node.content ?? "", /## 原始纪要/);
+      assert.equal(node.source_meta?.processed, true);
+      assert.ok(
+        listMessages(db).messages.some(
+          (message) =>
+            message.task_id === r.task_id && /已整理并入库/.test(message.content),
+        ),
+        "completion message should return to Now",
+      );
+    } finally {
+      release();
+      await runner.close();
+    }
+  });
+
+  it("preserves raw notes and reports failure truthfully", async () => {
+    const notes = "会议纪要\n决定下周完成 Swift 客户端。";
+    const runner = new MeetingTaskRunner(db, async () => {
+      throw new Error("provider unavailable");
+    });
+    runner.start();
+
+    try {
+      const r = await handleChat(db, { text: notes }, runner);
+      await runner.waitForIdle();
+
+      const task = listTasks(db).find((item) => item.id === r.task_id);
+      assert.equal(task?.status, "failed");
+      const node = listNodesByDate(db, "2026-07-24").find(
+        (item) => item.client_uuid === r.task_id,
+      );
+      assert.equal(node?.content, notes);
+      assert.equal(node?.source_meta?.processed, false);
+      assert.ok(
+        listMessages(db).messages.some(
+          (message) =>
+            message.task_id === r.task_id &&
+            /原文已保存，但未标记为已整理/.test(message.content),
+        ),
+      );
+    } finally {
+      await runner.close();
+    }
+  });
+
+  it("recovers interrupted tasks once without duplicating output", async () => {
+    const notes = "会议纪要\n确认 Task runner 在启动时恢复。";
+    const task = insertTask(db, {
+      type: "meeting_notes",
+      status: "running",
+      input: { text: notes, date: "2026-07-24", device_id: null },
+    });
+    let calls = 0;
+    const process = async () => {
+      calls += 1;
+      return {
+        title: "Task runner 恢复",
+        summary: "启动时恢复了中断的会议纪要。",
+        decisions: [],
+        action_items: [],
+      };
+    };
+    const first = new MeetingTaskRunner(db, process);
+    first.start();
+    await first.waitForIdle();
+    await first.close();
+
+    const second = new MeetingTaskRunner(db, process);
+    second.start();
+    await second.waitForIdle();
+    await second.close();
+
+    assert.equal(calls, 1);
+    assert.equal(listTasks(db).find((item) => item.id === task.id)?.status, "done");
+    assert.equal(
+      listNodesByDate(db, "2026-07-24").filter((item) => item.client_uuid === task.id)
+        .length,
+      1,
     );
   });
 

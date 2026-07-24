@@ -7,6 +7,11 @@
 - Stats/character are pure code (`src/stats/*`). LLM only produces text products (summary/opening/todos/tags/edges).
 - Save is idempotent per day; ferment failure degrades and still seals the day.
 - Day bucketing uses **server local timezone** (`created_at` stamped server-side).
+- Meeting-notes Tasks use the SQLite `tasks` table as a durable queue. Startup
+  requeues interrupted `running` work; the Task UUID is also the output node's
+  `client_uuid`, so recovery cannot duplicate the high-weight node. Successful
+  extraction stores structured notes; failure stores the raw input and marks
+  the Task `failed` without claiming it was organized.
 
 ## Env
 See root `.env.example`. `LLM_API_KEY` / `HEALTH_TOKEN` never ship to clients.

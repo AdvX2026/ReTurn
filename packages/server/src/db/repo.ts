@@ -729,6 +729,50 @@ export function listTasks(db: Db, opts?: { status?: TaskStatus | string }): Task
   return rows.map(taskToRecord);
 }
 
+/** Requeue interrupted work on process startup; SQLite is the task authority. */
+export function requeueRunningMeetingTasks(db: Db): number {
+  const result = db
+    .prepare(
+      `UPDATE tasks
+       SET status = 'queued', result_message_id = NULL, finished_at = NULL
+       WHERE type = 'meeting_notes' AND status = 'running'`,
+    )
+    .run();
+  return Number(result.changes ?? 0);
+}
+
+/** Atomically claim the oldest queued meeting-notes Task for this process. */
+export function claimNextMeetingTask(db: Db): TaskRecord | undefined {
+  let claimed: TaskRecord | undefined;
+  db.transaction(() => {
+    const row = db
+      .prepare(
+        `SELECT * FROM tasks
+         WHERE type = 'meeting_notes' AND status = 'queued'
+         ORDER BY created_at ASC, id ASC
+         LIMIT 1`,
+      )
+      .get() as TaskRow | undefined;
+    if (!row) return;
+
+    const result = db
+      .prepare(
+        `UPDATE tasks
+         SET status = 'running', result_message_id = NULL, finished_at = NULL
+         WHERE id = ? AND status = 'queued'`,
+      )
+      .run(row.id);
+    if (Number(result.changes ?? 0) !== 1) return;
+    claimed = taskToRecord({
+      ...row,
+      status: "running",
+      result_message_id: null,
+      finished_at: null,
+    });
+  })();
+  return claimed;
+}
+
 // ── cards ────────────────────────────────────────────────
 
 interface CardRow {
