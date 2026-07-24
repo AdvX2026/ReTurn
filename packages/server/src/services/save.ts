@@ -1,10 +1,11 @@
 import type {
-  NodeRecord,
-  SaveResponse,
-  ReviewPoint,
   FermentResult,
+  NodeRecord,
+  ReviewPoint,
+  SaveResponse,
 } from "@return/shared";
-import type { Db } from "../db/schema.js";
+import { buildFermentContext, runFerment } from "../ai/ferment.js";
+import { config } from "../config.js";
 import {
   countCrossDayEdges,
   ensureDay,
@@ -22,20 +23,46 @@ import {
   markDaySaved,
   todoCompletionRate,
 } from "../db/repo.js";
-import { computeLiveStats } from "../stats/live.js";
-import { computeStreak, savedDatesFromDays } from "../stats/streak.js";
-import { computeStats, extractHealth } from "../stats/compute.js";
+import type { Db } from "../db/schema.js";
 import { resolveCharacterState } from "../stats/character.js";
+import { computeStats, extractHealth } from "../stats/compute.js";
+import { computeLiveStats } from "../stats/live.js";
 import { allSessions } from "../stats/sessions.js";
-import { config } from "../config.js";
+import { computeStreak, savedDatesFromDays } from "../stats/streak.js";
 import { addDays, nowIso, uuid } from "../util/time.js";
-import { buildFermentContext, runFerment } from "../ai/ferment.js";
 
 export interface SaveInput {
   date: string;
   device_id?: string;
   note_text?: string;
   note_voice_ref?: string;
+}
+
+/** Serialize concurrent Save for the same calendar date (Codex P1). */
+const saveLocks = new Map<string, Promise<unknown>>();
+
+async function withSaveLock<T>(date: string, fn: () => Promise<T>): Promise<T> {
+  const prev = saveLocks.get(date) ?? Promise.resolve();
+  let release!: () => void;
+  const gate = new Promise<void>((r) => {
+    release = r;
+  });
+  const tail = prev.then(() => gate);
+  saveLocks.set(
+    date,
+    tail.catch(() => {
+      /* keep chain alive */
+    }),
+  );
+  await prev.catch(() => {
+    /* previous failure must not block */
+  });
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (saveLocks.get(date) === tail) saveLocks.delete(date);
+  }
 }
 
 /**
@@ -46,10 +73,11 @@ export interface SaveInput {
  *    last real saved result, still seal the day.
  * 4. Write edges / todos / tags; recompute stats (code, not LLM); freeze.
  */
-export async function saveToday(
-  db: Db,
-  input: SaveInput,
-): Promise<SaveResponse> {
+export async function saveToday(db: Db, input: SaveInput): Promise<SaveResponse> {
+  return withSaveLock(input.date, () => saveTodayUnlocked(db, input));
+}
+
+async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse> {
   const day = ensureDay(db, input.date);
 
   if (day.saved_at) {
@@ -60,7 +88,7 @@ export async function saveToday(
   let saveNoteText: string | null = null;
   let saveNoteNodeId: string | null = null;
 
-  if (input.note_text && input.note_text.trim()) {
+  if (input.note_text?.trim()) {
     saveNoteText = input.note_text.trim();
     const { node } = insertNode(db, {
       client_uuid: uuid(),
@@ -152,6 +180,12 @@ export async function saveToday(
   }
 
   // ── persist ferment products ──────────────────────────
+  // Re-check under lock: another waiter may have sealed while we fermented.
+  const sealed = getDayByDate(db, input.date);
+  if (sealed?.saved_at) {
+    return buildSaveResponse(db, sealed.id, input.date, true, false);
+  }
+
   const knownIds = new Set([
     ...nodes.map((n) => n.id),
     ...linkableNodes.map((n) => n.id),
@@ -174,9 +208,9 @@ export async function saveToday(
     }
 
     for (const [nodeId, tags] of Object.entries(ferment.node_tags)) {
-      const row = db
-        .prepare(`SELECT source_meta FROM nodes WHERE id = ?`)
-        .get(nodeId) as { source_meta: string | null } | undefined;
+      const row = db.prepare(`SELECT source_meta FROM nodes WHERE id = ?`).get(nodeId) as
+        | { source_meta: string | null }
+        | undefined;
       if (!row) continue;
       let meta: Record<string, unknown> = {};
       try {
@@ -246,8 +280,7 @@ function degradeFerment(
         ? `存档留言：${saveNote}`
         : "今天还没有太多记录，但你回来存档了——这就够了。");
 
-  const opening_line =
-    prev?.opening_line ?? "新的一天。昨日已存档，继续向前。";
+  const opening_line = prev?.opening_line ?? "新的一天。昨日已存档，继续向前。";
 
   let review_points: FermentResult["review_points"] = [];
   if (prev?.review_points_json) {

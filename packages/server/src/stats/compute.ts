@@ -166,15 +166,15 @@ function themeConcentrationBonus(nodes: NodeRecord[]): number {
   return clamp(Math.round(hhi * 10), 0, 10);
 }
 
-export function extractHealth(
-  nodes: NodeRecord[],
-): { sleepMinutes: number | null; steps: number | null } {
+export function extractHealth(nodes: NodeRecord[]): {
+  sleepMinutes: number | null;
+  steps: number | null;
+} {
   const health = nodes
     .filter((n) => n.kind === "health_daily")
     .slice()
     .sort(
-      (a, b) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
     )[0];
   if (!health) return { sleepMinutes: null, steps: null };
   const meta = (health.source_meta ?? {}) as Record<string, unknown>;

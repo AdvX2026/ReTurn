@@ -6,8 +6,8 @@ import type {
   Stats,
   TodoRecord,
 } from "@return/shared";
-import type { Db } from "./schema.js";
 import { nowIso, todayDate, uuid } from "../util/time.js";
+import type { Db } from "./schema.js";
 
 // ── row shapes ───────────────────────────────────────────
 
@@ -110,9 +110,9 @@ export function upsertDevice(
 ): DeviceRow {
   const now = nowIso();
   if (input.id) {
-    const existing = db
-      .prepare(`SELECT * FROM devices WHERE id = ?`)
-      .get(input.id) as DeviceRow | undefined;
+    const existing = db.prepare(`SELECT * FROM devices WHERE id = ?`).get(input.id) as
+      | DeviceRow
+      | undefined;
     if (existing) {
       db.prepare(
         `UPDATE devices SET name = ?, platform = ?, last_seen_at = ? WHERE id = ?`,
@@ -133,10 +133,7 @@ export function upsertDevice(
 }
 
 export function touchDevice(db: Db, deviceId: string): void {
-  db.prepare(`UPDATE devices SET last_seen_at = ? WHERE id = ?`).run(
-    nowIso(),
-    deviceId,
-  );
+  db.prepare(`UPDATE devices SET last_seen_at = ? WHERE id = ?`).run(nowIso(), deviceId);
 }
 
 export function getDevice(db: Db, id: string): DeviceRow | undefined {
@@ -148,9 +145,9 @@ export function getDevice(db: Db, id: string): DeviceRow | undefined {
 // ── days ─────────────────────────────────────────────────
 
 export function ensureDay(db: Db, date: string): DayRow {
-  const existing = db
-    .prepare(`SELECT * FROM days WHERE date = ?`)
-    .get(date) as DayRow | undefined;
+  const existing = db.prepare(`SELECT * FROM days WHERE date = ?`).get(date) as
+    | DayRow
+    | undefined;
   if (existing) return existing;
   const id = uuid();
   db.prepare(
@@ -171,15 +168,11 @@ export function ensureDay(db: Db, date: string): DayRow {
 }
 
 export function getDayByDate(db: Db, date: string): DayRow | undefined {
-  return db.prepare(`SELECT * FROM days WHERE date = ?`).get(date) as
-    | DayRow
-    | undefined;
+  return db.prepare(`SELECT * FROM days WHERE date = ?`).get(date) as DayRow | undefined;
 }
 
 export function getDayById(db: Db, id: string): DayRow | undefined {
-  return db.prepare(`SELECT * FROM days WHERE id = ?`).get(id) as
-    | DayRow
-    | undefined;
+  return db.prepare(`SELECT * FROM days WHERE id = ?`).get(id) as DayRow | undefined;
 }
 
 export function listSavedDays(db: Db, sinceDate: string): DayRow[] {
@@ -190,22 +183,13 @@ export function listSavedDays(db: Db, sinceDate: string): DayRow[] {
     .all(sinceDate) as DayRow[];
 }
 
-export function listDaysInRange(
-  db: Db,
-  startDate: string,
-  endDate: string,
-): DayRow[] {
+export function listDaysInRange(db: Db, startDate: string, endDate: string): DayRow[] {
   return db
-    .prepare(
-      `SELECT * FROM days WHERE date >= ? AND date <= ? ORDER BY date ASC`,
-    )
+    .prepare(`SELECT * FROM days WHERE date >= ? AND date <= ? ORDER BY date ASC`)
     .all(startDate, endDate) as DayRow[];
 }
 
-export function getLatestSavedDay(
-  db: Db,
-  beforeDate?: string,
-): DayRow | undefined {
+export function getLatestSavedDay(db: Db, beforeDate?: string): DayRow | undefined {
   if (beforeDate) {
     return db
       .prepare(
@@ -214,9 +198,7 @@ export function getLatestSavedDay(
       .get(beforeDate) as DayRow | undefined;
   }
   return db
-    .prepare(
-      `SELECT * FROM days WHERE saved_at IS NOT NULL ORDER BY date DESC LIMIT 1`,
-    )
+    .prepare(`SELECT * FROM days WHERE saved_at IS NOT NULL ORDER BY date DESC LIMIT 1`)
     .get() as DayRow | undefined;
 }
 
@@ -284,9 +266,7 @@ export function insertNode(
   const day = ensureDay(db, date);
   const id = uuid();
   const created_at = input.created_at ?? nowIso();
-  const source_meta = input.source_meta
-    ? JSON.stringify(input.source_meta)
-    : null;
+  const source_meta = input.source_meta ? JSON.stringify(input.source_meta) : null;
 
   db.prepare(
     `INSERT INTO nodes (id, day_id, device_id, kind, title, content, source_meta, client_uuid, created_at)
@@ -361,13 +341,10 @@ export function getNodeById(db: Db, id: string): NodeRecord | undefined {
   return nodeToRecord(row, day.date);
 }
 
-export function getNodeByClientUuid(
-  db: Db,
-  clientUuid: string,
-): NodeRecord | undefined {
-  const row = db
-    .prepare(`SELECT * FROM nodes WHERE client_uuid = ?`)
-    .get(clientUuid) as NodeRow | undefined;
+export function getNodeByClientUuid(db: Db, clientUuid: string): NodeRecord | undefined {
+  const row = db.prepare(`SELECT * FROM nodes WHERE client_uuid = ?`).get(clientUuid) as
+    | NodeRow
+    | undefined;
   if (!row) return undefined;
   const day = getDayById(db, row.day_id);
   if (!day) return undefined;
@@ -375,8 +352,14 @@ export function getNodeByClientUuid(
 }
 
 export function deleteNode(db: Db, id: string): boolean {
-  const info = db.prepare(`DELETE FROM nodes WHERE id = ?`).run(id);
-  return info.changes > 0;
+  // Drop edges first so delete works even if table was created without ON DELETE CASCADE.
+  let changes = 0;
+  db.transaction(() => {
+    db.prepare(`DELETE FROM edges WHERE src_node_id = ? OR dst_node_id = ?`).run(id, id);
+    db.prepare(`UPDATE todos SET source_node_id = NULL WHERE source_node_id = ?`).run(id);
+    changes = db.prepare(`DELETE FROM nodes WHERE id = ?`).run(id).changes;
+  })();
+  return changes > 0;
 }
 
 // ── edges ────────────────────────────────────────────────
@@ -462,7 +445,10 @@ export function setTodoDone(db: Db, id: string, done: boolean): TodoRecord | und
   return getTodo(db, id);
 }
 
-export function todoCompletionRate(db: Db, dayId: string): {
+export function todoCompletionRate(
+  db: Db,
+  dayId: string,
+): {
   total: number;
   done: number;
   rate: number;

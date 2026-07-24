@@ -1,6 +1,20 @@
 import type { NodeRecord, Session } from "@return/shared";
 
 /**
+ * Prefer client sample time for offline-buffered nodes.
+ * PRD: server stamps created_at; client time in source_meta for reference.
+ * For session aggregation, sampled_at / client_created_at is the real timeline.
+ */
+export function nodeEventTime(n: NodeRecord): string {
+  const meta = (n.source_meta ?? {}) as Record<string, unknown>;
+  if (typeof meta.sampled_at === "string" && meta.sampled_at) return meta.sampled_at;
+  if (typeof meta.client_created_at === "string" && meta.client_created_at) {
+    return meta.client_created_at;
+  }
+  return n.created_at;
+}
+
+/**
  * Merge consecutive same-app samples into sessions.
  * Gap > sampleIntervalMin minutes severs the session (PRD §4.1).
  */
@@ -13,7 +27,7 @@ export function aggregateAppSessions(
     .slice()
     .sort(
       (a, b) =>
-        new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+        new Date(nodeEventTime(a)).getTime() - new Date(nodeEventTime(b)).getTime(),
     );
 
   if (appSamples.length === 0) return [];
@@ -22,23 +36,24 @@ export function aggregateAppSessions(
   const sessions: Session[] = [];
 
   let curApp = appName(appSamples[0]!);
-  let curStart = appSamples[0]!.created_at;
-  let curEnd = appSamples[0]!.created_at;
-  let lastTs = new Date(appSamples[0]!.created_at).getTime();
+  let curStart = nodeEventTime(appSamples[0]!);
+  let curEnd = curStart;
+  let lastTs = new Date(curStart).getTime();
 
   for (let i = 1; i < appSamples.length; i++) {
     const s = appSamples[i]!;
-    const ts = new Date(s.created_at).getTime();
+    const at = nodeEventTime(s);
+    const ts = new Date(at).getTime();
     const app = appName(s);
     const severed = ts - lastTs > gapMs || app !== curApp;
 
     if (severed) {
       sessions.push(makeSession(curApp, "app", curStart, curEnd, sampleIntervalMin));
       curApp = app;
-      curStart = s.created_at;
-      curEnd = s.created_at;
+      curStart = at;
+      curEnd = at;
     } else {
-      curEnd = s.created_at;
+      curEnd = at;
     }
     lastTs = ts;
   }
@@ -55,22 +70,16 @@ export function agentSessionsFromNodes(nodes: NodeRecord[]): Session[] {
       const start =
         (meta.start as string | undefined) ??
         (meta.started_at as string | undefined) ??
-        n.created_at;
+        nodeEventTime(n);
       const end =
         (meta.end as string | undefined) ??
         (meta.ended_at as string | undefined) ??
-        n.created_at;
+        nodeEventTime(n);
       const durationMin =
         typeof meta.duration_min === "number"
           ? meta.duration_min
-          : Math.max(
-              0,
-              (new Date(end).getTime() - new Date(start).getTime()) / 60_000,
-            );
-      const app =
-        (meta.project as string | undefined) ??
-        n.title ??
-        "agent";
+          : Math.max(0, (new Date(end).getTime() - new Date(start).getTime()) / 60_000);
+      const app = (meta.project as string | undefined) ?? n.title ?? "agent";
       return {
         app,
         kind: "agent" as const,
@@ -82,10 +91,7 @@ export function agentSessionsFromNodes(nodes: NodeRecord[]): Session[] {
     });
 }
 
-export function allSessions(
-  nodes: NodeRecord[],
-  sampleIntervalMin: number,
-): Session[] {
+export function allSessions(nodes: NodeRecord[], sampleIntervalMin: number): Session[] {
   return [
     ...aggregateAppSessions(nodes, sampleIntervalMin),
     ...agentSessionsFromNodes(nodes),
@@ -109,8 +115,7 @@ function makeSession(
   end: string,
   sampleIntervalMin: number,
 ): Session {
-  const rawMin =
-    (new Date(end).getTime() - new Date(start).getTime()) / 60_000;
+  const rawMin = (new Date(end).getTime() - new Date(start).getTime()) / 60_000;
   // Single sample → count one sample interval of presence.
   const durationMin = Math.max(rawMin, sampleIntervalMin);
   return { app, kind, start, end, durationMin };

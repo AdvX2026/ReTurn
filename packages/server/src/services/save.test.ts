@@ -1,9 +1,9 @@
-import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { openMemoryDb, type Db } from "../db/schema.js";
-import { insertNode, getDayByDate, listTodosByDay, ensureDay } from "../db/repo.js";
-import { saveToday } from "./save.js";
+import { beforeEach, describe, it } from "node:test";
+import { ensureDay, getDayByDate, insertNode, listTodosByDay } from "../db/repo.js";
+import { type Db, openMemoryDb } from "../db/schema.js";
 import { addDays } from "../util/time.js";
+import { saveToday } from "./save.js";
 
 describe("saveToday", () => {
   let db: Db;
@@ -12,7 +12,7 @@ describe("saveToday", () => {
   beforeEach(() => {
     db = openMemoryDb();
     // No LLM key → ferment degrades (still seals the day).
-    delete process.env.LLM_API_KEY;
+    process.env.LLM_API_KEY = undefined;
   });
 
   it("seals day and is idempotent on second save", async () => {

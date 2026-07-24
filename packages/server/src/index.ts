@@ -1,28 +1,13 @@
-import Fastify from "fastify";
-import cors from "@fastify/cors";
-import multipart from "@fastify/multipart";
+import { mkdirSync } from "node:fs";
+import { createApp } from "./app.js";
 import { config } from "./config.js";
 import { openDb } from "./db/schema.js";
-import { registerRoutes } from "./routes.js";
-import { mkdirSync } from "node:fs";
 
 async function main() {
   mkdirSync(config.dataDir, { recursive: true });
   const db = openDb(config.dataDir);
+  const app = await createApp(db);
 
-  const app = Fastify({
-    logger: true,
-    bodyLimit: 25 * 1024 * 1024,
-  });
-
-  await app.register(cors, { origin: true });
-  await app.register(multipart, {
-    limits: { fileSize: 20 * 1024 * 1024 },
-  });
-
-  await registerRoutes(app, db);
-
-  // Graceful shutdown
   const stop = async () => {
     await app.close();
     db.close();
@@ -32,9 +17,7 @@ async function main() {
   process.on("SIGTERM", stop);
 
   await app.listen({ port: config.port, host: config.host });
-  app.log.info(
-    `ReTurn server v${config.version} on http://${config.host}:${config.port}`,
-  );
+  console.log(`ReTurn server v${config.version} on http://${config.host}:${config.port}`);
 }
 
 main().catch((err) => {

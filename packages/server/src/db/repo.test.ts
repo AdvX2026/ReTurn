@@ -1,23 +1,24 @@
-import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { openMemoryDb, type Db } from "./schema.js";
+import { beforeEach, describe, it } from "node:test";
+import type { Stats } from "@return/shared";
 import {
+  countCrossDayEdges,
+  deleteNode,
   ensureDay,
+  getDayByDate,
+  getNodeById,
+  insertEdge,
   insertNode,
   insertNodes,
-  listNodesByDate,
-  deleteNode,
-  markDaySaved,
-  getDayByDate,
   insertTodo,
+  listNodesByDate,
   listTodosByDay,
+  markDaySaved,
   setTodoDone,
-  insertEdge,
-  countCrossDayEdges,
   todoCompletionRate,
   upsertDevice,
 } from "./repo.js";
-import type { Stats } from "@return/shared";
+import { type Db, openMemoryDb } from "./schema.js";
 
 describe("repo", () => {
   let db: Db;
@@ -147,6 +148,31 @@ describe("repo", () => {
     }).node;
     assert.equal(deleteNode(db, n.id), true);
     assert.equal(deleteNode(db, n.id), false);
+  });
+
+  it("delete node with edges does not 500", () => {
+    const a = insertNode(db, {
+      client_uuid: crypto.randomUUID(),
+      kind: "text",
+      content: "a",
+      date: "2026-07-24",
+    }).node;
+    const b = insertNode(db, {
+      client_uuid: crypto.randomUUID(),
+      kind: "text",
+      content: "b",
+      date: "2026-07-24",
+    }).node;
+    const day = ensureDay(db, "2026-07-24");
+    insertEdge(db, {
+      src_node_id: a.id,
+      dst_node_id: b.id,
+      relation: "related",
+      created_by_day_id: day.id,
+    });
+    assert.equal(deleteNode(db, a.id), true);
+    assert.equal(getNodeById(db, a.id), undefined);
+    assert.ok(getNodeById(db, b.id));
   });
 
   it("device upsert reuses id", () => {
