@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -33,6 +32,7 @@ import {
   type StatsTodayResponse,
   type TimelineResponse,
   type VoiceResponse,
+  uuidFromSeed,
 } from "@return/shared";
 import type { FastifyInstance } from "fastify";
 import { TranscribeError, transcribeAudio } from "./ai/transcribe.js";
@@ -737,18 +737,4 @@ function sanitizeClientMeta(
     delete meta.sampled_at;
   }
   return meta;
-}
-
-/** Deterministic UUIDv4-shaped id from seed (for health-date idempotency). */
-function uuidFromSeed(seed: string): string {
-  const hex = createHash("sha256").update(seed).digest("hex");
-  return [
-    hex.slice(0, 8),
-    hex.slice(8, 12),
-    `4${hex.slice(13, 16)}`,
-    ((Number.parseInt(hex.slice(16, 18), 16) & 0x3f) | 0x80)
-      .toString(16)
-      .padStart(2, "0") + hex.slice(18, 20),
-    hex.slice(20, 32),
-  ].join("-");
 }

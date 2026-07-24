@@ -1,6 +1,12 @@
-import { type FermentResult, FermentResultSchema } from "@return/shared";
-import type { NodeRecord, Session } from "@return/shared";
+import {
+  ACTIVE_FEED_KINDS,
+  type FermentResult,
+  FermentResultSchema,
+  type NodeRecord,
+  type Session,
+} from "@return/shared";
 import { config } from "../config.js";
+import { extractJson, llmChat } from "./llm.js";
 
 export interface FermentContext {
   date: string;
@@ -130,51 +136,20 @@ ${linkable || "(none)"}
 }
 
 async function chatCompletion(userPrompt: string): Promise<string> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), config.llm.timeoutMs);
   try {
-    const res = await fetch(`${config.llm.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${config.llm.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: config.llm.model,
-        temperature: 0.4,
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content:
-              "You output only compact JSON. Never wrap in markdown. Never include scores or attributes.",
-          },
-          { role: "user", content: userPrompt },
-        ],
-      }),
-      signal: controller.signal,
+    return await llmChat({
+      system:
+        "You output only compact JSON. Never wrap in markdown. Never include scores or attributes.",
+      user: userPrompt,
+      temperature: 0.4,
+      json: true,
     });
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      throw new FermentError(`LLM HTTP ${res.status}: ${body.slice(0, 300)}`);
-    }
-    const data = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) throw new FermentError("empty LLM response");
-    return content;
-  } finally {
-    clearTimeout(timer);
+  } catch (err) {
+    throw new FermentError(
+      err instanceof Error ? err.message : "LLM call failed",
+      err,
+    );
   }
-}
-
-function extractJson(raw: string): unknown {
-  const trimmed = raw.trim();
-  // Strip accidental fences
-  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const text = fenced ? fenced[1]!.trim() : trimmed;
-  return JSON.parse(text);
 }
 
 function truncate(s: string | null, n: number): string | null {
@@ -190,7 +165,7 @@ export function buildFermentContext(input: {
   recentSummaries: Array<{ date: string; summary: string }>;
   linkableNodes: Array<{ id: string; date: string; title: string | null; kind: string }>;
 }): FermentContext {
-  const activeKinds = new Set(["text", "url", "voice", "save_note", "idea", "image"]);
+  const activeKinds = new Set<string>(ACTIVE_FEED_KINDS);
   return {
     date: input.date,
     saveNote: input.saveNote,

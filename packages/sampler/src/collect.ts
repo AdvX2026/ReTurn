@@ -1,26 +1,11 @@
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import type { NodeInput } from "@return/shared";
+import { type NodeInput, uuidFromSeed } from "@return/shared";
 
 const execFileAsync = promisify(execFile);
-
-/** Stable UUIDv4-shaped id from seed — agent sessions survive sampler restarts. */
-function uuidFromSeed(seed: string): string {
-  const hex = createHash("sha256").update(seed).digest("hex");
-  return [
-    hex.slice(0, 8),
-    hex.slice(8, 12),
-    `4${hex.slice(13, 16)}`,
-    ((Number.parseInt(hex.slice(16, 18), 16) & 0x3f) | 0x80)
-      .toString(16)
-      .padStart(2, "0") + hex.slice(18, 20),
-    hex.slice(20, 32),
-  ].join("-");
-}
 
 export interface SampleSnapshot {
   app: { name: string; bundleId?: string } | null;

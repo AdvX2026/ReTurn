@@ -5,6 +5,7 @@
  */
 
 import type { ChatIntent, ChatResponse } from "@return/shared";
+import { extractJson, llmChat } from "../ai/llm.js";
 import { config, isLlmConfigured } from "../config.js";
 import {
   insertCard,
@@ -70,26 +71,8 @@ export async function triageWithLlm(text: string): Promise<{
     throw new Error("LLM not configured");
   }
 
-  const controller = new AbortController();
-  const timer = setTimeout(
-    () => controller.abort(),
-    Math.min(config.llm.timeoutMs, 20_000),
-  );
-  try {
-    const res = await fetch(`${config.llm.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${config.llm.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: config.llm.model,
-        temperature: 0,
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content: `You are the intent classifier for ReTurn (a personal second-brain agent).
+  const raw = await llmChat({
+    system: `You are the intent classifier for ReTurn (a personal second-brain agent).
 Classify the user message into exactly one intent.
 
 intents:
@@ -104,35 +87,19 @@ Rules:
 - Prefer idea for short free-form notes without a clear question/search.
 - Output ONLY compact JSON: {"intent":"idea"|"retrieval"|"question"|"unknown","confidence":0..1}
 - confidence < 0.55 should use "unknown".`,
-          },
-          { role: "user", content: text },
-        ],
-      }),
-      signal: controller.signal,
-    });
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      throw new Error(`LLM HTTP ${res.status}: ${body.slice(0, 200)}`);
-    }
-    const data = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const raw = data.choices?.[0]?.message?.content;
-    if (!raw) throw new Error("empty triage response");
-    return parseTriageJson(raw);
-  } finally {
-    clearTimeout(timer);
-  }
+    user: text,
+    temperature: 0,
+    timeoutMs: Math.min(config.llm.timeoutMs, 20_000),
+    json: true,
+  });
+  return parseTriageJson(raw);
 }
 
 export function parseTriageJson(raw: string): {
   intent: ChatIntent;
   confidence: number;
 } {
-  let text = raw.trim();
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenced) text = fenced[1]!.trim();
-  const parsed = JSON.parse(text) as {
+  const parsed = extractJson(raw) as {
     intent?: string;
     confidence?: number;
   };
@@ -512,38 +479,15 @@ function runImageTask(db: Db, image: string, deviceId: string | undefined): Chat
 }
 
 async function tinySuggest(idea: string): Promise<string> {
-  const controller = new AbortController();
-  const timer = setTimeout(
-    () => controller.abort(),
-    Math.min(config.llm.timeoutMs, 15_000),
-  );
   try {
-    const res = await fetch(`${config.llm.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${config.llm.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: config.llm.model,
-        temperature: 0.4,
-        messages: [
-          {
-            role: "system",
-            content: "用一句中文简短回应用户的灵感记录，可给一点轻量建议。不超过40字。",
-          },
-          { role: "user", content: idea },
-        ],
-      }),
-      signal: controller.signal,
+    return await llmChat({
+      system: "用一句中文简短回应用户的灵感记录，可给一点轻量建议。不超过40字。",
+      user: idea,
+      temperature: 0.4,
+      timeoutMs: Math.min(config.llm.timeoutMs, 15_000),
     });
-    if (!res.ok) throw new Error(`LLM ${res.status}`);
-    const data = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    return data.choices?.[0]?.message?.content?.trim() || "已记下这条灵感。";
-  } finally {
-    clearTimeout(timer);
+  } catch {
+    return "已记下这条灵感。";
   }
 }
 

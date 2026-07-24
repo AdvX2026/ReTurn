@@ -4,7 +4,8 @@
  */
 
 import type { AskResponse, SearchHit } from "@return/shared";
-import { config, isLlmConfigured } from "../config.js";
+import { llmChat } from "../ai/llm.js";
+import { isLlmConfigured } from "../config.js";
 import type { Db } from "../db/schema.js";
 import { originalTextForDoc } from "./index.js";
 import { search } from "./query.js";
@@ -153,38 +154,7 @@ ${context}`;
 }
 
 async function chat(system: string, user: string): Promise<string> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), config.llm.timeoutMs);
-  try {
-    const res = await fetch(`${config.llm.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${config.llm.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: config.llm.model,
-        temperature: 0.2,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
-      }),
-      signal: controller.signal,
-    });
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      throw new Error(`LLM HTTP ${res.status}: ${body.slice(0, 300)}`);
-    }
-    const data = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) throw new Error("empty LLM response");
-    return content;
-  } finally {
-    clearTimeout(timer);
-  }
+  return llmChat({ system, user, temperature: 0.2 });
 }
 
 /**

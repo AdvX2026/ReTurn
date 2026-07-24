@@ -1,10 +1,15 @@
-import type { NodeRecord, TimelineResponse, TimelineSegment } from "@return/shared";
+import {
+  ACTIVE_FEED_KINDS,
+  type NodeRecord,
+  type TimelineResponse,
+  type TimelineSegment,
+} from "@return/shared";
 import { config } from "../config.js";
 import { listNodesByDate } from "../db/repo.js";
 import type { Db } from "../db/schema.js";
 import { extractHealth } from "../stats/compute.js";
 import { allSessions, nodeEventTime } from "../stats/sessions.js";
-import { parseDate } from "../util/time.js";
+import { dateRange, parseDate } from "../util/time.js";
 
 /** App → coarse category for timeline coloring. */
 const CATEGORY_MAP: Array<{ test: RegExp; category: string }> = [
@@ -64,7 +69,7 @@ export function buildTimeline(
     }
 
     for (const n of nodes) {
-      if (!["text", "url", "voice", "save_note", "idea", "image"].includes(n.kind)) {
+      if (!(ACTIVE_FEED_KINDS as readonly string[]).includes(n.kind)) {
         continue;
       }
       const at = nodeEventTime(n);
@@ -111,18 +116,7 @@ function dateSpan(from: string, to: string): string[] {
       `timeline range exceeds ${MAX_TIMELINE_DAYS} days (got ${days})`,
     );
   }
-  const out: string[] = [];
-  let cur = from;
-  while (cur <= to) {
-    out.push(cur);
-    const [y, m, d] = cur.split("-").map(Number);
-    const dt = new Date(y!, m! - 1, d! + 1);
-    const yy = dt.getFullYear();
-    const mm = String(dt.getMonth() + 1).padStart(2, "0");
-    const dd = String(dt.getDate()).padStart(2, "0");
-    cur = `${yy}-${mm}-${dd}`;
-  }
-  return out;
+  return dateRange(from, to);
 }
 
 function sleepSegment(nodes: NodeRecord[], date: string): TimelineSegment | null {

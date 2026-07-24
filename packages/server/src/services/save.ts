@@ -1,8 +1,9 @@
-import type {
-  FermentResult,
-  NodeRecord,
-  ReviewPoint,
-  SaveResponse,
+import {
+  ACTIVE_FEED_KINDS,
+  type FermentResult,
+  type NodeRecord,
+  type ReviewPoint,
+  type SaveResponse,
 } from "@return/shared";
 import { buildFermentContext, runFerment } from "../ai/ferment.js";
 import { config } from "../config.js";
@@ -148,7 +149,7 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
   }> = [];
   for (const d of recentDays.slice(-5)) {
     for (const n of listNodesByDate(db, d.date)) {
-      if (["text", "url", "voice", "save_note"].includes(n.kind)) {
+      if ((ACTIVE_FEED_KINDS as readonly string[]).includes(n.kind)) {
         linkableNodes.push({
           id: n.id,
           date: d.date,
@@ -276,7 +277,7 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
         stats,
         character_state,
         node_ids: freshNodes
-          .filter((n) => ["text", "url", "voice", "save_note", "idea"].includes(n.kind))
+          .filter((n) => (ACTIVE_FEED_KINDS as readonly string[]).includes(n.kind))
           .map((n) => n.id)
           .slice(0, 40),
       },
@@ -334,7 +335,7 @@ function degradeFerment(
 ): FermentResult {
   const prev = getLatestSavedDay(db, date);
   const active = nodes.filter((n) =>
-    ["text", "url", "voice", "save_note", "idea", "image"].includes(n.kind),
+    (ACTIVE_FEED_KINDS as readonly string[]).includes(n.kind),
   );
 
   const summary =
