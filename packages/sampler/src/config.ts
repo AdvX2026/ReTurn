@@ -22,8 +22,8 @@ export const config = {
   serverUrl: str("RETURN_SERVER_URL", "http://127.0.0.1:8787").replace(/\/$/, ""),
   deviceName: str("SAMPLER_DEVICE_NAME", "Mac Sampler"),
   sampleIntervalMin: num("SAMPLE_INTERVAL_MIN", 5),
-  /** Localhost-only control plane for UI (PRD F2). */
-  localHost: str("SAMPLER_HOST", "127.0.0.1"),
+  /** Control plane for UI — loopback only, not configurable (PRD F2: never LAN). */
+  localHost: "127.0.0.1",
   localPort: num("SAMPLER_PORT", 8791),
   dataDir,
   outboxPath: join(dataDir, "outbox.db"),

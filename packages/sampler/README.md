@@ -18,7 +18,6 @@ Env (optional):
 | `RETURN_SERVER_URL` | `http://127.0.0.1:8787` |
 | `SAMPLE_INTERVAL_MIN` | `5` |
 | `SAMPLER_PORT` | `8791` |
-| `SAMPLER_HOST` | `127.0.0.1` |
 | `SAMPLER_DATA_DIR` | `~/.return/sampler` |
 | `SAMPLER_DEVICE_NAME` | `Mac Sampler` |
 
