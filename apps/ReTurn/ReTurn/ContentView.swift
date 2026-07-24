@@ -135,10 +135,11 @@ private struct ComposerBar: View {
             cornerRadius: ReTurnDesign.Metrics.composerCornerRadius,
             style: .continuous
         )
-
-        #if os(macOS)
-        // macOS has no glass-morph presentation to work around, so the plain
-        // SwiftUI menu stays until this screen gets its own macOS design.
+        let hitPadding = ReTurnDesign.Metrics.composerAccessoryHitPadding
+        // A single menu whose label is the visible plus. `.plain` keeps the
+        // system from drawing a bordered pressed state around it and from
+        // treating the button as a glass surface to morph into the menu -- the
+        // menu lifts only the glyph, leaving the composer in place.
         let attachmentMenu = Menu {
             attachmentMenuItems
         } label: {
@@ -150,28 +151,20 @@ private struct ComposerBar: View {
                     width: ReTurnDesign.Metrics.composerAccessorySize,
                     height: ReTurnDesign.Metrics.composerAccessorySize
                 )
+                // Grow the touch target to the HIG minimum, then cancel the
+                // growth so the glyph keeps its place in the composer.
+                .padding(hitPadding)
+                .contentShape(.rect)
+                .padding(-hitPadding)
         }
         .menuIndicator(.hidden)
         .buttonStyle(.plain)
-        #endif
 
         let composerContent = HStack(
             alignment: .center,
             spacing: ReTurnDesign.Spacing.medium
         ) {
-            #if os(iOS)
-            // Laid out at the full touch target, then shrunk back to the glyph's
-            // footprint: the button keeps hit testing the whole 44pt square while
-            // the composer spaces it like a 30pt accessory.
-            AttachmentMenuButton()
-                .frame(
-                    width: ReTurnDesign.Metrics.composerAccessoryHitSize,
-                    height: ReTurnDesign.Metrics.composerAccessoryHitSize
-                )
-                .padding(-ReTurnDesign.Metrics.composerAccessoryHitPadding)
-            #else
             attachmentMenu
-            #endif
 
             TextField("Ask Return Anything", text: $text, axis: .vertical)
                 .font(ReTurnDesign.Typography.composer)
@@ -258,7 +251,6 @@ private struct ComposerBar: View {
             .padding(.bottom, ReTurnDesign.Spacing.medium)
     }
 
-    #if os(macOS)
     @ViewBuilder
     private var attachmentMenuItems: some View {
         ControlGroup {
@@ -275,7 +267,6 @@ private struct ComposerBar: View {
             }
         }
     }
-    #endif
 }
 
 #Preview {
