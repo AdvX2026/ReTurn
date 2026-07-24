@@ -5,6 +5,8 @@ struct TimelineView: View {
     let day: TimelineDay
 
     var body: some View {
+        let eventCount = day.representedEventCount
+
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(day.date, format: .dateTime.weekday(.wide))
@@ -19,7 +21,10 @@ struct TimelineView: View {
 
                     Spacer()
 
-                    Text("\(day.items.count) \(day.items.count == 1 ? "Event" : "Events")")
+                    Text(
+                        "\(eventCount) "
+                            + "\(eventCount == 1 ? "Event" : "Events")"
+                    )
                         .font(TimelineDesign.Typography.eventCount)
                         .foregroundStyle(.tertiary)
                 }

@@ -8,7 +8,7 @@ struct TimelineEventCard: View {
         let tint = TimelineDesign.Colors.accent(for: item)
 
         VStack(alignment: .leading, spacing: TimelineDesign.Layout.eventCardSpacing) {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 HStack(spacing: 8) {
                     Image(systemName: item.symbolName)
                         .font(.caption.weight(.semibold))
@@ -26,6 +26,11 @@ struct TimelineEventCard: View {
                     .font(TimelineDesign.Typography.eventMetadata)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.bold())
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
             }
 
             Text(item.label)
@@ -33,10 +38,17 @@ struct TimelineEventCard: View {
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
 
+            if let clusterPreview = item.clusterPreview {
+                TimelineClusterPreviewView(
+                    preview: clusterPreview,
+                    tint: tint
+                )
+            }
+
             Label(item.durationDisplay, systemImage: "clock")
-            .font(TimelineDesign.Typography.eventMetadata)
-            .foregroundStyle(.secondary)
-            .monospacedDigit()
+                .font(TimelineDesign.Typography.eventMetadata)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
         }
         .padding(TimelineDesign.Layout.eventCardPadding)
         .background(

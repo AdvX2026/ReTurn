@@ -11,10 +11,22 @@ struct TimelineRail: View {
         Canvas { context, size in
             let axisX = TimelineDesign.Layout.railAxisX
             let pointY = TimelineDesign.Layout.pointAnchorY
+            let ambientAnchorY = size.height / 2
             let rangeTop = TimelineDesign.Layout.rangeInset
             let rangeBottom = max(rangeTop, size.height - TimelineDesign.Layout.rangeInset)
-            let firstAnchor = presentation == .point ? pointY : rangeTop
-            let lastAnchor = presentation == .point ? pointY : rangeBottom
+            let firstAnchor: CGFloat
+            let lastAnchor: CGFloat
+            switch presentation {
+            case .ambient:
+                firstAnchor = ambientAnchorY
+                lastAnchor = ambientAnchorY
+            case .point:
+                firstAnchor = pointY
+                lastAnchor = pointY
+            case .span, .major:
+                firstAnchor = rangeTop
+                lastAnchor = rangeBottom
+            }
 
             var axis = Path()
             axis.move(to: CGPoint(x: axisX, y: isFirst ? firstAnchor : 0))
@@ -29,6 +41,13 @@ struct TimelineRail: View {
             )
 
             switch presentation {
+            case .ambient:
+                drawAmbient(
+                    in: &context,
+                    axisX: axisX,
+                    anchorY: ambientAnchorY,
+                    width: size.width
+                )
             case .point:
                 drawPoint(
                     in: &context,
@@ -49,6 +68,32 @@ struct TimelineRail: View {
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+
+    private func drawAmbient(
+        in context: inout GraphicsContext,
+        axisX: CGFloat,
+        anchorY: CGFloat,
+        width: CGFloat
+    ) {
+        let connectorEnd = width - TimelineDesign.Layout.ambientConnectorEndInset
+        var connector = Path()
+        connector.move(to: CGPoint(x: axisX, y: anchorY))
+        connector.addLine(to: CGPoint(x: connectorEnd, y: anchorY))
+        context.stroke(
+            connector,
+            with: .color(tint),
+            style: StrokeStyle(lineWidth: 1, lineCap: .round)
+        )
+
+        let diameter = TimelineDesign.Layout.ambientPointDiameter
+        let markerRect = CGRect(
+            x: axisX - diameter / 2,
+            y: anchorY - diameter / 2,
+            width: diameter,
+            height: diameter
+        )
+        context.fill(Path(ellipseIn: markerRect), with: .color(tint))
     }
 
     private func drawPoint(

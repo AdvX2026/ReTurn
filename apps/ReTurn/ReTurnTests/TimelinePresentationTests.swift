@@ -32,10 +32,61 @@ struct TimelinePresentationTests {
                 )
             )
         )
-
         #expect(point.presentation == .point)
         #expect(span.presentation == .span)
         #expect(major.presentation == .major)
+    }
+
+    @Test func acceptsExplicitAmbientAndClusterProjection() throws {
+        let preview = TimelineClusterPreview(
+            entries: [
+                .init(
+                    id: "commit",
+                    time: "09:12",
+                    title: "Commit created",
+                    symbolName: "arrow.triangle.branch"
+                ),
+                .init(
+                    id: "build",
+                    time: "09:42",
+                    title: "Build passed",
+                    symbolName: "circle.fill"
+                ),
+            ],
+            totalCount: 4
+        )
+        let ambientItem = try #require(
+            TimelineDisplayItem(
+                segment: segment(
+                    kind: .feed,
+                    start: "2026-07-24T09:00:00Z",
+                    end: "2026-07-24T09:00:00Z"
+                ),
+                presentation: .ambient
+            )
+        )
+        let clusterItem = try #require(
+            TimelineDisplayItem(
+                segment: segment(
+                    kind: .agent,
+                    start: "2026-07-24T09:00:00Z",
+                    end: "2026-07-24T10:00:00Z"
+                ),
+                clusterPreview: preview
+            )
+        )
+
+        #expect(ambientItem.presentation == .ambient)
+        #expect(clusterItem.clusterPreview == preview)
+        #expect(clusterItem.clusterPreview?.remainingCount == 2)
+        #expect(
+            TimelineDay(date: clusterItem.start, items: [clusterItem]).representedEventCount == 4
+        )
+        #expect(clusterItem.accessibilityValue.contains("Commit created"))
+        #expect(clusterItem.accessibilityValue.contains("Build passed"))
+
+        let emptyPreview = TimelineClusterPreview(entries: [], totalCount: 0)
+        #expect(emptyPreview.totalCount == 1)
     }
 
     @Test func groupsNewestDaysFirstAndEventsChronologically() {

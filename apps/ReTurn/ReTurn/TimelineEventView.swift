@@ -10,14 +10,20 @@ struct TimelineEventView: View {
         let tint = TimelineDesign.Colors.accent(for: item)
 
         Group {
-            if item.presentation == .major {
+            switch item.presentation {
+            case .ambient:
+                TimelineAmbientEventView(item: item)
+            case .major:
                 TimelineEventCard(item: item)
-            } else {
+            case .point, .span:
                 TimelineEventDetailsView(item: item)
             }
         }
         .padding(.leading, TimelineDesign.Layout.railWidth)
-        .padding(.bottom, TimelineDesign.Layout.eventBottomSpacing)
+        .padding(
+            .bottom,
+            TimelineDesign.Layout.bottomSpacing(for: item.presentation)
+        )
         .frame(
             maxWidth: .infinity,
             minHeight: TimelineDesign.Layout.minimumHeight(for: item.presentation),

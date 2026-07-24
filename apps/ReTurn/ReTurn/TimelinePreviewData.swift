@@ -2,7 +2,39 @@
 import Foundation
 
 enum TimelinePreviewData {
-    static let days = TimelineDay.grouped(from: segments)
+    static let days = TimelineDay.grouped(from: items)
+
+    private static let clusterPreview = TimelineClusterPreview(
+        entries: [
+            .init(
+                id: "session-start",
+                time: "10:42",
+                title: "Claude session started",
+                symbolName: "terminal"
+            ),
+            .init(
+                id: "git-commit",
+                time: "11:26",
+                title: "Commit · Health-style timeline",
+                symbolName: "arrow.triangle.branch"
+            ),
+            .init(
+                id: "preview-build",
+                time: "12:04",
+                title: "Preview build passed",
+                symbolName: "checkmark.circle"
+            ),
+        ],
+        totalCount: 6
+    )
+
+    private static let items = segments.compactMap { segment in
+        TimelineDisplayItem(
+            segment: segment,
+            presentation: segment.category == "git" ? .ambient : nil,
+            clusterPreview: segment.kind == .agent ? clusterPreview : nil
+        )
+    }
 
     private static let segments: [TimelineSegment] = [
         TimelineSegment(
@@ -43,6 +75,16 @@ enum TimelinePreviewData {
             category: "agent",
             nodeId: nil,
             meta: ["project": .string("ReTurn")],
+            date: "2026-07-24"
+        ),
+        TimelineSegment(
+            kind: .feed,
+            start: "2026-07-24T13:02:00+08:00",
+            end: "2026-07-24T13:02:00+08:00",
+            label: "README wording",
+            category: "git",
+            nodeId: "f4dc74dd-68ce-49e7-bbd5-035c48f98ec7",
+            meta: nil,
             date: "2026-07-24"
         ),
         TimelineSegment(

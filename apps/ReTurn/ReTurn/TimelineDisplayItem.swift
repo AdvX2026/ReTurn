@@ -3,6 +3,7 @@ import Foundation
 
 struct TimelineDisplayItem: Identifiable, Equatable {
     enum Presentation: Equatable {
+        case ambient
         case point
         case span
         case major
@@ -16,8 +17,13 @@ struct TimelineDisplayItem: Identifiable, Equatable {
     let category: String?
     let dayIdentifier: String?
     let presentation: Presentation
+    let clusterPreview: TimelineClusterPreview?
 
-    init?(segment: TimelineSegment) {
+    init?(
+        segment: TimelineSegment,
+        presentation presentationOverride: Presentation? = nil,
+        clusterPreview: TimelineClusterPreview? = nil
+    ) {
         guard let start = ReTurnAPI.parseDate(segment.start) else {
             return nil
         }
@@ -39,8 +45,11 @@ struct TimelineDisplayItem: Identifiable, Equatable {
         label = segment.label
         category = segment.category
         dayIdentifier = segment.date
+        self.clusterPreview = clusterPreview
 
-        if segment.kind == .agent {
+        if let presentationOverride {
+            presentation = presentationOverride
+        } else if segment.kind == .agent {
             presentation = .major
         } else if segment.kind == .feed || end == start {
             presentation = .point
@@ -57,7 +66,7 @@ struct TimelineDisplayItem: Identifiable, Equatable {
 
     var timeDisplay: String {
         let startText = start.formatted(date: .omitted, time: .shortened)
-        guard presentation != .point else {
+        guard presentation != .point, presentation != .ambient else {
             return startText
         }
 
@@ -95,6 +104,8 @@ struct TimelineDisplayItem: Identifiable, Equatable {
                 "photo"
             case "reminder":
                 "checkmark.circle"
+            case "git":
+                "arrow.triangle.branch"
             default:
                 "circle.fill"
             }
@@ -123,10 +134,22 @@ struct TimelineDisplayItem: Identifiable, Equatable {
     }
 
     var accessibilityValue: String {
-        if presentation == .point {
+        if presentation == .point || presentation == .ambient {
             return "\(timeDisplay), \(categoryLabel)"
         }
-        return "\(timeDisplay), \(categoryLabel), \(durationDisplay)"
+
+        let baseValue = "\(timeDisplay), \(categoryLabel), \(durationDisplay)"
+        guard let clusterPreview else {
+            return baseValue
+        }
+
+        let visibleEvents = clusterPreview.entries
+            .map { "\($0.time), \($0.title)" }
+            .joined(separator: "; ")
+        guard !visibleEvents.isEmpty else {
+            return "\(baseValue), \(clusterPreview.totalCount) related events"
+        }
+        return "\(baseValue), \(clusterPreview.totalCount) related events: \(visibleEvents)"
     }
 }
 #endif

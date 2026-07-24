@@ -11,7 +11,16 @@ struct TimelineDay: Identifiable, Equatable {
         from segments: [TimelineSegment],
         calendar: Calendar = .autoupdatingCurrent
     ) -> [TimelineDay] {
-        let items = segments.compactMap(TimelineDisplayItem.init(segment:))
+        let items = segments.compactMap {
+            TimelineDisplayItem(segment: $0)
+        }
+        return grouped(from: items, calendar: calendar)
+    }
+
+    static func grouped(
+        from items: [TimelineDisplayItem],
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> [TimelineDay] {
         let groups = Dictionary(grouping: items) {
             date(from: $0.dayIdentifier, calendar: calendar)
                 ?? calendar.startOfDay(for: $0.start)
@@ -30,6 +39,12 @@ struct TimelineDay: Identifiable, Equatable {
                 )
             }
             .sorted { $0.date > $1.date }
+    }
+
+    var representedEventCount: Int {
+        items.reduce(into: 0) { count, item in
+            count += item.clusterPreview?.totalCount ?? 1
+        }
     }
 
     private static func date(
