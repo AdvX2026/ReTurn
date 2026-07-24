@@ -2,14 +2,14 @@ import type { NodeRecord, Session } from "@return/shared";
 
 /**
  * Prefer client sample time for offline-buffered nodes.
- * PRD: server stamps created_at; client time in source_meta for reference.
- * For session aggregation, sampled_at / client_created_at is the real timeline.
+ * Only accept parseable ISO datetimes (Codex P2).
  */
 export function nodeEventTime(n: NodeRecord): string {
   const meta = (n.source_meta ?? {}) as Record<string, unknown>;
-  if (typeof meta.sampled_at === "string" && meta.sampled_at) return meta.sampled_at;
-  if (typeof meta.client_created_at === "string" && meta.client_created_at) {
-    return meta.client_created_at;
+  for (const c of [meta.sampled_at, meta.client_created_at]) {
+    if (typeof c !== "string" || !c) continue;
+    const t = Date.parse(c);
+    if (!Number.isNaN(t)) return new Date(t).toISOString();
   }
   return n.created_at;
 }
