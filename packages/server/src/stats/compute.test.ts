@@ -51,6 +51,35 @@ describe("scoreIntake", () => {
     ];
     assert.ok(scoreIntake(diverse) > scoreIntake(mono));
   });
+
+  it("received email bonus: 0 / 10 / 20 emails", () => {
+    assert.equal(scoreIntake([], 0), 0);
+    // 10 received emails → full +20
+    assert.equal(scoreIntake([], 10), 20);
+    // 20 still capped at 20
+    assert.equal(scoreIntake([], 20), 20);
+    // partial: 5 → 10
+    assert.equal(scoreIntake([], 5), 10);
+  });
+
+  it("computeStats counts received email into intake, sent into output", () => {
+    const meta = (d: "received" | "sent") => ({ direction: d });
+    const stats = computeStats({
+      nodes: [
+        node({ kind: "email", source_meta: meta("received") }),
+        node({ kind: "email", source_meta: meta("received") }),
+        node({ kind: "email", source_meta: meta("sent") }),
+      ],
+      sessions: [],
+      todoRate: 0,
+      crossDayEdges: 0,
+      sleepMinutes: null,
+      steps: null,
+    });
+    // 2 received → intake 4; 1 sent → output 2
+    assert.equal(stats.intake, 4);
+    assert.equal(stats.output, 2);
+  });
 });
 
 describe("scoreFocus", () => {
@@ -113,6 +142,16 @@ describe("scoreOutput", () => {
     assert.equal(scoreOutput(0, [], 10), 20);
     // partial: 1 commit → 4
     assert.equal(scoreOutput(0, [], 1), 4);
+  });
+
+  it("sent-email bonus: 0 / 10 / 20 emails", () => {
+    assert.equal(scoreOutput(0, [], 0, 0), 0);
+    // 10 sent emails → full +20
+    assert.equal(scoreOutput(0, [], 0, 10), 20);
+    // 20 still capped at 20
+    assert.equal(scoreOutput(0, [], 0, 20), 20);
+    // partial: 5 → 10
+    assert.equal(scoreOutput(0, [], 0, 5), 10);
   });
 
   it("computeStats raises output when git_commit nodes present", () => {
