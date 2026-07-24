@@ -5,6 +5,7 @@ import type {
   ReviewPoint,
   Stats,
   TodoRecord,
+  TodoStatus,
 } from "@return/shared";
 import { nowIso, todayDate, uuid } from "../util/time.js";
 import type { Db } from "./schema.js";
@@ -48,7 +49,11 @@ export interface TodoRow {
   day_id: string;
   text: string;
   done: number;
+  status: string;
   source_node_id: string | null;
+  accepted_reminder_id: string | null;
+  accepted_at: string | null;
+  dismissed_at: string | null;
 }
 
 export interface DeviceRow {
@@ -85,12 +90,17 @@ export function nodeToRecord(row: NodeRow, date: string): NodeRecord {
 }
 
 export function todoToRecord(row: TodoRow): TodoRecord {
+  const status = (row.status || "suggested") as TodoStatus;
   return {
     id: row.id,
     day_id: row.day_id,
     text: row.text,
-    done: row.done === 1,
+    done: row.done === 1 || status === "accepted",
+    status,
     source_node_id: row.source_node_id,
+    accepted_reminder_id: row.accepted_reminder_id,
+    accepted_at: row.accepted_at,
+    dismissed_at: row.dismissed_at,
   };
 }
 
@@ -415,14 +425,19 @@ export function insertTodo(
 ): TodoRecord {
   const id = uuid();
   db.prepare(
-    `INSERT INTO todos (id, day_id, text, done, source_node_id) VALUES (?, ?, ?, 0, ?)`,
+    `INSERT INTO todos (id, day_id, text, done, status, source_node_id)
+     VALUES (?, ?, ?, 0, 'suggested', ?)`,
   ).run(id, input.day_id, input.text, input.source_node_id ?? null);
   return {
     id,
     day_id: input.day_id,
     text: input.text,
     done: false,
+    status: "suggested",
     source_node_id: input.source_node_id ?? null,
+    accepted_reminder_id: null,
+    accepted_at: null,
+    dismissed_at: null,
   };
 }
 
@@ -440,11 +455,83 @@ export function getTodo(db: Db, id: string): TodoRecord | undefined {
   return row ? todoToRecord(row) : undefined;
 }
 
+/** Legacy PATCH: flips done; also mirrors status for accept/unaccept. */
 export function setTodoDone(db: Db, id: string, done: boolean): TodoRecord | undefined {
-  db.prepare(`UPDATE todos SET done = ? WHERE id = ?`).run(done ? 1 : 0, id);
+  if (done) {
+    db.prepare(
+      `UPDATE todos SET done = 1, status = 'accepted',
+       accepted_at = COALESCE(accepted_at, ?), dismissed_at = NULL WHERE id = ?`,
+    ).run(nowIso(), id);
+  } else {
+    db.prepare(
+      `UPDATE todos SET done = 0, status = 'suggested',
+       accepted_reminder_id = NULL, accepted_at = NULL WHERE id = ?`,
+    ).run(id);
+  }
   return getTodo(db, id);
 }
 
+export function acceptTodo(
+  db: Db,
+  id: string,
+  reminderId?: string | null,
+): TodoRecord | undefined {
+  const existing = getTodo(db, id);
+  if (!existing) return undefined;
+  const at = nowIso();
+  db.prepare(
+    `UPDATE todos SET status = 'accepted', done = 1,
+     accepted_at = COALESCE(accepted_at, ?),
+     accepted_reminder_id = COALESCE(?, accepted_reminder_id),
+     dismissed_at = NULL
+     WHERE id = ?`,
+  ).run(at, reminderId ?? null, id);
+  return getTodo(db, id);
+}
+
+export function dismissTodo(db: Db, id: string): TodoRecord | undefined {
+  const existing = getTodo(db, id);
+  if (!existing) return undefined;
+  const at = nowIso();
+  db.prepare(
+    `UPDATE todos SET status = 'dismissed', done = 0,
+     dismissed_at = COALESCE(dismissed_at, ?),
+     accepted_reminder_id = NULL, accepted_at = NULL
+     WHERE id = ?`,
+  ).run(at, id);
+  return getTodo(db, id);
+}
+
+/**
+ * Auto-dismiss suggested todos older than `beforeDate` (YYYY-MM-DD exclusive).
+ * Negative samples for preference loop when user never accepted.
+ */
+export function expireSuggestedTodos(db: Db, beforeDate: string): number {
+  const at = nowIso();
+  const r = db
+    .prepare(
+      `UPDATE todos SET status = 'dismissed', dismissed_at = ?
+       WHERE status = 'suggested'
+         AND day_id IN (SELECT id FROM days WHERE date < ?)`,
+    )
+    .run(at, beforeDate);
+  return r.changes;
+}
+
+export function listTodosByStatus(db: Db, status: TodoStatus, limit = 30): TodoRecord[] {
+  const rows = db
+    .prepare(
+      `SELECT t.* FROM todos t
+       JOIN days d ON d.id = t.day_id
+       WHERE t.status = ?
+       ORDER BY d.date DESC, t.rowid DESC
+       LIMIT ?`,
+    )
+    .all(status, limit) as TodoRow[];
+  return rows.map(todoToRecord);
+}
+
+/** Legacy todos.done rate — kept for tests; production output uses reminder rate. */
 export function todoCompletionRate(
   db: Db,
   dayId: string,
@@ -460,4 +547,38 @@ export function todoCompletionRate(
     .get(dayId) as { total: number; done: number };
   const rate = row.total === 0 ? 0 : row.done / row.total;
   return { total: row.total, done: row.done, rate };
+}
+
+/**
+ * Output score signal from reminder nodes on a day.
+ * completed flag lives in source_meta; rate = completed / total (0 if none).
+ */
+export function reminderCompletionRate(
+  db: Db,
+  date: string,
+): { total: number; done: number; rate: number; openTitles: string[] } {
+  const nodes = listNodesByDate(db, date).filter((n) => n.kind === "reminder");
+  // Latest snapshot per reminder_id wins (uuid flips on complete, so both may exist).
+  const byId = new Map<string, { completed: boolean; title: string }>();
+  for (const n of nodes) {
+    const meta = n.source_meta ?? {};
+    const rid = typeof meta.reminder_id === "string" ? meta.reminder_id : n.client_uuid;
+    const completed = meta.completed === true;
+    const title = n.title ?? "";
+    const prev = byId.get(rid);
+    // Prefer completed=true if either snapshot says so.
+    if (!prev || completed)
+      byId.set(rid, {
+        completed: prev?.completed || completed,
+        title: title || prev?.title || "",
+      });
+  }
+  let done = 0;
+  const openTitles: string[] = [];
+  for (const v of byId.values()) {
+    if (v.completed) done += 1;
+    else if (v.title) openTitles.push(v.title);
+  }
+  const total = byId.size;
+  return { total, done, rate: total === 0 ? 0 : done / total, openTitles };
 }

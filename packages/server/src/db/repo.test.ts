@@ -2,18 +2,24 @@ import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
 import type { Stats } from "@return/shared";
 import {
+  acceptTodo,
   countCrossDayEdges,
   deleteNode,
+  dismissTodo,
   ensureDay,
+  expireSuggestedTodos,
   getDayByDate,
   getNodeById,
+  getTodo,
   insertEdge,
   insertNode,
   insertNodes,
   insertTodo,
   listNodesByDate,
   listTodosByDay,
+  listTodosByStatus,
   markDaySaved,
+  reminderCompletionRate,
   setTodoDone,
   todoCompletionRate,
   upsertDevice,
@@ -99,6 +105,64 @@ describe("repo", () => {
     assert.equal(rate.done, 1);
     assert.equal(rate.rate, 0.5);
     assert.equal(listTodosByDay(db, day.id).filter((t) => t.done).length, 1);
+    assert.equal(t1.status, "suggested");
+    assert.equal(getTodo(db, t1.id)!.status, "accepted");
+  });
+
+  it("accept / dismiss preference samples", () => {
+    const day = ensureDay(db, "2026-07-24");
+    const t1 = insertTodo(db, { day_id: day.id, text: "Ship loop" });
+    const t2 = insertTodo(db, { day_id: day.id, text: "Buy milk" });
+    const accepted = acceptTodo(db, t1.id, "rem-1")!;
+    assert.equal(accepted.status, "accepted");
+    assert.equal(accepted.accepted_reminder_id, "rem-1");
+    assert.ok(accepted.accepted_at);
+    const dismissed = dismissTodo(db, t2.id)!;
+    assert.equal(dismissed.status, "dismissed");
+    assert.ok(dismissed.dismissed_at);
+    assert.equal(listTodosByStatus(db, "accepted").length, 1);
+    assert.equal(listTodosByStatus(db, "dismissed").length, 1);
+  });
+
+  it("expireSuggestedTodos auto-dismisses past suggested", () => {
+    const oldDay = ensureDay(db, "2026-07-20");
+    const today = ensureDay(db, "2026-07-24");
+    insertTodo(db, { day_id: oldDay.id, text: "stale" });
+    insertTodo(db, { day_id: today.id, text: "fresh" });
+    const n = expireSuggestedTodos(db, "2026-07-24");
+    assert.equal(n, 1);
+    assert.equal(listTodosByStatus(db, "dismissed")[0]!.text, "stale");
+    assert.equal(listTodosByDay(db, today.id)[0]!.status, "suggested");
+  });
+
+  it("reminderCompletionRate prefers completed snapshot", () => {
+    ensureDay(db, "2026-07-24");
+    insertNode(db, {
+      client_uuid: crypto.randomUUID(),
+      kind: "reminder",
+      title: "Ship",
+      date: "2026-07-24",
+      source_meta: { reminder_id: "r1", completed: false },
+    });
+    insertNode(db, {
+      client_uuid: crypto.randomUUID(),
+      kind: "reminder",
+      title: "Ship",
+      date: "2026-07-24",
+      source_meta: { reminder_id: "r1", completed: true },
+    });
+    insertNode(db, {
+      client_uuid: crypto.randomUUID(),
+      kind: "reminder",
+      title: "Open item",
+      date: "2026-07-24",
+      source_meta: { reminder_id: "r2", completed: false },
+    });
+    const rate = reminderCompletionRate(db, "2026-07-24");
+    assert.equal(rate.total, 2);
+    assert.equal(rate.done, 1);
+    assert.equal(rate.rate, 0.5);
+    assert.deepEqual(rate.openTitles, ["Open item"]);
   });
 
   it("cross-day edge count", () => {
