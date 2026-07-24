@@ -41,10 +41,10 @@ UI closed must not stop sampling. Dev: `pnpm dev:sampler`. Prod later: launchd.
 - Source: `sources/git.ts` + `collect-git.ts`
 - `GIT_SCAN_DIRS` comma-separated roots (`~` expanded, resolved absolute). Empty default = feature off, no git spawn.
 - Discovers repos: each root + its direct children (skip hidden / `node_modules`); `.git` file or dir.
-- Discover cache TTL 1h. Per-repo Git query uses the shared `dayStart`/`dayEnd` as `--since`/`--until`.
+- Discover cache TTL 1h. Per-repo: `git log --all --fixed-strings --author=<local user.email> --since=<dayStart> --until=<dayEnd> -n 100 --shortstat`.
 - `client_uuid` = sha256 seed `git:{repoPath}:{sha}` — restart/replay safe (repoPath is absolute).
 - `source_meta`: `{ repo, sha, committed_at, files_changed, insertions, deletions }`
-- Failures silent; never blocks sample main path or outbox flush.
+- Operational failures reach the orchestrator and appear as `stats.git.error: 1`; other sources still run.
 
 ## Apple Reminders (all lists — positive samples for preference loop)
 - Source: `sources/reminders.ts` + `collect-reminders.ts`
@@ -54,9 +54,10 @@ UI closed must not stop sampling. Dev: `pnpm dev:sampler`. Prod later: launchd.
 - `client_uuid` = sha256 seed `reminder:{date}:{id}:{0|1}` — daily snapshot + completed flip produce new nodes.
 - On restart, re-posts are fine (server UNIQUE on client_uuid). Same-process completion flip after first emit is re-emitted because seed changes.
 - `source_meta`: `{ list, completed, due, reminder_id, creation_date, modification_date }`
-- `client_created_at`: modificationDate || creationDate || sample tick (ISO). Dates from JXA best-effort; null on failure.
-- `date`: the shared `SampleContext.day` (current-state snapshot).
-- Failures silent (auth prompt denied, app missing, timeout) — never blocks the tick.
+- `client_created_at`: shared sample tick (`SampleContext.at`); original dates remain in `source_meta`.
+- `date`: shared `SampleContext.day` (current-state snapshot).
+- Rows without a stable Reminders ID are dropped; no synthetic ID is generated.
+- Operational failures reach the orchestrator and appear as `stats.reminders.error: 1`; other sources still run.
 - First run may trigger macOS Automation permission for Reminders / osascript.
 
 ## VS Code recent projects
@@ -68,7 +69,7 @@ UI closed must not stop sampling. Dev: `pnpm dev:sampler`. Prod later: launchd.
 - Cap 30 entries (VS Code order is recent-first). Editor label from which candidate matched (`code` / `code-insiders` / `cursor` / `custom`).
 - `client_uuid` = sha256 seed `vscode:{editor}:{kind}:{uri}`
 - `source_meta`: `{ uri, path, entry_kind, editor }` (`entry_kind`: folder | file | workspace)
-- Kind `vscode_recent` — not an active feed. Failures silent.
+- Kind `vscode_recent` — not an active feed. Operational failures are reported as `stats.vscode.error: 1`.
 
 ## Outbox batching
 - `CreateNodesRequest.nodes` max is **500** (`@return/shared`). `Outbox.enqueue` chunks via `chunkNodes` / `MAX_NODES_PER_BATCH` so a fat sample (e.g. many reminders + history) never POSTs a single body the server Zod-rejects — that used to stick the FIFO head and block all later flushes.
@@ -80,20 +81,22 @@ UI closed must not stop sampling. Dev: `pnpm dev:sampler`. Prod later: launchd.
 - **Must copy** History SQLite to temp before open (Chrome locks the live file); `node:sqlite` DatabaseSync only. Copy includes `History-wal` / `History-shm` when present (`copySqliteWithWal` from `sqlite-snapshot.ts`) — Chrome keeps recent visits in the WAL until checkpoint; main-file-only copy silently drops today's rows.
 - Timestamps: Chrome WebKit µs since 1601-01-01 UTC → ISO via `chromeTimeToIso`. Day filter uses local midnight range. µs exceed `Number.MAX_SAFE_INTEGER` — use `bigint` + `DatabaseSync({ readBigInts: true })` for visit_time / range bounds.
 - Auto-detect (first existing, max 4 DBs): Chrome / Chromium / Edge / Brave under OS-standard user-data dirs; profiles Default + Profile 1..3.
-- `CHROME_HISTORY_PATH` override (single file, skips auto-detect). `CHROME_HISTORY_ENABLED=0|false` disables. `CHROME_HISTORY_LIMIT` default 100 total/tick — parsed as **positive integer** only (`positiveInt`); fraction / ≤0 / NaN falls back to 100 so SQLite `LIMIT ?` never datatype-mismatches and silently empties the source.
+- `CHROME_HISTORY_PATH` override (single file, skips auto-detect). `CHROME_HISTORY_ENABLED=0|false` disables. `CHROME_HISTORY_LIMIT` default 100 total/tick — configured values must be positive integers or sampler startup fails.
 - `client_uuid` = sha256 seed `browse:{browser}:{profile}:{visitId}` — visit id stable within a profile DB.
-- `source_meta`: `{ url, title, visited_at, visit_id, browser, profile }`; `content` = url; `date` = local day of visitedAt.
-- Failures silent; never blocks sample main path or outbox flush.
+- `source_meta`: `{ url, title, visited_at, visit_id, browser, profile }`; `content` = url; `date` = shared `SampleContext.day`.
+- Operational failures reach the orchestrator and appear as `stats.chrome_history.error: 1`; other sources still run.
 
 ## Safari browse history
 - Source: `sources/safari-history.ts` + `collect-safari-history.ts`
 - macOS only; reads `~/Library/Safari/History.db` by default using SQLite copy-then-open with WAL.
-- The sampler process needs Full Disk Access; otherwise the source returns no visits without breaking the tick.
+- The sampler process needs Full Disk Access; denial is reported as `stats.safari_history.error: 1`.
 - Uses the shared `[dayStart, dayEnd)` range and emits the same `browse_history` node structure as Chrome.
 - `SAFARI_HISTORY_PATH` overrides the database; `SAFARI_HISTORY_ENABLED=0` disables it; default limit is 100.
 
 ## Gmail IMAP
 - Source: `sources/gmail.ts` + `collect-gmail.ts`; disabled unless both IMAP user and app password are configured.
 - Read-only INBOX + Sent collection. IMAP `SINCE` narrows the server query; the shared `[dayStart, dayEnd)` range performs the exact client-side filter.
+- Messages without an RFC Message-ID are dropped; no UID-based synthetic identity is generated.
+- Partial credentials, invalid connection settings, missing Sent mailbox, and IMAP/parser failures are reported as `stats.gmail.error: 1`.
 - Received messages contribute to intake; sent messages contribute to output.
 - Credentials remain environment-only and are never logged.

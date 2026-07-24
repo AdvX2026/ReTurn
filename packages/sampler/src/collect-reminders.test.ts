@@ -34,7 +34,7 @@ const FIXTURE_JSON = JSON.stringify([
     modificationDate: "2026-07-22T12:00:00.000Z",
   },
   {
-    // missing id → hash fallback
+    // Missing stable ID: not safe to dedupe across sampler restarts.
     list: "Inbox",
     name: "No id item",
     body: "",
@@ -48,7 +48,7 @@ const FIXTURE_JSON = JSON.stringify([
 describe("parseRemindersOutput", () => {
   it("parses fixture JSON into ReminderItem fields", () => {
     const items = parseRemindersOutput(FIXTURE_JSON);
-    assert.equal(items.length, 3);
+    assert.equal(items.length, 2);
 
     assert.equal(items[0]!.id, "x-apple-reminder://ABC-123");
     assert.equal(items[0]!.list, "Work");
@@ -62,19 +62,22 @@ describe("parseRemindersOutput", () => {
     assert.equal(items[1]!.completed, true);
     assert.equal(items[1]!.body, null);
     assert.equal(items[1]!.due, null);
-
-    // fallback id is stable non-empty hash
-    assert.ok(items[2]!.id.length >= 16);
-    assert.equal(items[2]!.due, null); // garbage date dropped
-    assert.equal(items[2]!.body, null); // empty string → null
   });
 
-  it("returns empty for empty or garbage input", () => {
-    assert.deepEqual(parseRemindersOutput(""), []);
-    assert.deepEqual(parseRemindersOutput("   \n  "), []);
-    assert.deepEqual(parseRemindersOutput("not json"), []);
-    assert.deepEqual(parseRemindersOutput("{}"), []);
-    assert.deepEqual(parseRemindersOutput("null"), []);
+  it("drops rows without a stable Reminders id", () => {
+    assert.deepEqual(
+      parseRemindersOutput(
+        JSON.stringify([{ list: "Inbox", name: "No id", completed: false }]),
+      ),
+      [],
+    );
+  });
+
+  it("rejects malformed collector payloads", () => {
+    assert.throws(() => parseRemindersOutput(""));
+    assert.throws(() => parseRemindersOutput("not json"));
+    assert.throws(() => parseRemindersOutput("{}"), /expected an array/);
+    assert.throws(() => parseRemindersOutput("null"), /expected an array/);
   });
 
   it("accepts completed as string/number truthy forms", () => {
@@ -135,7 +138,7 @@ describe("reminders source emission", () => {
     assert.equal(n.content, "notes");
     assert.equal(n.client_uuid, uuidFromSeed("reminder:2026-07-24:r1:0"));
     assert.equal(n.date, date);
-    assert.equal(n.client_created_at, "2026-07-21T00:00:00.000Z");
+    assert.equal(n.client_created_at, at);
     assert.deepEqual(n.source_meta, {
       list: "Inbox",
       completed: false,
@@ -188,7 +191,7 @@ describe("reminders source emission", () => {
     assert.equal(n.title!.length, 500);
   });
 
-  it("falls back client_created_at to sample tick when dates missing", () => {
+  it("uses the shared sample tick for client_created_at", () => {
     const n = remindersToNodes(
       [
         item({

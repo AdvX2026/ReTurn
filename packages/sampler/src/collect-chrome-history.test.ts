@@ -7,13 +7,18 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 import {
   chromeTimeToIso,
   collectChromeHistory,
-  copySqliteWithWal,
   isoToChromeTime,
-  localDayChromeRange,
   resolveHistoryPaths,
 } from "./collect-chrome-history.js";
 import { uuidFromSeed } from "./source.js";
 import { resetSeenVisits, visitsToNodes } from "./sources/chrome-history.js";
+import { copySqliteWithWal } from "./sqlite-snapshot.js";
+
+const DAY = "2026-07-24";
+const RANGE = {
+  start: "2026-07-24T00:00:00.000Z",
+  end: "2026-07-25T00:00:00.000Z",
+};
 
 describe("chrome time conversion", () => {
   it("chromeTimeToIso known epoch pairs", () => {
@@ -41,22 +46,6 @@ describe("chrome time conversion", () => {
     const d = new Date("2026-01-15T00:00:00.000Z");
     assert.equal(chromeTimeToIso(isoToChromeTime(d)), d.toISOString());
   });
-
-  it("localDayChromeRange is local midnight → next midnight exclusive", () => {
-    // Construct a local noon so day boundaries are unambiguous.
-    const noon = new Date(2026, 6, 24, 12, 0, 0, 0); // July 24 local
-    const { start, end } = localDayChromeRange(noon);
-
-    const startLocal = new Date(2026, 6, 24, 0, 0, 0, 0);
-    const endLocal = new Date(2026, 6, 25, 0, 0, 0, 0);
-    assert.equal(start, isoToChromeTime(startLocal));
-    assert.equal(end, isoToChromeTime(endLocal));
-    assert.ok(end > start);
-
-    // Round-trip through ISO: start is local midnight as UTC ISO
-    assert.equal(chromeTimeToIso(start), startLocal.toISOString());
-    assert.equal(chromeTimeToIso(end), endLocal.toISOString());
-  });
 });
 
 describe("visitsToNodes", () => {
@@ -66,16 +55,19 @@ describe("visitsToNodes", () => {
 
   it("maps visits to browse_history with deterministic uuid", () => {
     const visitedAt = "2026-07-24T02:00:00.000Z";
-    const nodes = visitsToNodes([
-      {
-        visitId: 42,
-        url: "https://example.com/a",
-        title: "Example A",
-        visitedAt,
-        browser: "chrome",
-        profile: "Default",
-      },
-    ]);
+    const nodes = visitsToNodes(
+      [
+        {
+          visitId: 42,
+          url: "https://example.com/a",
+          title: "Example A",
+          visitedAt,
+          browser: "chrome",
+          profile: "Default",
+        },
+      ],
+      DAY,
+    );
     assert.equal(nodes.length, 1);
     const n = nodes[0]!;
     assert.equal(n.kind, "browse_history");
@@ -93,69 +85,65 @@ describe("visitsToNodes", () => {
     });
   });
 
-  it("falls back title to url and truncates to 500", () => {
+  it("uses null for a missing title and truncates to 500", () => {
     const long = "x".repeat(600);
-    const n1 = visitsToNodes([
-      {
-        visitId: 1,
-        url: "https://example.com/long",
-        title: "",
-        visitedAt: "2026-07-24T02:00:00.000Z",
-        browser: "edge",
-        profile: "Default",
-      },
-    ])[0]!;
-    assert.equal(n1.title, "https://example.com/long");
+    const n1 = visitsToNodes(
+      [
+        {
+          visitId: 1,
+          url: "https://example.com/long",
+          title: "",
+          visitedAt: "2026-07-24T02:00:00.000Z",
+          browser: "edge",
+          profile: "Default",
+        },
+      ],
+      DAY,
+    )[0]!;
+    assert.equal(n1.title, null);
 
     resetSeenVisits();
-    const n2 = visitsToNodes([
-      {
-        visitId: 2,
-        url: "https://example.com/t",
-        title: long,
-        visitedAt: "2026-07-24T02:00:00.000Z",
-        browser: "edge",
-        profile: "Default",
-      },
-    ])[0]!;
+    const n2 = visitsToNodes(
+      [
+        {
+          visitId: 2,
+          url: "https://example.com/t",
+          title: long,
+          visitedAt: "2026-07-24T02:00:00.000Z",
+          browser: "edge",
+          profile: "Default",
+        },
+      ],
+      DAY,
+    )[0]!;
     assert.equal(n2.title!.length, 500);
   });
 
-  it("dates visits by local day of visitedAt (cross-midnight)", () => {
-    const d1 = new Date();
-    d1.setHours(12, 0, 0, 0);
-    const d2 = new Date(d1);
-    d2.setDate(d2.getDate() + 1);
-
-    const ymd = (d: Date) => {
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, "0");
-      const day = String(d.getDate()).padStart(2, "0");
-      return `${y}-${m}-${day}`;
-    };
-
-    const nodes = visitsToNodes([
-      {
-        visitId: 10,
-        url: "https://a.test",
-        title: "a",
-        visitedAt: d1.toISOString(),
-        browser: "chrome",
-        profile: "Default",
-      },
-      {
-        visitId: 11,
-        url: "https://b.test",
-        title: "b",
-        visitedAt: d2.toISOString(),
-        browser: "chrome",
-        profile: "Default",
-      },
-    ]);
+  it("uses the shared context day", () => {
+    const nodes = visitsToNodes(
+      [
+        {
+          visitId: 10,
+          url: "https://a.test",
+          title: "a",
+          visitedAt: "2026-07-24T01:00:00.000Z",
+          browser: "chrome",
+          profile: "Default",
+        },
+        {
+          visitId: 11,
+          url: "https://b.test",
+          title: "b",
+          visitedAt: "2026-07-24T15:00:00.000Z",
+          browser: "chrome",
+          profile: "Default",
+        },
+      ],
+      DAY,
+    );
     assert.equal(nodes.length, 2);
-    assert.equal(nodes[0]!.date, ymd(d1));
-    assert.equal(nodes[1]!.date, ymd(d2));
-    assert.notEqual(nodes[0]!.date, nodes[1]!.date);
+    assert.equal(nodes[0]!.date, DAY);
+    assert.equal(nodes[1]!.date, DAY);
   });
 
   it("dedupes by seed key; reset re-emits", () => {
@@ -169,11 +157,11 @@ describe("visitsToNodes", () => {
         profile: "Profile 1",
       },
     ];
-    const first = visitsToNodes(visits);
+    const first = visitsToNodes(visits, DAY);
     assert.equal(first.length, 1);
-    assert.equal(visitsToNodes(visits).length, 0);
+    assert.equal(visitsToNodes(visits, DAY).length, 0);
     resetSeenVisits();
-    const third = visitsToNodes(visits);
+    const third = visitsToNodes(visits, DAY);
     assert.equal(third.length, 1);
     assert.equal(third[0]!.client_uuid, first[0]!.client_uuid);
   });
@@ -196,7 +184,7 @@ describe("collectChromeHistory against temp sqlite", () => {
       CREATE TABLE visits(id INTEGER PRIMARY KEY, url INTEGER, visit_time INTEGER);
     `);
 
-    const { start } = localDayChromeRange();
+    const start = isoToChromeTime(RANGE.start);
     // Three visits today, one "yesterday"
     const insertUrl = db.prepare(`INSERT INTO urls(id, url, title) VALUES (?, ?, ?)`);
     const insertVisit = db.prepare(
@@ -221,6 +209,7 @@ describe("collectChromeHistory against temp sqlite", () => {
     const visits = await collectChromeHistory(
       [{ path: historyPath, browser: "chrome", profile: "Default" }],
       100,
+      RANGE,
     );
     assert.equal(visits.length, 2);
     const urls = visits.map((v) => v.url).sort();
@@ -237,23 +226,26 @@ describe("collectChromeHistory against temp sqlite", () => {
     const visits = await collectChromeHistory(
       [{ path: historyPath, browser: "chrome", profile: "Default" }],
       1,
+      RANGE,
     );
     assert.equal(visits.length, 1);
     assert.equal(visits[0]!.url, "https://today-b.test");
   });
 
-  it("missing path returns empty (silent)", async () => {
-    const visits = await collectChromeHistory(
-      [
-        {
-          path: join(root, "nope", "History"),
-          browser: "chrome",
-          profile: "Default",
-        },
-      ],
-      100,
+  it("missing path rejects instead of reporting an empty sample", async () => {
+    await assert.rejects(
+      collectChromeHistory(
+        [
+          {
+            path: join(root, "nope", "History"),
+            browser: "chrome",
+            profile: "Default",
+          },
+        ],
+        100,
+        RANGE,
+      ),
     );
-    assert.deepEqual(visits, []);
   });
 
   it("WAL-mode History: includes uncheckpointed visits via -wal copy", async () => {
@@ -269,7 +261,7 @@ describe("collectChromeHistory against temp sqlite", () => {
       CREATE TABLE urls(id INTEGER PRIMARY KEY, url TEXT, title TEXT);
       CREATE TABLE visits(id INTEGER PRIMARY KEY, url INTEGER, visit_time INTEGER);
     `);
-    const { start } = localDayChromeRange();
+    const start = isoToChromeTime(RANGE.start);
     live
       .prepare(`INSERT INTO urls(id, url, title) VALUES (?, ?, ?)`)
       .run(1, "https://wal-only.test", "WAL only");
@@ -282,6 +274,7 @@ describe("collectChromeHistory against temp sqlite", () => {
       const visits = await collectChromeHistory(
         [{ path: hist, browser: "chrome", profile: "WalProfile" }],
         100,
+        RANGE,
       );
       assert.equal(visits.length, 1);
       assert.equal(visits[0]!.url, "https://wal-only.test");
@@ -322,10 +315,10 @@ describe("copySqliteWithWal", () => {
 });
 
 describe("resolveHistoryPaths", () => {
-  it("override missing path yields empty", () => {
-    assert.deepEqual(
-      resolveHistoryPaths(process.platform, join(tmpdir(), "no-such-history-db")),
-      [],
+  it("rejects a configured database that does not exist", () => {
+    assert.throws(
+      () => resolveHistoryPaths(process.platform, join(tmpdir(), "no-such-history-db")),
+      /does not exist/,
     );
   });
 

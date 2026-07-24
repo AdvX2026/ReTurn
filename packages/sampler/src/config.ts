@@ -5,50 +5,64 @@ import type { GmailConfig } from "./collect-gmail.js";
 
 loadEnv();
 
-function num(name: string, fallback: number): number {
+function positiveNumber(name: string, defaultValue: number): number {
   const v = process.env[name];
-  if (v === undefined || v === "") return fallback;
+  if (v === undefined || v === "") return defaultValue;
   const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
-}
-
-/**
- * Positive integer only (e.g. SQLite LIMIT binds). Fractions / ≤0 / NaN → fallback.
- * Exported for unit tests.
- */
-export function positiveInt(name: string, fallback: number): number {
-  const v = process.env[name];
-  if (v === undefined || v === "") return fallback;
-  const n = Number(v);
-  if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) return fallback;
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new Error(`invalid ${name}: expected a positive number`);
+  }
   return n;
 }
 
-function str(name: string, fallback = ""): string {
-  return process.env[name] ?? fallback;
+/**
+ * Positive integer only (e.g. SQLite LIMIT binds).
+ * Exported for unit tests.
+ */
+export function positiveInt(name: string, defaultValue: number): number {
+  const v = process.env[name];
+  if (v === undefined || v === "") return defaultValue;
+  const n = Number(v);
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) {
+    throw new Error(`invalid ${name}: expected a positive integer`);
+  }
+  return n;
 }
 
-export function timeZone(value?: string): string {
-  const fallback = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-  const candidate = value?.trim() || fallback;
+function port(name: string, defaultValue: number): number {
+  const value = positiveInt(name, defaultValue);
+  if (value > 65_535) throw new Error(`invalid ${name}: expected a TCP port`);
+  return value;
+}
+
+function str(name: string, defaultValue = ""): string {
+  return process.env[name] ?? defaultValue;
+}
+
+export function parseTimeZone(value?: string): string {
+  const candidate =
+    value?.trim() || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: candidate }).format();
     return candidate;
   } catch {
-    return fallback;
+    throw new Error(`invalid SAMPLER_TIMEZONE: ${candidate}`);
   }
 }
 
-export function fixedNow(value?: string): Date | null {
+export function parseFixedNow(value?: string): Date | null {
   if (!value?.trim()) return null;
   const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error("invalid SAMPLER_NOW: expected an ISO-8601 timestamp");
+  }
+  return parsed;
 }
 
-/** Explicit "0"/"false"/"off"/"no" disables; "1"/"true"/"on"/"yes" enables; unset/empty → fallback. */
-function bool(name: string, fallback: boolean): boolean {
+/** Explicit boolean parser; invalid configured values fail fast. */
+function bool(name: string, defaultValue: boolean): boolean {
   const v = process.env[name];
-  if (v === undefined || v === "") return fallback;
+  if (v === undefined || v === "") return defaultValue;
   const lower = v.toLowerCase();
   if (lower === "0" || lower === "false" || lower === "off" || lower === "no") {
     return false;
@@ -56,7 +70,7 @@ function bool(name: string, fallback: boolean): boolean {
   if (lower === "1" || lower === "true" || lower === "on" || lower === "yes") {
     return true;
   }
-  return fallback;
+  throw new Error(`invalid ${name}: expected a boolean`);
 }
 
 /**
@@ -88,12 +102,19 @@ const dataDir = str("SAMPLER_DATA_DIR", join(homedir(), ".return", "sampler"));
 function gmailConfig(): GmailConfig | null {
   const user = str("GMAIL_IMAP_USER").trim();
   const password = str("GMAIL_IMAP_PASSWORD");
-  if (!user || !password) return null;
+  if (!user && !password) return null;
+  if (!user || !password) {
+    throw new Error(
+      "invalid Gmail configuration: GMAIL_IMAP_USER and GMAIL_IMAP_PASSWORD are both required",
+    );
+  }
+  const host = str("GMAIL_IMAP_HOST", "imap.gmail.com").trim();
+  if (!host) throw new Error("invalid GMAIL_IMAP_HOST: expected a hostname");
   return {
     user,
     password,
-    host: str("GMAIL_IMAP_HOST", "imap.gmail.com"),
-    port: num("GMAIL_IMAP_PORT", 993),
+    host,
+    port: port("GMAIL_IMAP_PORT", 993),
   };
 }
 
@@ -101,14 +122,14 @@ export const config = {
   /** Pi base URL */
   serverUrl: str("RETURN_SERVER_URL", "http://127.0.0.1:8787").replace(/\/$/, ""),
   deviceName: str("SAMPLER_DEVICE_NAME", "Mac Sampler"),
-  sampleIntervalMin: num("SAMPLE_INTERVAL_MIN", 5),
+  sampleIntervalMin: positiveNumber("SAMPLE_INTERVAL_MIN", 5),
   /** One timezone authority shared by every source. */
-  timezone: timeZone(process.env.SAMPLER_TIMEZONE),
+  timezone: parseTimeZone(process.env.SAMPLER_TIMEZONE),
   /** Explicit replay/test clock. Unset in normal long-running operation. */
-  fixedNow: fixedNow(process.env.SAMPLER_NOW),
+  fixedNow: parseFixedNow(process.env.SAMPLER_NOW),
   /** Control plane for UI — loopback only, not configurable (PRD F2: never LAN). */
   localHost: "127.0.0.1",
-  localPort: num("SAMPLER_PORT", 8791),
+  localPort: port("SAMPLER_PORT", 8791),
   dataDir,
   outboxPath: join(dataDir, "outbox.db"),
   /** Stable device id file so restarts reuse registration. */
@@ -148,7 +169,7 @@ export const config = {
    * (Existence check happens at sample time; this flag only forces off.)
    */
   chromeHistoryEnabled: bool("CHROME_HISTORY_ENABLED", true),
-  /** Max visits per sample tick across all History DBs (positive int; bad env → 100). */
+  /** Max visits per sample tick across all History DBs. Invalid values fail startup. */
   chromeHistoryLimit: positiveInt("CHROME_HISTORY_LIMIT", 100),
   safariHistoryPath: str("SAFARI_HISTORY_PATH", ""),
   safariHistoryEnabled: bool("SAFARI_HISTORY_ENABLED", true),

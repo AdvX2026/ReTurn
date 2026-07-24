@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 import {
   collectSafariHistory,
   isoToSafariTime,
+  resolveSafariHistoryPath,
   safariTimeToIso,
 } from "./collect-safari-history.js";
 import { resetSeenSafariVisits, safariVisitsToNodes } from "./sources/safari-history.js";
@@ -47,6 +48,13 @@ describe("Safari history", () => {
   it("round-trips Safari epoch seconds", () => {
     const iso = "2026-07-24T02:00:00.000Z";
     assert.equal(safariTimeToIso(isoToSafariTime(iso)), iso);
+  });
+
+  it("rejects a configured database that does not exist", () => {
+    assert.throws(
+      () => resolveSafariHistoryPath(join(root, "missing.db")),
+      /does not exist/,
+    );
   });
 
   it("filters by the shared range and maps a stable node", async () => {

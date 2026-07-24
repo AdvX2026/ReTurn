@@ -23,11 +23,8 @@ export interface GmailConfig {
 
 export interface EmailMessage {
   direction: EmailDirection;
-  /** RFC Message-ID header (globally stable); null when absent. */
-  messageId: string | null;
-  uid: number;
-  /** Mailbox UIDVALIDITY, for the fallback dedupe key when messageId is null. */
-  uidValidity: string;
+  /** RFC Message-ID header (globally stable). */
+  messageId: string;
   from: string;
   fromName: string | null;
   to: string;
@@ -42,8 +39,6 @@ export interface EmailMessage {
 /** Minimal envelope shape consumed by the pure mapper (subset of ImapFlow). */
 export interface RawFetch {
   direction: EmailDirection;
-  uid: number;
-  uidValidity: string;
   envelope:
     | {
         messageId?: string | null;
@@ -64,6 +59,8 @@ export interface RawFetch {
 export function toEmailMessage(raw: RawFetch): EmailMessage | null {
   const env = raw.envelope;
   if (!env) return null;
+  const messageId = env.messageId?.trim();
+  if (!messageId) return null;
   const date = env.date ?? null;
   if (!date || Number.isNaN(date.getTime())) return null;
 
@@ -74,9 +71,7 @@ export function toEmailMessage(raw: RawFetch): EmailMessage | null {
 
   return {
     direction: raw.direction,
-    messageId: env.messageId ?? null,
-    uid: raw.uid,
-    uidValidity: raw.uidValidity,
+    messageId,
     from: from?.address ?? "",
     fromName: from?.name ?? null,
     to: to?.address ?? "",
@@ -89,10 +84,8 @@ export function toEmailMessage(raw: RawFetch): EmailMessage | null {
 
 /**
  * Connect and fetch messages from INBOX + Sent within the shared tick range.
- * Any connection / search / parse failure yields [] — never throws, so a bad
- * tick never blocks sampling or the outbox flush.
  */
-export async function fetchTodayEmails(
+export async function fetchEmails(
   cfg: GmailConfig,
   range: { start: string; end: string },
 ): Promise<EmailMessage[]> {
@@ -105,46 +98,36 @@ export async function fetchTodayEmails(
   });
 
   const out: EmailMessage[] = [];
+  let connected = false;
   try {
     await client.connect();
+    connected = true;
     const since = new Date(range.start);
     const end = Date.parse(range.end);
 
     const targets: Array<{ path: string; direction: EmailDirection }> = [
       { path: "INBOX", direction: "received" },
     ];
-    const sentPath = await findSentMailbox(client);
-    if (sentPath) targets.push({ path: sentPath, direction: "sent" });
+    targets.push({ path: await findSentMailbox(client), direction: "sent" });
 
     for (const t of targets) {
-      const msgs = await fetchMailbox(client, t.path, t.direction, since, end).catch(
-        () => [] as EmailMessage[],
-      );
+      const msgs = await fetchMailbox(client, t.path, t.direction, since, end);
       out.push(...msgs);
     }
-  } catch {
-    return [];
   } finally {
-    try {
-      await client.logout();
-    } catch {
-      /* already disconnected */
-    }
+    if (connected) await client.logout();
   }
   return out;
 }
 
-/** Resolve the Sent mailbox path via \Sent special-use, with Gmail fallback. */
-async function findSentMailbox(client: ImapFlow): Promise<string | null> {
-  try {
-    const list = await client.list();
-    const special = list.find((b) => b.specialUse === "\\Sent");
-    if (special) return special.path;
-    const gmail = list.find((b) => b.path === "[Gmail]/Sent Mail");
-    return gmail?.path ?? null;
-  } catch {
-    return null;
-  }
+/** Resolve the Sent mailbox path across Gmail's supported IMAP schemas. */
+async function findSentMailbox(client: ImapFlow): Promise<string> {
+  const list = await client.list();
+  const mailbox =
+    list.find((candidate) => candidate.specialUse === "\\Sent") ??
+    list.find((candidate) => candidate.path === "[Gmail]/Sent Mail");
+  if (!mailbox) throw new Error("Gmail Sent mailbox not found");
+  return mailbox.path;
 }
 
 /** Fetch + map today's messages from one mailbox (read-only lock). */
@@ -158,9 +141,6 @@ async function fetchMailbox(
   const lock = await client.getMailboxLock(path);
   const res: EmailMessage[] = [];
   try {
-    const box = client.mailbox;
-    const uidValidity = box && typeof box !== "boolean" ? String(box.uidValidity) : "0";
-
     const uids = await client.search({ since }, { uid: true });
     if (!uids || uids.length === 0) return [];
 
@@ -171,17 +151,11 @@ async function fetchMailbox(
     )) {
       let text: string | null = null;
       if (msg.source) {
-        try {
-          const parsed = await simpleParser(msg.source);
-          text = parsed.text ?? null;
-        } catch {
-          text = null;
-        }
+        const parsed = await simpleParser(msg.source);
+        text = parsed.text ?? null;
       }
       const email = toEmailMessage({
         direction,
-        uid: msg.uid,
-        uidValidity,
         envelope: msg.envelope as RawFetch["envelope"],
         text,
       });

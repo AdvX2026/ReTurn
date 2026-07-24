@@ -23,7 +23,14 @@ export function isoToSafariTime(iso: string): number {
 }
 
 export function resolveSafariHistoryPath(override?: string): string | null {
-  const path = override?.trim() || join(homedir(), "Library", "Safari", "History.db");
+  const configured = override?.trim();
+  if (configured) {
+    if (!existsSync(configured)) {
+      throw new Error(`configured Safari history database does not exist: ${configured}`);
+    }
+    return configured;
+  }
+  const path = join(homedir(), "Library", "Safari", "History.db");
   return existsSync(path) ? path : null;
 }
 
@@ -35,15 +42,10 @@ export async function collectSafariHistory(
   if (limit <= 0) return [];
   const tmpRoot = await mkdtemp(join(tmpdir(), "return-safari-hist-"));
   const tmpPath = join(tmpRoot, "History.db");
-  try {
-    await copySqliteWithWal(path, tmpPath);
-  } catch {
-    await rm(tmpRoot, { recursive: true, force: true }).catch(() => undefined);
-    return [];
-  }
 
   let db: DatabaseSync | null = null;
   try {
+    await copySqliteWithWal(path, tmpPath);
     db = new DatabaseSync(tmpPath, { readOnly: true });
     const rows = db
       .prepare(
@@ -69,11 +71,9 @@ export async function collectSafariHistory(
       browser: "safari",
       profile: "Default",
     }));
-  } catch {
-    return [];
   } finally {
     db?.close();
     await unlinkSqliteSnapshot(tmpPath);
-    await rm(tmpRoot, { recursive: true, force: true }).catch(() => undefined);
+    await rm(tmpRoot, { recursive: true, force: true });
   }
 }

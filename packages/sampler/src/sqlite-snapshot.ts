@@ -3,8 +3,7 @@
  *
  * Apps that keep the DB open (Chrome, VS Code, …) often leave recent pages
  * only in the WAL until checkpoint. Copying the main file alone silently
- * drops those rows / keys. Failures on side-cars are ignored — main-only is
- * still better than aborting the sample tick.
+ * drops those rows / keys, so an existing side-car must copy successfully.
  */
 import { copyFileSync, existsSync, unlinkSync } from "node:fs";
 import { copyFile, unlink } from "node:fs/promises";
@@ -17,11 +16,7 @@ export function copySqliteWithWalSync(srcPath: string, tmpPath: string): void {
   for (const suffix of SQLITE_WAL_SUFFIXES) {
     const side = `${srcPath}${suffix}`;
     if (!existsSync(side)) continue;
-    try {
-      copyFileSync(side, `${tmpPath}${suffix}`);
-    } catch {
-      // Side-car may be mid-write; main-only copy is still better than aborting.
-    }
+    copyFileSync(side, `${tmpPath}${suffix}`);
   }
 }
 
@@ -30,11 +25,7 @@ export async function copySqliteWithWal(srcPath: string, tmpPath: string): Promi
   for (const suffix of SQLITE_WAL_SUFFIXES) {
     const side = `${srcPath}${suffix}`;
     if (!existsSync(side)) continue;
-    try {
-      await copyFile(side, `${tmpPath}${suffix}`);
-    } catch {
-      // Side-car may be mid-write; main-only copy is still better than aborting.
-    }
+    await copyFile(side, `${tmpPath}${suffix}`);
   }
 }
 

@@ -2,8 +2,7 @@
  * Apple Reminders SampleSource.
  *
  * Read-only dump of all lists → reminder nodes. Positive-sample source for
- * the todo preference loop (PRD §6.3). Silent on non-darwin / disabled /
- * osascript failure. Never writes to Reminders.
+ * the todo preference loop (PRD §6.3). Never writes to Reminders.
  *
  * client_uuid seed includes local date + completed so:
  * - incomplete→complete emits a new node (server insert-only on client_uuid)
@@ -51,14 +50,10 @@ export function remindersToNodes(
     const seed = reminderSeed(item, date);
     if (!dedupe.tryAdd(seed)) continue;
 
-    const title =
-      item.name.length > 500 ? item.name.slice(0, 500) : item.name || "(untitled)";
-    const createdAt = item.modificationDate || item.creationDate || opts.at;
-
     nodes.push({
       client_uuid: uuidFromSeed(seed),
       kind: "reminder",
-      title,
+      title: item.name ? item.name.slice(0, 500) : null,
       content: item.body,
       source_meta: {
         list: item.list,
@@ -68,7 +63,7 @@ export function remindersToNodes(
         creation_date: item.creationDate,
         modification_date: item.modificationDate,
       },
-      client_created_at: createdAt,
+      client_created_at: opts.at,
       // Current-state snapshot for preference loop — bucket by sample day.
       date,
     });
@@ -83,7 +78,7 @@ export const remindersSource: SampleSource = {
       return { nodes: [], stats: { skipped: 1, items: 0, emitted: 0 } };
     }
 
-    const items = await collectReminders().catch(() => [] as ReminderItem[]);
+    const items = await collectReminders();
     const nodes = remindersToNodes(items, { at: ctx.at, date: ctx.day });
     return {
       nodes,

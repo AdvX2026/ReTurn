@@ -63,7 +63,7 @@ function agentNode(a: AgentInterval, day: string): NodeInput {
  */
 export function intervalsToNodes(
   intervals: AgentInterval[],
-  opts: { day: string; asSnapshot?: boolean; dedupe?: KeyDedupe },
+  opts: { day: string; dedupe?: KeyDedupe },
 ): NodeInput[] {
   const d = opts.dedupe ?? seen;
   const nodes: NodeInput[] = [];
@@ -80,16 +80,10 @@ export const agentsSource: SampleSource = {
   async sample(ctx: SampleContext): Promise<SourceResult> {
     const intervals = await collectAgentIntervals({
       now: new Date(ctx.at),
-      day: ctx.day,
       dayStartMs: Date.parse(ctx.dayStart),
       dayEndMs: Date.parse(ctx.dayEnd),
-    }).catch(() => [] as AgentInterval[]);
-    // asSnapshot does not change agent emission — open never enqueued (server insert-only).
-    void ctx.asSnapshot;
-    const nodes = intervalsToNodes(intervals, {
-      day: ctx.day,
-      asSnapshot: ctx.asSnapshot,
     });
+    const nodes = intervalsToNodes(intervals, { day: ctx.day });
     return {
       nodes,
       stats: {

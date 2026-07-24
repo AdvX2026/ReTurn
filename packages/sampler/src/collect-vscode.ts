@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
  *
  * Copy-then-open (VS Code may lock the live DB). state.vscdb uses WAL while
  * the editor is open — copy includes -wal/-shm via copySqliteWithWalSync so
- * recent ItemTable keys are not silently dropped. Failures silent.
+ * recent ItemTable keys are not silently dropped.
  */
 import { existsSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -114,7 +114,9 @@ export function resolveVscodeStateDb(override = ""): ResolvedVscodeDb | null {
   const raw = override.trim();
   if (raw) {
     const path = expandHome(raw);
-    if (!existsSync(path)) return null;
+    if (!existsSync(path)) {
+      throw new Error(`configured VS Code database does not exist: ${path}`);
+    }
     return { path, editor: "custom" };
   }
   for (const c of defaultVscodeDbCandidates()) {
@@ -126,16 +128,7 @@ export function resolveVscodeStateDb(override = ""): ResolvedVscodeDb | null {
 /** Decode file:// URIs; leave other schemes / bare paths as-is. */
 export function uriToPath(uri: string): string {
   if (!uri.startsWith("file:")) return uri;
-  try {
-    return fileURLToPath(uri);
-  } catch {
-    // Fallback: strip file:// and decodeURI (handles odd/relative forms).
-    try {
-      return decodeURIComponent(uri.replace(/^file:\/\//, ""));
-    } catch {
-      return uri;
-    }
-  }
+  return fileURLToPath(uri);
 }
 
 /**
@@ -191,18 +184,13 @@ export function parseRecentlyOpened(json: string, editor: string): VscodeRecent[
 
 /**
  * Copy state.vscdb (+ WAL/SHM when present) to a temp file, read ItemTable
- * keys, close + unlink. Returns empty on any failure.
+ * keys, close + unlink.
  */
 export function readRecentlyOpenedJson(dbPath: string): string | null {
   const tmp = join(tmpdir(), `return-vscode-${randomUUID()}.vscdb`);
-  try {
-    copySqliteWithWalSync(dbPath, tmp);
-  } catch {
-    return null;
-  }
-
   let db: DatabaseSync | null = null;
   try {
+    copySqliteWithWalSync(dbPath, tmp);
     db = new DatabaseSync(tmp, { readOnly: true });
     const stmt = db.prepare(`SELECT key, value FROM ItemTable WHERE key IN (?, ?)`);
     const rows = stmt.all(PRIMARY_KEY, SECONDARY_KEY) as Array<{
@@ -223,35 +211,20 @@ export function readRecentlyOpenedJson(dbPath: string): string | null {
       if (row.key === PRIMARY_KEY) primary = value;
       else if (row.key === SECONDARY_KEY) secondary = value;
     }
-    // Prefer the primary history list; secondary is a fallback if present alone.
+    // Both keys are real schemas used by supported editor versions.
     return primary ?? secondary;
-  } catch {
-    return null;
   } finally {
-    try {
-      db?.close();
-    } catch {
-      /* ignore */
-    }
+    db?.close();
     unlinkSqliteSnapshotSync(tmp);
   }
 }
 
-/**
- * Collect recent projects from a state.vscdb path.
- * Null / missing path → []. Failures silent.
- */
+/** Collect recent projects from an existing state.vscdb path. */
 export async function collectVscodeRecents(
-  dbPath: string | null,
+  dbPath: string,
   editor = "code",
 ): Promise<VscodeRecent[]> {
-  if (!dbPath) return [];
-  try {
-    if (!existsSync(dbPath)) return [];
-    const json = readRecentlyOpenedJson(dbPath);
-    if (!json) return [];
-    return parseRecentlyOpened(json, editor);
-  } catch {
-    return [];
-  }
+  const json = readRecentlyOpenedJson(dbPath);
+  if (!json) return [];
+  return parseRecentlyOpened(json, editor);
 }

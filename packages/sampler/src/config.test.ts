@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { fixedNow, positiveInt, timeZone } from "./config.js";
+import { parseFixedNow, parseTimeZone, positiveInt } from "./config.js";
 
 describe("positiveInt", () => {
   const KEY = "RETURN_TEST_POSITIVE_INT";
@@ -9,7 +9,7 @@ describe("positiveInt", () => {
     delete process.env[KEY];
   });
 
-  it("returns fallback when unset or empty", () => {
+  it("uses the declared default when unset or empty", () => {
     delete process.env[KEY];
     assert.equal(positiveInt(KEY, 100), 100);
     process.env[KEY] = "";
@@ -23,30 +23,30 @@ describe("positiveInt", () => {
     assert.equal(positiveInt(KEY, 100), 1);
   });
 
-  it("rejects fractions, zero, negative, non-numeric (SQLite LIMIT safety)", () => {
+  it("throws for fractions, zero, negative, non-numeric", () => {
     process.env[KEY] = "10.5";
-    assert.equal(positiveInt(KEY, 100), 100);
+    assert.throws(() => positiveInt(KEY, 100), /positive integer/);
     process.env[KEY] = "0";
-    assert.equal(positiveInt(KEY, 100), 100);
+    assert.throws(() => positiveInt(KEY, 100), /positive integer/);
     process.env[KEY] = "-3";
-    assert.equal(positiveInt(KEY, 100), 100);
+    assert.throws(() => positiveInt(KEY, 100), /positive integer/);
     process.env[KEY] = "nope";
-    assert.equal(positiveInt(KEY, 100), 100);
+    assert.throws(() => positiveInt(KEY, 100), /positive integer/);
   });
 });
 
 describe("global sampler clock config", () => {
-  it("accepts an IANA timezone and falls back for garbage", () => {
-    assert.equal(timeZone("Asia/Singapore"), "Asia/Singapore");
-    assert.notEqual(timeZone("not/a-zone"), "not/a-zone");
+  it("accepts an IANA timezone and rejects garbage", () => {
+    assert.equal(parseTimeZone("Asia/Singapore"), "Asia/Singapore");
+    assert.throws(() => parseTimeZone("not/a-zone"), /invalid SAMPLER_TIMEZONE/);
   });
 
   it("accepts only parseable fixed replay clocks", () => {
     assert.equal(
-      fixedNow("2026-07-24T12:00:00+08:00")?.toISOString(),
+      parseFixedNow("2026-07-24T12:00:00+08:00")?.toISOString(),
       "2026-07-24T04:00:00.000Z",
     );
-    assert.equal(fixedNow("garbage"), null);
-    assert.equal(fixedNow(""), null);
+    assert.throws(() => parseFixedNow("garbage"), /invalid SAMPLER_NOW/);
+    assert.equal(parseFixedNow(""), null);
   });
 });

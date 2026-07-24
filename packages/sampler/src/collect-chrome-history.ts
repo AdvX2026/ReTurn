@@ -4,7 +4,6 @@
  * Chrome locks the live History DB — always copy to a temp file before open.
  * History uses WAL: recent visits often live only in History-wal until
  * checkpoint, so the snapshot must include -wal/-shm when present.
- * Failures are silent (return []); never block the sample tick.
  */
 import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -12,9 +11,6 @@ import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { copySqliteWithWal, unlinkSqliteSnapshot } from "./sqlite-snapshot.js";
-
-// Re-export for tests / callers that previously imported from this module.
-export { copySqliteWithWal } from "./sqlite-snapshot.js";
 
 /** Microseconds between Windows FILETIME epoch (1601-01-01) and Unix epoch. */
 const WEBKIT_EPOCH_OFFSET_MS = 11_644_473_600_000;
@@ -55,22 +51,6 @@ export function isoToChromeTime(d: Date | string): bigint {
   return BigInt(ms + WEBKIT_EPOCH_OFFSET_MS) * 1000n;
 }
 
-/**
- * Local-calendar-day range as Chrome WebKit µs timestamps (bigint).
- * start inclusive / end exclusive — local midnight today → tomorrow.
- */
-export function localDayChromeRange(d = new Date()): {
-  start: bigint;
-  end: bigint;
-} {
-  const startLocal = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const endLocal = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
-  return {
-    start: isoToChromeTime(startLocal),
-    end: isoToChromeTime(endLocal),
-  };
-}
-
 /** Hard cap on concurrent History DBs (profiles × browsers). */
 const MAX_HISTORY_DBS = 4;
 
@@ -84,7 +64,9 @@ export function resolveHistoryPaths(
 ): HistoryDbPath[] {
   if (override?.trim()) {
     const p = expandHome(override.trim());
-    if (!existsSync(p)) return [];
+    if (!existsSync(p)) {
+      throw new Error(`configured Chrome history database does not exist: ${p}`);
+    }
     return [{ path: p, browser: "chrome", profile: profileFromPath(p) }];
   }
 
@@ -193,21 +175,15 @@ function pushProfiles(out: HistoryDbPath[], userDataRoot: string, browser: strin
  */
 export async function collectChromeHistory(
   paths: HistoryDbPath[],
-  limit = 100,
-  range?: { start: string; end: string },
+  limit: number,
+  range: { start: string; end: string },
 ): Promise<BrowseVisit[]> {
   if (paths.length === 0 || limit <= 0) return [];
 
-  const { start, end } = range
-    ? {
-        start: isoToChromeTime(range.start),
-        end: isoToChromeTime(range.end),
-      }
-    : localDayChromeRange();
+  const start = isoToChromeTime(range.start);
+  const end = isoToChromeTime(range.end);
   const perDb = await Promise.all(
-    paths.map((p) =>
-      readHistoryDb(p, start, end, limit).catch(() => [] as BrowseVisit[]),
-    ),
+    paths.map((path) => readHistoryDb(path, start, end, limit)),
   );
 
   const all = perDb.flat();
@@ -225,16 +201,10 @@ async function readHistoryDb(
 ): Promise<BrowseVisit[]> {
   const tmpRoot = await mkdtemp(join(tmpdir(), "return-chrome-hist-"));
   const tmpPath = join(tmpRoot, "History");
-  try {
-    await copySqliteWithWal(db.path, tmpPath);
-  } catch {
-    // Chrome may hold a short lock — silent fail
-    await rm(tmpRoot, { recursive: true, force: true }).catch(() => undefined);
-    return [];
-  }
 
   let sqlite: DatabaseSync | null = null;
   try {
+    await copySqliteWithWal(db.path, tmpPath);
     // readBigInts: visit_time µs (~1.3e16) exceeds Number.MAX_SAFE_INTEGER;
     // without this, node:sqlite throws RangeError on row materialization.
     sqlite = new DatabaseSync(tmpPath, { readOnly: true, readBigInts: true });
@@ -262,15 +232,9 @@ async function readHistoryDb(
       browser: db.browser,
       profile: db.profile,
     }));
-  } catch {
-    return [];
   } finally {
-    try {
-      sqlite?.close();
-    } catch {
-      /* ignore */
-    }
+    sqlite?.close();
     await unlinkSqliteSnapshot(tmpPath);
-    await rm(tmpRoot, { recursive: true, force: true }).catch(() => undefined);
+    await rm(tmpRoot, { recursive: true, force: true });
   }
 }

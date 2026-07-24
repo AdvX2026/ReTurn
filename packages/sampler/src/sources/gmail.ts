@@ -6,7 +6,7 @@
  * collect.ts only registers this source.
  */
 import type { NodeInput } from "@return/shared";
-import { type EmailMessage, fetchTodayEmails } from "../collect-gmail.js";
+import { type EmailMessage, fetchEmails } from "../collect-gmail.js";
 import { config } from "../config.js";
 import {
   type KeyDedupe,
@@ -14,7 +14,6 @@ import {
   type SampleSource,
   type SourceResult,
   createKeyDedupe,
-  todayLocal,
   uuidFromSeed,
 } from "../source.js";
 
@@ -25,21 +24,19 @@ export function resetSeenEmailKeys(): void {
   seen.clear();
 }
 
-/** Stable dedupe key — Message-ID when present, else per-mailbox uid. */
+/** Stable dedupe key from the required RFC Message-ID. */
 function emailKey(m: EmailMessage): string {
-  return m.messageId ?? `${m.direction}:${m.uidValidity}:${m.uid}`;
+  return m.messageId;
 }
 
 /** Deterministic seed → same message → same client_uuid across restarts. */
 function emailSeed(m: EmailMessage): string {
-  return m.messageId
-    ? `gmail:${m.messageId}`
-    : `gmail:${m.direction}:uidvalidity:${m.uidValidity}:uid:${m.uid}`;
+  return `gmail:${m.messageId}`;
 }
 
 export function emailsToNodes(
   emails: EmailMessage[],
-  day?: string,
+  day: string,
   dedupe: KeyDedupe = seen,
 ): NodeInput[] {
   const nodes: NodeInput[] = [];
@@ -49,7 +46,7 @@ export function emailsToNodes(
     nodes.push({
       client_uuid: uuidFromSeed(emailSeed(m)),
       kind: "email",
-      title,
+      title: title || null,
       content: m.snippet || null,
       source_meta: {
         direction: m.direction,
@@ -63,8 +60,7 @@ export function emailsToNodes(
         message_id: m.messageId,
       },
       client_created_at: m.receivedAt,
-      // Bucket by envelope time so cross-midnight mail lands on the right day.
-      date: day ?? todayLocal(new Date(m.receivedAt)),
+      date: day,
     });
   }
   return nodes;
@@ -76,10 +72,10 @@ export const gmailSource: SampleSource = {
     if (!config.gmail) {
       return { nodes: [], stats: { configured: 0 } };
     }
-    const emails = await fetchTodayEmails(config.gmail, {
+    const emails = await fetchEmails(config.gmail, {
       start: ctx.dayStart,
       end: ctx.dayEnd,
-    }).catch(() => [] as EmailMessage[]);
+    });
     const nodes = emailsToNodes(emails, ctx.day);
     return {
       nodes,

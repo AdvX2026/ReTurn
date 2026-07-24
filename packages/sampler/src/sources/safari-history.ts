@@ -28,11 +28,11 @@ export function safariVisitsToNodes(
   for (const visit of visits) {
     const key = `browse:safari:Default:${visit.visitId}`;
     if (!dedupe.tryAdd(key)) continue;
-    const rawTitle = (visit.title || visit.url).trim() || visit.url;
+    const title = visit.title.trim();
     nodes.push({
       client_uuid: uuidFromSeed(key),
       kind: "browse_history",
-      title: rawTitle.slice(0, 500),
+      title: title ? title.slice(0, 500) : null,
       content: visit.url,
       source_meta: {
         url: visit.url,
@@ -62,7 +62,7 @@ export const safariHistorySource: SampleSource = {
     const visits = await collectSafariHistory(path, config.safariHistoryLimit, {
       start: ctx.dayStart,
       end: ctx.dayEnd,
-    }).catch(() => []);
+    });
     const nodes = safariVisitsToNodes(visits, ctx.day);
     return {
       nodes,

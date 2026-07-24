@@ -4,11 +4,11 @@ import { type EmailMessage, toEmailMessage } from "./collect-gmail.js";
 import { uuidFromSeed } from "./source.js";
 import { emailsToNodes, resetSeenEmailKeys } from "./sources/gmail.js";
 
+const DAY = "2026-07-24";
+
 describe("toEmailMessage", () => {
   const base = {
     direction: "received" as const,
-    uid: 42,
-    uidValidity: "1",
     text: "hello body",
   };
 
@@ -46,21 +46,21 @@ describe("toEmailMessage", () => {
     assert.equal(toEmailMessage({ ...base, envelope: null }), null);
   });
 
-  it("allows null messageId (uid fallback happens at node layer)", () => {
-    const em = toEmailMessage({
-      ...base,
-      envelope: { subject: "x", date: new Date("2026-07-24T02:00:00.000Z") },
-    });
-    assert.ok(em);
-    assert.equal(em!.messageId, null);
-    assert.equal(em!.from, "");
-    assert.equal(em!.fromName, null);
+  it("drops messages without a stable RFC Message-ID", () => {
+    assert.equal(
+      toEmailMessage({
+        ...base,
+        envelope: { subject: "x", date: new Date("2026-07-24T02:00:00.000Z") },
+      }),
+      null,
+    );
   });
 
   it("converts offset date to UTC ISO (Z)", () => {
     const em = toEmailMessage({
       ...base,
       envelope: {
+        messageId: "<morning@x>",
         subject: "morning",
         date: new Date("2026-07-24T10:00:00+08:00"),
       },
@@ -75,7 +75,11 @@ describe("toEmailMessage", () => {
     const em = toEmailMessage({
       ...base,
       text: long,
-      envelope: { subject: "s", date: new Date("2026-07-24T02:00:00.000Z") },
+      envelope: {
+        messageId: "<snippet@x>",
+        subject: "s",
+        date: new Date("2026-07-24T02:00:00.000Z"),
+      },
     });
     assert.ok(em);
     assert.equal(em!.snippet.length, 2000);
@@ -90,8 +94,6 @@ describe("gmail source emission", () => {
   const msg = (over: Partial<EmailMessage> = {}): EmailMessage => ({
     direction: "received",
     messageId: "<m1@x>",
-    uid: 1,
-    uidValidity: "9",
     from: "a@x.com",
     fromName: "A",
     to: "me@gmail.com",
@@ -103,7 +105,7 @@ describe("gmail source emission", () => {
   });
 
   it("maps received mail to an email node (INBOX + intake meta)", () => {
-    const nodes = emailsToNodes([msg()]);
+    const nodes = emailsToNodes([msg()], DAY);
     assert.equal(nodes.length, 1);
     const n = nodes[0]!;
     assert.equal(n.kind, "email");
@@ -125,63 +127,49 @@ describe("gmail source emission", () => {
   });
 
   it("maps sent mail to SENT mailbox meta", () => {
-    const n = emailsToNodes([msg({ direction: "sent", messageId: "<s1@x>" })])[0]!;
+    const n = emailsToNodes([msg({ direction: "sent", messageId: "<s1@x>" })], DAY)[0]!;
     const meta = n.source_meta as Record<string, unknown>;
     assert.equal(meta.direction, "sent");
     assert.equal(meta.mailbox, "SENT");
   });
 
   it("truncates subject to 500 chars for title", () => {
-    const n = emailsToNodes([
-      msg({ messageId: "<long@x>", subject: "x".repeat(600) }),
-    ])[0]!;
+    const n = emailsToNodes(
+      [msg({ messageId: "<long@x>", subject: "x".repeat(600) })],
+      DAY,
+    )[0]!;
     assert.equal(n.title!.length, 500);
   });
 
   it("empty snippet maps content to null", () => {
-    const n = emailsToNodes([msg({ messageId: "<empty@x>", snippet: "" })])[0]!;
+    const n = emailsToNodes([msg({ messageId: "<empty@x>", snippet: "" })], DAY)[0]!;
     assert.equal(n.content, null);
   });
 
-  it("is deterministic by messageId; falls back to uid when absent", () => {
-    const withId = emailsToNodes([msg({ messageId: "<same@x>" })])[0]!;
+  it("is deterministic by Message-ID", () => {
+    const withId = emailsToNodes([msg({ messageId: "<same@x>" })], DAY)[0]!;
     resetSeenEmailKeys();
-    const again = emailsToNodes([msg({ messageId: "<same@x>" })])[0]!;
+    const again = emailsToNodes([msg({ messageId: "<same@x>" })], DAY)[0]!;
     assert.equal(withId.client_uuid, again.client_uuid);
-
-    resetSeenEmailKeys();
-    const noId = emailsToNodes([
-      msg({ messageId: null, direction: "sent", uidValidity: "9", uid: 7 }),
-    ])[0]!;
-    assert.equal(noId.client_uuid, uuidFromSeed("gmail:sent:uidvalidity:9:uid:7"));
   });
 
-  it("dates mail by envelope local day (cross-midnight)", () => {
-    const d1 = new Date();
-    d1.setHours(12, 0, 0, 0);
-    const d2 = new Date(d1);
-    d2.setDate(d2.getDate() + 1);
-    const ymd = (d: Date) => {
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, "0");
-      const day = String(d.getDate()).padStart(2, "0");
-      return `${y}-${m}-${day}`;
-    };
-
-    const nodes = emailsToNodes([
-      msg({ messageId: "<d1@x>", receivedAt: d1.toISOString() }),
-      msg({ messageId: "<d2@x>", receivedAt: d2.toISOString() }),
-    ]);
-    assert.equal(nodes[0]!.date, ymd(d1));
-    assert.equal(nodes[1]!.date, ymd(d2));
-    assert.notEqual(nodes[0]!.date, nodes[1]!.date);
+  it("uses the shared context day", () => {
+    const nodes = emailsToNodes(
+      [
+        msg({ messageId: "<d1@x>", receivedAt: "2026-07-24T01:00:00.000Z" }),
+        msg({ messageId: "<d2@x>", receivedAt: "2026-07-24T15:00:00.000Z" }),
+      ],
+      DAY,
+    );
+    assert.equal(nodes[0]!.date, DAY);
+    assert.equal(nodes[1]!.date, DAY);
   });
 
   it("dedupes in-process; reset re-emits", () => {
     const batch = [msg({ messageId: "<dup@x>" })];
-    assert.equal(emailsToNodes(batch).length, 1);
-    assert.equal(emailsToNodes(batch).length, 0);
+    assert.equal(emailsToNodes(batch, DAY).length, 1);
+    assert.equal(emailsToNodes(batch, DAY).length, 0);
     resetSeenEmailKeys();
-    assert.equal(emailsToNodes(batch).length, 1);
+    assert.equal(emailsToNodes(batch, DAY).length, 1);
   });
 });

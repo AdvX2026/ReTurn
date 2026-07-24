@@ -2,7 +2,6 @@ import { execFile } from "node:child_process";
 import { readdir, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
-import { todayLocal } from "./source.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -51,15 +50,11 @@ export async function discoverRepos(roots: string[]): Promise<string[]> {
 
   for (const root of roots) {
     const candidates: string[] = [root];
-    try {
-      const entries = await readdir(root, { withFileTypes: true });
-      for (const e of entries) {
-        if (!e.isDirectory()) continue;
-        if (e.name.startsWith(".") || e.name === "node_modules") continue;
-        candidates.push(join(root, e.name));
-      }
-    } catch {
-      /* unreadable root — still try the root itself */
+    const entries = await readdir(root, { withFileTypes: true });
+    for (const e of entries) {
+      if (!e.isDirectory()) continue;
+      if (e.name.startsWith(".") || e.name === "node_modules") continue;
+      candidates.push(join(root, e.name));
     }
 
     for (const candidate of candidates) {
@@ -79,66 +74,56 @@ async function isGitRepo(dir: string): Promise<boolean> {
   try {
     await stat(join(dir, ".git"));
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
   }
 }
 
 /**
  * Scan today's local commits under the given roots.
- * Empty roots → no spawn, return []. Failures per-repo are silent.
+ * Empty roots → no spawn, return [].
  */
-export async function scanTodayCommits(
+export async function scanCommits(
   roots: string[],
-  range?: { start: string; end: string },
+  range: { start: string; end: string },
 ): Promise<GitCommit[]> {
   if (roots.length === 0) return [];
-  const repos = await discoverRepos(roots).catch(() => [] as string[]);
+  const repos = await discoverRepos(roots);
   if (repos.length === 0) return [];
 
-  const since = range?.start ?? `${todayLocal()}T00:00:00`;
-  const results = await Promise.all(
-    repos.map((repoPath) =>
-      scanRepo(repoPath, since, range?.end).catch(() => [] as GitCommit[]),
-    ),
-  );
+  const results = await Promise.all(repos.map((repoPath) => scanRepo(repoPath, range)));
   return results.flat();
 }
 
 async function scanRepo(
   repoPath: string,
-  since: string,
-  until?: string,
+  range: { start: string; end: string },
 ): Promise<GitCommit[]> {
-  try {
-    // Only this machine's configured author — shared repos must not score coworkers.
-    const author = await localGitAuthor(repoPath);
-    if (!author) return [];
+  // Only this machine's configured author — shared repos must not score coworkers.
+  const author = await localGitAuthor(repoPath);
+  if (!author) return [];
 
-    const rangeArgs = [`--since=${since}`];
-    if (until) rangeArgs.push(`--until=${until}`);
-    const { stdout } = await execFileAsync(
-      "git",
-      [
-        "-C",
-        repoPath,
-        "log",
-        "--all",
-        // --author is a regex by default; fixed-strings so john.doe@x does not match johnXdoe@x
-        "--fixed-strings",
-        `--author=${author}`,
-        ...rangeArgs,
-        // Cap at the source — maxBuffer would drop the whole repo if we buffered then sliced
-        `--max-count=${MAX_COMMITS_PER_REPO}`,
-        "--pretty=format:%x1e%H%x1f%aI%x1f%s",
-        "--shortstat",
-      ],
-      { timeout: GIT_TIMEOUT_MS, maxBuffer: GIT_MAX_BUFFER },
-    );
-    return parseGitLog(String(stdout), basename(repoPath), repoPath);
-  } catch {
-    return [];
-  }
+  const { stdout } = await execFileAsync(
+    "git",
+    [
+      "-C",
+      repoPath,
+      "log",
+      "--all",
+      // --author is a regex by default; fixed-strings so john.doe@x does not match johnXdoe@x
+      "--fixed-strings",
+      `--author=${author}`,
+      `--since=${range.start}`,
+      `--until=${range.end}`,
+      // Cap at the source — maxBuffer would drop the whole repo if we buffered then sliced
+      `--max-count=${MAX_COMMITS_PER_REPO}`,
+      "--pretty=format:%x1e%H%x1f%aI%x1f%s",
+      "--shortstat",
+    ],
+    { timeout: GIT_TIMEOUT_MS, maxBuffer: GIT_MAX_BUFFER },
+  );
+  return parseGitLog(String(stdout), basename(repoPath), repoPath);
 }
 
 /** Repo-local then global `user.email`. Empty → skip repo (no author filter = unsafe). */

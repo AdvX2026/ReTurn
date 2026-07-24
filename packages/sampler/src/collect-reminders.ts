@@ -2,10 +2,9 @@
  * Apple Reminders collect helpers.
  *
  * Read-only JXA dump of all lists → pure parse → ReminderItem[].
- * Failures are silent (return []). Never writes to Reminders.
+ * Never writes to Reminders.
  */
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -14,7 +13,7 @@ const OSASCRIPT_TIMEOUT_MS = 20_000;
 const OSASCRIPT_MAX_BUFFER = 4 * 1024 * 1024;
 
 export interface ReminderItem {
-  /** Stable id from Reminders if available, else hash of list+name+creation. */
+  /** Stable id from Reminders. */
   id: string;
   list: string;
   name: string;
@@ -96,25 +95,18 @@ export function parseMaybeIso(raw: unknown): string | null {
   return new Date(ms).toISOString();
 }
 
-function fallbackId(list: string, name: string, creation: string | null): string {
-  const seed = `${list}\0${name}\0${creation ?? ""}`;
-  return createHash("sha256").update(seed).digest("hex").slice(0, 32);
-}
-
 function normalizeItem(raw: unknown): ReminderItem | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
+  const id = typeof o.id === "string" ? o.id.trim() : "";
+  if (!id) return null;
+
   const list = typeof o.list === "string" ? o.list : "";
   const name = typeof o.name === "string" ? o.name : "";
-  // Skip fully empty rows (parser noise)
-  if (!list && !name && !o.id) return null;
 
   const creationDate = parseMaybeIso(o.creationDate);
   const modificationDate = parseMaybeIso(o.modificationDate);
   const due = parseMaybeIso(o.due);
-
-  let id = typeof o.id === "string" ? o.id.trim() : "";
-  if (!id) id = fallbackId(list, name, creationDate);
 
   let body: string | null = null;
   if (typeof o.body === "string" && o.body.length > 0) body = o.body;
@@ -139,38 +131,26 @@ function normalizeItem(raw: unknown): ReminderItem | null {
 
 /**
  * Pure parser for the JXA JSON dump (or a hand-written fixture array).
- * Garbage / empty → [].
  */
 export function parseRemindersOutput(raw: string): ReminderItem[] {
-  const text = raw.trim();
-  if (!text) return [];
-  try {
-    const data: unknown = JSON.parse(text);
-    if (!Array.isArray(data)) return [];
-    const items: ReminderItem[] = [];
-    for (const row of data) {
-      const item = normalizeItem(row);
-      if (item) items.push(item);
-    }
-    return items;
-  } catch {
-    return [];
+  const data: unknown = JSON.parse(raw);
+  if (!Array.isArray(data)) {
+    throw new Error("invalid Reminders payload: expected an array");
   }
+  const items: ReminderItem[] = [];
+  for (const row of data) {
+    const item = normalizeItem(row);
+    if (item) items.push(item);
+  }
+  return items;
 }
 
-/**
- * Run osascript JXA against Reminders. Any error → [].
- * Non-darwin callers should gate before invoking.
- */
+/** Run osascript JXA against Reminders. Non-darwin callers must gate first. */
 export async function collectReminders(): Promise<ReminderItem[]> {
-  try {
-    const { stdout } = await execFileAsync(
-      "osascript",
-      ["-l", "JavaScript", "-e", REMINDERS_JXA],
-      { timeout: OSASCRIPT_TIMEOUT_MS, maxBuffer: OSASCRIPT_MAX_BUFFER },
-    );
-    return parseRemindersOutput(String(stdout));
-  } catch {
-    return [];
-  }
+  const { stdout } = await execFileAsync(
+    "osascript",
+    ["-l", "JavaScript", "-e", REMINDERS_JXA],
+    { timeout: OSASCRIPT_TIMEOUT_MS, maxBuffer: OSASCRIPT_MAX_BUFFER },
+  );
+  return parseRemindersOutput(String(stdout));
 }
