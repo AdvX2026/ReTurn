@@ -10,3 +10,9 @@
 - Enum policy: all mirrored string enums are tolerant (`TolerantEnum`) — unknown raw values decode to a fallback, never throw. Backend keeps growing `NodeKind` (open PRs add `email`, `vscode_recent`, `browse_history`), so strict enums would crash old builds on new server data.
 - Card `content` is loose JSON in the contract; the mirror decodes it into typed per-`type` structs (shapes taken from what `services/save.ts` / `services/chat.ts` actually write on the mirror basis) with a `.raw` fallback on unknown type or shape drift. If backend tightens/changes card content, update `BriefingCardContent` & co. and `ModelsTests`.
 - IDs and timestamps are plain `String` (server stamps `created_at`; parse display dates via `ReTurnAPI.parseDate`). `client_uuid` is the idempotency key — never regenerate on retry.
+
+## APIClient.swift
+
+- Transport only: typed async methods over URLSession for every Pi endpoint (port 8787). No caching, no outbox, no retries — those belong in the stores (PRD §5.2). LLM-backed calls (save/chat/ask/resume/voice/intent) use a 180 s per-request timeout; plain reads use the URLSession default.
+- Health upload sends the fixed token as `x-return-token`. Fastify error bodies (`{statusCode, error, message}`) surface as `APIError.http`.
+- KNOWN GAP: no ATS/local-network config yet — plain-HTTP LAN calls will be blocked at runtime until Info.plist gets `NSAllowsLocalNetworking` (+ iOS `NSLocalNetworkUsageDescription`); targets currently use `GENERATE_INFOPLIST_FILE=YES` with no overrides. Do this before the first live connection to the Pi.
