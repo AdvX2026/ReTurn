@@ -1,15 +1,10 @@
-import {
-  type SampleSnapshot,
-  collectSnapshot,
-  snapshotToNodes,
-  snapshotWithMetaNodes,
-} from "./collect.js";
 /**
  * Independent sampler process (PRD F2).
  * - setInterval sample → main outbox SQLite → flush to Pi
  * - localhost control plane for UI (sample-now / health)
  * - UI closed does not stop this process
  */
+import { type SampleSnapshot, collectSample } from "./collect.js";
 import { config } from "./config.js";
 import { startLocalServer } from "./local-server.js";
 import { Outbox } from "./outbox.js";
@@ -26,14 +21,12 @@ async function sampleOnce(opts?: { asSnapshot?: boolean }): Promise<{
   snapshot: SampleSnapshot;
   enqueued: number;
 }> {
-  const snapshot = await collectSnapshot();
+  const { snapshot, nodes } = await collectSample({
+    asSnapshot: opts?.asSnapshot,
+  });
   lastSnapshot = snapshot;
   lastSampleAt = snapshot.at;
   lastError = null;
-
-  const nodes = opts?.asSnapshot
-    ? snapshotWithMetaNodes(snapshot)
-    : snapshotToNodes(snapshot);
 
   let enqueued = 0;
   if (nodes.length > 0) {
@@ -44,8 +37,10 @@ async function sampleOnce(opts?: { asSnapshot?: boolean }): Promise<{
   const flush = await flushOutbox(outbox);
   piOnline = flush.online;
 
+  const agentStats = snapshot.stats.agents ?? {};
+  const envStats = snapshot.stats.env ?? {};
   console.log(
-    `[sampler] sample app=${snapshot.app?.name ?? "-"} tabs=${snapshot.tabs.length} agents=${snapshot.agents.length} enqueued=${enqueued} flushed=${flush.flushed} outbox=${flush.remaining} pi=${flush.online}`,
+    `[sampler] sample app=${snapshot.app?.name ?? "-"} tabs=${envStats.tabs ?? snapshot.tabs.length} agents=${agentStats.intervals ?? 0} emitted=${enqueued} flushed=${flush.flushed} outbox=${flush.remaining} pi=${flush.online}`,
   );
 
   return { snapshot, enqueued };
