@@ -4,8 +4,14 @@ import SwiftUI
 /// card, row. Every card type wears this shell and differs only in its main
 /// visual — see `docs/prd-drift.md` §6.5 / §6.6.
 ///
-/// Accent colours come from `ReTurnDesign.Colors.Accents`, which is still a
-/// placeholder palette; nothing here hardcodes a colour.
+/// Three rules taken from Apple Health, all easy to break by accident:
+///
+/// 1. **One accent per card**, on the header icon and title only. Colour
+///    elsewhere needs fixed meaning (a chart legend, a status), never decoration.
+/// 2. **A separator marks a change of content**, not the end of the header.
+///    Health runs header → headline → separator → data.
+/// 3. **Rows are regular weight**; primary vs secondary label carries the
+///    hierarchy. Semibold everywhere reads as noise.
 enum CardKit {}
 
 // ── group ────────────────────────────────────────────────
@@ -91,6 +97,20 @@ struct CardHeader: View {
     }
 }
 
+/// The plain-language conclusion that leads a card, the way Health opens with
+/// "过去 7 天中，你的耳机音量平均值为正常。"
+struct CardHeadline: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(ReTurnDesign.Typography.cardHeadline)
+            .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
 struct CardDivider: View {
     var body: some View {
         Rectangle()
@@ -99,26 +119,46 @@ struct CardDivider: View {
     }
 }
 
-// ── row ──────────────────────────────────────────────────
+// ── rows ─────────────────────────────────────────────────
 
-/// The shared detail row: marker + name + value, with the attribution copy
-/// underneath. Used by the five stats, review points and health readings alike.
+/// A run of rows separated by full-width rules, each padded so the rules sit in
+/// real whitespace rather than hugging the text.
+struct CardRows<Item, RowContent: View>: View {
+    let items: [Item]
+    @ViewBuilder let row: (Item) -> RowContent
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                if index > 0 {
+                    CardDivider()
+                }
+
+                row(item)
+                    .padding(.vertical, ReTurnDesign.Card.rowVerticalPadding)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+}
+
+/// Name + value on one line, attribution copy underneath. Regular weight
+/// throughout — primary vs secondary label does the separating.
 struct CardMetricRow: View {
-    let color: Color
     let name: String
     var value: String?
     let caption: String
-    var marker: Marker = .dot
-
-    enum Marker {
-        case dot
-        case symbol(String)
-    }
+    /// Only set where the colour means something; leave nil otherwise.
+    var symbol: (name: String, color: Color)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: ReTurnDesign.Card.rowTextSpacing) {
             HStack(spacing: ReTurnDesign.Spacing.small) {
-                markerView
+                if let symbol {
+                    Image(systemName: symbol.name)
+                        .font(ReTurnDesign.Typography.cardRowName)
+                        .foregroundStyle(symbol.color)
+                }
 
                 Text(name)
                     .font(ReTurnDesign.Typography.cardRowName)
@@ -138,45 +178,6 @@ struct CardMetricRow: View {
                 .font(ReTurnDesign.Typography.cardRowCaption)
                 .foregroundStyle(ReTurnDesign.Colors.secondaryLabel)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.leading, captionInset)
         }
-    }
-
-    @ViewBuilder
-    private var markerView: some View {
-        switch marker {
-        case .dot:
-            Circle()
-                .fill(color)
-                .frame(
-                    width: ReTurnDesign.Card.dotSize,
-                    height: ReTurnDesign.Card.dotSize
-                )
-        case let .symbol(name):
-            Image(systemName: name)
-                .font(ReTurnDesign.Typography.cardRowName)
-                .foregroundStyle(color)
-                .frame(width: ReTurnDesign.Card.dotSize)
-        }
-    }
-
-    /// Keeps the caption aligned with the name rather than the marker.
-    private var captionInset: CGFloat {
-        ReTurnDesign.Card.dotSize + ReTurnDesign.Spacing.small
-    }
-}
-
-/// Small pill used for the character state and the idea provenance.
-struct CardTag: View {
-    let text: String
-    let tint: Color
-
-    var body: some View {
-        Text(text)
-            .font(ReTurnDesign.Typography.cardTag)
-            .foregroundStyle(tint)
-            .padding(.horizontal, ReTurnDesign.Card.tagHorizontalPadding)
-            .padding(.vertical, ReTurnDesign.Card.tagVerticalPadding)
-            .background(tint.opacity(0.14), in: Capsule())
     }
 }

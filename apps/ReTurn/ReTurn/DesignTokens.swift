@@ -47,19 +47,25 @@ enum ReTurnDesign {
         /// shared palette yet (it must not collide with the Before timeline's
         /// categories). Every accent below is referenced only through
         /// `Accents`, so swapping in the real palette is a one-file change.
+        ///
+        /// **One accent per card, and it appears only on the header icon and
+        /// title.** Everything else in a card is primary or secondary label.
+        /// Apple Health only breaks this where colour carries fixed meaning —
+        /// legend dots matching a chart's segments, or the Activity rings — and
+        /// the five stats have neither, so they are deliberately uncoloured.
         enum Accents {
-            static let intake = Color.blue
-            static let focus = Color.indigo
-            static let output = Color.orange
-            static let continuity = Color.green
-            static let energy = Color.pink
-
             static let brief = Color.blue
             static let review = Color.purple
-            static let todo = Color.orange
+            static let todo = Color.blue
             static let health = Color.pink
-            static let idea = Color.yellow
+            static let idea = Color.orange
             static let unknown = Color.secondary
+
+            /// Review point kinds are the sanctioned exception: win/miss/insight
+            /// is fixed semantics, the same way Health tints a status dot.
+            static let win = Color.green
+            static let miss = Color.orange
+            static let insight = Color.purple
         }
     }
 
@@ -136,32 +142,34 @@ enum ReTurnDesign {
         static let navigationItem = Font.body
 
         /// Card scale, mirroring Apple Health: a small tinted header, a large
-        /// plain-language headline, then rows of name + value + caption.
+        /// plain-language headline, then rows at body size.
+        ///
+        /// Detail rows are **regular weight throughout** — Health separates the
+        /// name from its caption with colour (primary vs secondary), not weight.
+        /// Making them semibold flattens the hierarchy into noise.
         static let cardGroupTitle = Font.title2.weight(.bold)
         static let cardHeader = Font.subheadline.weight(.semibold)
         static let cardHeadline = Font.title3.weight(.semibold)
         static let cardBody = Font.body
-        static let cardRowName = Font.subheadline.weight(.semibold)
-        static let cardRowValue = Font.subheadline.weight(.semibold)
-        static let cardRowCaption = Font.subheadline
+        static let cardRowName = Font.body
+        static let cardRowValue = Font.body
+        static let cardRowCaption = Font.body
         static let cardDisplayTitle = Font.largeTitle.weight(.bold)
-        static let cardTag = Font.caption.weight(.semibold)
+        static let cardTag = Font.subheadline
     }
 
     enum Card {
-        static let cornerRadius: CGFloat = 20
-        static let nestedCornerRadius: CGFloat = 12
-        static let padding: CGFloat = 16
+        static let cornerRadius: CGFloat = 22
+        static let padding: CGFloat = 20
         /// Between cards inside one group.
         static let spacing: CGFloat = 12
         /// Between card groups.
-        static let groupSpacing: CGFloat = 28
+        static let groupSpacing: CGFloat = 32
         static let headerIconSpacing: CGFloat = 5
-        static let rowSpacing: CGFloat = 14
-        static let rowTextSpacing: CGFloat = 2
-        static let dotSize: CGFloat = 9
-        static let tagHorizontalPadding: CGFloat = 9
-        static let tagVerticalPadding: CGFloat = 4
+        /// Vertical breathing room above and below each detail row, so the
+        /// separators land in the middle of real whitespace.
+        static let rowVerticalPadding: CGFloat = 12
+        static let rowTextSpacing: CGFloat = 3
         static let mascotWidth: CGFloat = 132
     }
 

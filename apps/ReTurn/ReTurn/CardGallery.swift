@@ -35,7 +35,8 @@ struct CardGallery: View {
 
     // ── Daily Brief group ────────────────────────────────
 
-    /// Main visual: the mascot standing in for the assigned profession.
+    /// Main visual: the mascot standing in for the assigned profession. The
+    /// stats carry no colour of their own — see `Accents`.
     private var professionCard: some View {
         Card {
             CardHeader(
@@ -45,9 +46,7 @@ struct CardGallery: View {
                 detail: "Jul 24"
             )
 
-            CardDivider()
-
-            VStack(spacing: ReTurnDesign.Spacing.small) {
+            VStack(spacing: ReTurnDesign.Spacing.extraSmall) {
                 Image("Kongkong")
                     .resizable()
                     .aspectRatio(
@@ -61,26 +60,17 @@ struct CardGallery: View {
                     .font(ReTurnDesign.Typography.cardDisplayTitle)
                     .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
 
-                CardTag(text: "专注", tint: ReTurnDesign.Colors.Accents.focus)
+                Text("专注")
+                    .font(ReTurnDesign.Typography.cardTag)
+                    .foregroundStyle(ReTurnDesign.Colors.secondaryLabel)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, ReTurnDesign.Spacing.small)
+            .padding(.vertical, ReTurnDesign.Spacing.medium)
 
             CardDivider()
 
-            statRows
-        }
-    }
-
-    private var statRows: some View {
-        VStack(spacing: ReTurnDesign.Card.rowSpacing) {
-            ForEach(Array(SampleData.stats.enumerated()), id: \.offset) { index, stat in
-                if index > 0 {
-                    CardDivider()
-                }
-
+            CardRows(items: SampleData.stats) { stat in
                 CardMetricRow(
-                    color: stat.color,
                     name: stat.name,
                     value: stat.value,
                     caption: stat.caption
@@ -89,6 +79,7 @@ struct CardGallery: View {
         }
     }
 
+    /// Main visual: the text itself. No separator — nothing follows it.
     private var summaryCard: some View {
         Card {
             CardHeader(
@@ -98,16 +89,12 @@ struct CardGallery: View {
                 showsChevron: false
             )
 
-            CardDivider()
-
-            Text(SampleData.summary)
-                .font(ReTurnDesign.Typography.cardHeadline)
-                .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
-                .fixedSize(horizontal: false, vertical: true)
+            CardHeadline(text: SampleData.summary)
         }
     }
 
-    /// Main visual: kind-coded symbols instead of dots.
+    /// Main visual: kind-coded symbols. Win/miss/insight is fixed semantics,
+    /// which is the one case where extra colour earns its place.
     private var reviewCard: some View {
         Card {
             CardHeader(
@@ -117,21 +104,12 @@ struct CardGallery: View {
                 detail: "3"
             )
 
-            CardDivider()
-
-            VStack(spacing: ReTurnDesign.Card.rowSpacing) {
-                ForEach(Array(SampleData.reviewPoints.enumerated()), id: \.offset) { index, point in
-                    if index > 0 {
-                        CardDivider()
-                    }
-
-                    CardMetricRow(
-                        color: point.color,
-                        name: point.name,
-                        caption: point.text,
-                        marker: .symbol(point.symbol)
-                    )
-                }
+            CardRows(items: SampleData.reviewPoints) { point in
+                CardMetricRow(
+                    name: point.name,
+                    caption: point.text,
+                    symbol: (point.symbol, point.color)
+                )
             }
         }
     }
@@ -149,31 +127,21 @@ struct CardGallery: View {
                 detail: "3"
             )
 
-            CardDivider()
+            CardRows(items: SampleData.todos) { todo in
+                HStack(alignment: .firstTextBaseline, spacing: ReTurnDesign.Spacing.medium) {
+                    Text(todo)
+                        .font(ReTurnDesign.Typography.cardBody)
+                        .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
+                        .fixedSize(horizontal: false, vertical: true)
 
-            VStack(spacing: ReTurnDesign.Card.rowSpacing) {
-                ForEach(Array(SampleData.todos.enumerated()), id: \.offset) { index, todo in
-                    if index > 0 {
-                        CardDivider()
+                    Spacer(minLength: 0)
+
+                    Button("采纳") {
+                        // TODO: Write to Apple Reminders via EventKit.
                     }
-
-                    HStack(alignment: .top, spacing: ReTurnDesign.Spacing.medium) {
-                        Text(todo)
-                            .font(ReTurnDesign.Typography.cardBody)
-                            .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
-                            .fixedSize(horizontal: false, vertical: true)
-
-                        Spacer(minLength: 0)
-
-                        Button("采纳") {
-                            // TODO: Write to Apple Reminders via EventKit.
-                        }
-                        .font(ReTurnDesign.Typography.cardRowValue)
-                        .buttonStyle(.borderedProminent)
-                        .buttonBorderShape(.capsule)
-                        .controlSize(.small)
-                        .tint(ReTurnDesign.Colors.Accents.todo)
-                    }
+                    .font(ReTurnDesign.Typography.cardBody)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(ReTurnDesign.Colors.Accents.todo)
                 }
             }
         }
@@ -189,12 +157,7 @@ struct CardGallery: View {
                 tint: ReTurnDesign.Colors.Accents.health
             )
 
-            CardDivider()
-
-            Text(SampleData.healthAdvice)
-                .font(ReTurnDesign.Typography.cardHeadline)
-                .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
-                .fixedSize(horizontal: false, vertical: true)
+            CardHeadline(text: SampleData.healthAdvice)
 
             CardDivider()
 
@@ -202,6 +165,7 @@ struct CardGallery: View {
                 healthReading(name: "睡眠", value: "6 小时 48 分")
                 healthReading(name: "步数", value: "8,832")
             }
+            .padding(.top, ReTurnDesign.Spacing.extraSmall)
         }
     }
 
@@ -218,25 +182,21 @@ struct CardGallery: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// Main visual: the quote itself, with provenance as a tag -- F9 requires
-    /// user-recorded and auto-extracted ideas to be visually distinct.
+    /// Main visual: the idea itself, with provenance as a quiet trailing label
+    /// -- F9 requires user-recorded and auto-extracted ideas to be distinct.
     private func ideaCard(provenance: SampleData.Provenance) -> some View {
         Card {
             CardHeader(
                 icon: "lightbulb.fill",
                 title: "Idea",
                 tint: ReTurnDesign.Colors.Accents.idea,
-                detail: "3 天前"
+                detail: provenance.label
             )
-
-            CardDivider()
 
             Text(provenance.text)
                 .font(ReTurnDesign.Typography.cardBody)
                 .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
                 .fixedSize(horizontal: false, vertical: true)
-
-            CardTag(text: provenance.label, tint: provenance.tint)
         }
     }
 
@@ -269,15 +229,13 @@ struct CardGallery: View {
                 Button("Save Today") {
                     // TODO: Trigger the save flow.
                 }
-                .font(ReTurnDesign.Typography.cardRowValue)
+                .font(ReTurnDesign.Typography.cardBody)
                 .buttonStyle(.borderedProminent)
                 .buttonBorderShape(.capsule)
-                .controlSize(.large)
-                .tint(ReTurnDesign.Colors.Accents.brief)
                 .padding(.top, ReTurnDesign.Spacing.extraSmall)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, ReTurnDesign.Spacing.small)
+            .padding(.vertical, ReTurnDesign.Spacing.medium)
         }
     }
 
@@ -292,8 +250,6 @@ struct CardGallery: View {
                 tint: ReTurnDesign.Colors.Accents.unknown,
                 showsChevron: false
             )
-
-            CardDivider()
 
             Text("这张卡片来自更新的版本，暂时无法显示。")
                 .font(ReTurnDesign.Typography.cardBody)
@@ -310,7 +266,6 @@ enum SampleData {
         let name: String
         let value: String?
         let caption: String
-        let color: Color
     }
 
     struct ReviewPoint {
@@ -331,87 +286,52 @@ enum SampleData {
             }
         }
 
-        var tint: Color {
-            switch self {
-            case .user: ReTurnDesign.Colors.Accents.idea
-            case .auto: ReTurnDesign.Colors.Accents.unknown
-            }
-        }
-
         var text: String {
             switch self {
-            case .user: "卡片是总结层，时间线是明细层 —— 两者靠「点进去」连接，不能混排。"
+            case .user: "卡片是总结层，时间线是明细层，两者靠「点进去」连接。"
             case .auto: "连续三天都在下午写代码、晚上做设计，也许可以把设计固定排在晚上。"
             }
         }
     }
 
     static let stats: [Stat] = [
-        Stat(
-            name: "摄取",
-            value: "27",
-            caption: "收入了 17 个 idea、10 张图片。",
-            color: ReTurnDesign.Colors.Accents.intake
-        ),
-        Stat(
-            name: "专注",
-            value: "82",
-            caption: "今天你的注意力很集中！",
-            color: ReTurnDesign.Colors.Accents.focus
-        ),
-        Stat(
-            name: "产出",
-            value: "64",
-            caption: "做了 6/17 个 Todo，Agent 为你工作了 10 小时。",
-            color: ReTurnDesign.Colors.Accents.output
-        ),
-        Stat(
-            name: "连贯",
-            value: "91",
-            caption: "和过去完美连续！",
-            color: ReTurnDesign.Colors.Accents.continuity
-        ),
-        Stat(
-            name: "精力",
-            value: nil,
-            caption: "暂时还没有数据。",
-            color: ReTurnDesign.Colors.Accents.energy
-        ),
+        Stat(name: "摄取", value: "27", caption: "收入了 17 个 idea、10 张图片。"),
+        Stat(name: "专注", value: "82", caption: "今天你的注意力很集中。"),
+        Stat(name: "产出", value: "64", caption: "做了 6/17 个 Todo。"),
+        Stat(name: "连贯", value: "91", caption: "和过去完美连续。"),
+        Stat(name: "精力", value: nil, caption: "暂时还没有数据。"),
     ]
 
-    static let summary = """
-    昨天几乎整天都在 ReTurn 的前端上。上午把输入框的性能问题拆干净了，\
-    下午换掉了顶部那个太重的分段控件，晚上和团队敲定了早报卡的方向。
-    """
+    static let summary = "昨天几乎整天都在 ReTurn 的前端上，把输入框的性能问题拆干净了。"
 
     static let reviewPoints: [ReviewPoint] = [
         ReviewPoint(
             name: "做到了",
-            text: "把 composer 的卡顿根因找出来了 —— 打字会重算整个页面。",
+            text: "找出了 composer 的卡顿根因。",
             symbol: "checkmark.circle.fill",
-            color: .green
+            color: ReTurnDesign.Colors.Accents.win
         ),
         ReviewPoint(
             name: "没做到",
-            text: "新的卡片外壳还没有测试覆盖。",
+            text: "卡片外壳还没有测试覆盖。",
             symbol: "exclamationmark.circle.fill",
-            color: .orange
+            color: ReTurnDesign.Colors.Accents.miss
         ),
         ReviewPoint(
             name: "发现",
-            text: "菜单会和玻璃融合是 iOS 26 的既定行为，对抗它不如接受它。",
+            text: "菜单和玻璃融合是 iOS 26 的既定行为。",
             symbol: "lightbulb.fill",
-            color: .purple
+            color: ReTurnDesign.Colors.Accents.insight
         ),
     ]
 
     static let todos: [String] = [
-        "跟后端确认职业字段和五维分项计数",
-        "把 Before 时间线的色板定下来",
+        "跟后端确认职业字段",
+        "定下 Before 时间线的色板",
         "给卡片外壳补测试",
     ]
 
-    static let healthAdvice = "昨晚睡了 6 小时 48 分，比平时少 1 小时。今天可以早点休息。"
+    static let healthAdvice = "昨晚睡了 6 小时 48 分，比平时少 1 小时。"
 }
 
 #Preview {
