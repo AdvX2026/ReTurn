@@ -68,7 +68,7 @@ enum TimelineDesign {
 
         static let railWidth: CGFloat = 48
         static let railAxisX: CGFloat = 12
-        static let pointAnchorY: CGFloat = 20
+        static let pointAnchorY: CGFloat = 32
         static let rangeInset: CGFloat = 8
         static let connectorEndInset: CGFloat = 6
         static let ambientConnectorEndInset: CGFloat = 18
