@@ -1,13 +1,14 @@
-import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { snapshotToNodes, type SampleSnapshot } from "./collect.js";
-import { Outbox } from "./outbox.js";
 import { mkdtempSync, rmSync } from "node:fs";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, it } from "node:test";
+import { type SampleSnapshot, resetSeenAgentKeys, snapshotToNodes } from "./collect.js";
+import { Outbox } from "./outbox.js";
 
 describe("snapshotToNodes", () => {
   it("maps app + tabs + new agents", () => {
+    resetSeenAgentKeys();
     const snap: SampleSnapshot = {
       app: { name: "Cursor", bundleId: "com.todesktop.cursor" },
       tabs: [
@@ -30,12 +31,27 @@ describe("snapshotToNodes", () => {
       platform: "darwin",
     };
     const nodes = snapshotToNodes(snap);
-    assert.equal(nodes.some((n) => n.kind === "app_sample"), true);
-    assert.equal(nodes.some((n) => n.kind === "tab_sample"), true);
-    assert.equal(nodes.some((n) => n.kind === "agent_session"), true);
-    // second call should not re-emit same agent
+    assert.equal(
+      nodes.some((n) => n.kind === "app_sample"),
+      true,
+    );
+    assert.equal(
+      nodes.some((n) => n.kind === "tab_sample"),
+      true,
+    );
+    const agent = nodes.find((n) => n.kind === "agent_session");
+    assert.ok(agent);
+    // second call should not re-emit same agent in-process
     const again = snapshotToNodes(snap);
-    assert.equal(again.some((n) => n.kind === "agent_session"), false);
+    assert.equal(
+      again.some((n) => n.kind === "agent_session"),
+      false,
+    );
+    // after "restart", same agent gets same client_uuid (server can dedupe)
+    resetSeenAgentKeys();
+    const restarted = snapshotToNodes(snap).find((n) => n.kind === "agent_session");
+    assert.ok(restarted);
+    assert.equal(restarted!.client_uuid, agent!.client_uuid);
   });
 });
 

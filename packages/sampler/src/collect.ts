@@ -1,11 +1,26 @@
-import type { NodeInput } from "@return/shared";
 import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { readdir, readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { readFile, readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
+import type { NodeInput } from "@return/shared";
 
 const execFileAsync = promisify(execFile);
+
+/** Stable UUIDv4-shaped id from seed — agent sessions survive sampler restarts. */
+function uuidFromSeed(seed: string): string {
+  const hex = createHash("sha256").update(seed).digest("hex");
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    `4${hex.slice(13, 16)}`,
+    ((Number.parseInt(hex.slice(16, 18), 16) & 0x3f) | 0x80)
+      .toString(16)
+      .padStart(2, "0") + hex.slice(18, 20),
+    hex.slice(20, 32),
+  ].join("-");
+}
 
 export interface SampleSnapshot {
   app: { name: string; bundleId?: string } | null;
@@ -23,6 +38,11 @@ export interface SampleSnapshot {
 
 /** Keys of agent sessions already enqueued this process lifetime. */
 const seenAgentKeys = new Set<string>();
+
+/** Test helper: clear in-process agent dedupe (simulates process restart). */
+export function resetSeenAgentKeys(): void {
+  seenAgentKeys.clear();
+}
 
 export function todayLocal(d = new Date()): string {
   const y = d.getFullYear();
@@ -97,8 +117,9 @@ export function snapshotToNodes(snap: SampleSnapshot): NodeInput[] {
     const key = `${a.project}|${a.start}|${a.session_id ?? ""}`;
     if (seenAgentKeys.has(key)) continue;
     seenAgentKeys.add(key);
+    // Deterministic client_uuid so Pi dedupes across sampler restarts (Codex P1/P2).
     nodes.push({
-      client_uuid: crypto.randomUUID(),
+      client_uuid: uuidFromSeed(`agent:${key}`),
       kind: "agent_session",
       title: a.project,
       content: `${a.project} ${Math.round(a.duration_min)}min`,
@@ -289,9 +310,7 @@ export async function parseAgentSessions(): Promise<SampleSnapshot["agents"]> {
           const ts =
             (typeof obj.timestamp === "string" && obj.timestamp) ||
             (typeof obj.time === "string" && obj.time) ||
-            (typeof obj.ts === "number"
-              ? new Date(obj.ts).toISOString()
-              : null);
+            (typeof obj.ts === "number" ? new Date(obj.ts).toISOString() : null);
           if (!ts) continue;
           const d = new Date(ts);
           if (Number.isNaN(d.getTime())) continue;
@@ -306,10 +325,7 @@ export async function parseAgentSessions(): Promise<SampleSnapshot["agents"]> {
       times.sort((a, b) => a - b);
       const start = new Date(times[0]!).toISOString();
       const end = new Date(times[times.length - 1]!).toISOString();
-      const duration_min = Math.max(
-        1,
-        (times[times.length - 1]! - times[0]!) / 60_000,
-      );
+      const duration_min = Math.max(1, (times[times.length - 1]! - times[0]!) / 60_000);
       const project = dir.replace(/^-/, "").replace(/-/g, "/");
       agents.push({
         project,
