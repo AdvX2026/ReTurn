@@ -1,18 +1,18 @@
-import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { describe, it } from "node:test";
 import type { NodeRecord, Session } from "@return/shared";
+import { resolveCharacterState } from "./character.js";
 import {
   computeStats,
-  scoreIntake,
-  scoreFocus,
-  scoreOutput,
+  extractHealth,
   scoreContinuity,
   scoreEnergy,
-  extractHealth,
+  scoreFocus,
+  scoreIntake,
+  scoreOutput,
 } from "./compute.js";
-import { resolveCharacterState } from "./character.js";
+import { agentSessionsFromNodes, aggregateAppSessions } from "./sessions.js";
 import { computeStreak } from "./streak.js";
-import { aggregateAppSessions, agentSessionsFromNodes } from "./sessions.js";
 
 function node(
   partial: Partial<NodeRecord> & { kind: NodeRecord["kind"]; id?: string },
@@ -43,11 +43,7 @@ describe("scoreIntake", () => {
   });
 
   it("rewards diversity", () => {
-    const mono = [
-      node({ kind: "text" }),
-      node({ kind: "text" }),
-      node({ kind: "text" }),
-    ];
+    const mono = [node({ kind: "text" }), node({ kind: "text" }), node({ kind: "text" })];
     const diverse = [
       node({ kind: "text" }),
       node({ kind: "url" }),
@@ -209,10 +205,7 @@ describe("computeStreak", () => {
       3,
     );
     // today not saved, yesterday is — streak still counts
-    assert.equal(
-      computeStreak(["2026-07-22", "2026-07-23"], "2026-07-24"),
-      2,
-    );
+    assert.equal(computeStreak(["2026-07-22", "2026-07-23"], "2026-07-24"), 2);
     // gap breaks
     assert.equal(
       computeStreak(["2026-07-20", "2026-07-23", "2026-07-24"], "2026-07-24"),
@@ -263,6 +256,35 @@ describe("aggregateAppSessions", () => {
     assert.equal(sessions[0]!.app, "Chrome");
     assert.ok(sessions[0]!.durationMin >= 10);
     assert.equal(sessions[2]!.app, "Cursor");
+  });
+
+  it("uses sampled_at over receive-time created_at (offline flush)", () => {
+    // All received at same server time, but real samples span 20 min via sampled_at.
+    const received = "2026-07-24T20:00:00.000Z";
+    const samples = [
+      node({
+        kind: "app_sample",
+        title: "Chrome",
+        source_meta: { app: "Chrome", sampled_at: "2026-07-24T10:00:00.000Z" },
+        created_at: received,
+      }),
+      node({
+        kind: "app_sample",
+        title: "Chrome",
+        source_meta: { app: "Chrome", sampled_at: "2026-07-24T10:05:00.000Z" },
+        created_at: received,
+      }),
+      node({
+        kind: "app_sample",
+        title: "Chrome",
+        source_meta: { app: "Chrome", sampled_at: "2026-07-24T10:20:00.000Z" },
+        created_at: received,
+      }),
+    ];
+    const sessions = aggregateAppSessions(samples, 5);
+    // 10:00-10:05 merge, 10:20 severs (15min gap > 7.5)
+    assert.equal(sessions.length, 2);
+    assert.ok(sessions[0]!.durationMin >= 5);
   });
 });
 

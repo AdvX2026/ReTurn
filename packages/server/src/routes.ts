@@ -1,27 +1,34 @@
-import type { FastifyInstance } from "fastify";
+import { createHash } from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import {
-  CreateNodesRequest,
-  CreateNodesResponse,
-  HealthRequest,
-  HealthResponse,
-  ListNodesResponse,
-  PatchTodoRequest,
-  PatchTodoResponse,
-  PingResponse,
-  RegisterDeviceRequest,
-  RegisterDeviceResponse,
-  SaveRequest,
-  StatsTodayResponse,
-  ContinueResponse,
-  DaysResponse,
-  TimelineResponse,
-  VoiceResponse,
-  type ReviewPoint,
-  type Stats,
   type CharacterState,
+  type ContinueResponse,
+  CreateNodesRequest,
+  type CreateNodesResponse,
+  type DaysResponse,
+  HealthRequest,
+  type HealthResponse,
+  type ListNodesResponse,
+  PatchTodoRequest,
+  type PatchTodoResponse,
+  type PingResponse,
+  RegisterDeviceRequest,
+  type RegisterDeviceResponse,
+  type ReviewPoint,
+  SaveRequest,
+  type Stats,
+  type StatsTodayResponse,
+  type TimelineResponse,
+  type VoiceResponse,
 } from "@return/shared";
-import type { Db } from "./db/schema.js";
+import type { FastifyInstance } from "fastify";
+import { TranscribeError, transcribeAudio } from "./ai/transcribe.js";
+import { config } from "./config.js";
 import {
+  type DayRow,
+  dayReviewPoints,
+  dayStats,
   deleteNode,
   ensureDay,
   getDayByDate,
@@ -37,11 +44,12 @@ import {
   setTodoDone,
   touchDevice,
   upsertDevice,
-  dayReviewPoints,
-  dayStats,
-  type DayRow,
 } from "./db/repo.js";
-import { config } from "./config.js";
+import type { Db } from "./db/schema.js";
+import { saveToday } from "./services/save.js";
+import { buildTimeline } from "./services/timeline.js";
+import { computeLiveStats } from "./stats/live.js";
+import { computeStreak, savedDatesFromDays } from "./stats/streak.js";
 import {
   addDays,
   lastNDays,
@@ -50,14 +58,6 @@ import {
   uuid,
   yesterdayDate,
 } from "./util/time.js";
-import { computeLiveStats } from "./stats/live.js";
-import { computeStreak, savedDatesFromDays } from "./stats/streak.js";
-import { saveToday } from "./services/save.js";
-import { buildTimeline } from "./services/timeline.js";
-import { transcribeAudio, TranscribeError } from "./ai/transcribe.js";
-import { createHash } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 
 function badRequest(message: string) {
   return { statusCode: 400 as const, error: "Bad Request", message };
@@ -71,10 +71,7 @@ function unauthorized(message: string) {
   return { statusCode: 401 as const, error: "Unauthorized", message };
 }
 
-export async function registerRoutes(
-  app: FastifyInstance,
-  db: Db,
-): Promise<void> {
+export async function registerRoutes(app: FastifyInstance, db: Db): Promise<void> {
   // ── ping ──────────────────────────────────────────────
   app.get("/api/ping", async () => {
     const body: PingResponse = {
@@ -110,20 +107,27 @@ export async function registerRoutes(
 
     const result = insertNodes(
       db,
-      parsed.data.nodes.map((n) => ({
-        client_uuid: n.client_uuid,
-        kind: n.kind,
-        title: n.title ?? null,
-        content: n.content ?? null,
-        source_meta: {
+      parsed.data.nodes.map((n) => {
+        const meta = {
           ...(n.source_meta ?? {}),
-          ...(n.client_created_at
-            ? { client_created_at: n.client_created_at }
-            : {}),
-        },
-        device_id: parsed.data.device_id,
-        date: n.date,
-      })),
+          ...(n.client_created_at ? { client_created_at: n.client_created_at } : {}),
+        } as Record<string, unknown>;
+        // Prefer client sample time for offline-buffered timeline/stats (Codex P1).
+        const sampledAt =
+          (typeof meta.sampled_at === "string" && meta.sampled_at) ||
+          n.client_created_at ||
+          undefined;
+        return {
+          client_uuid: n.client_uuid,
+          kind: n.kind,
+          title: n.title ?? null,
+          content: n.content ?? null,
+          source_meta: meta,
+          device_id: parsed.data.device_id,
+          date: n.date,
+          created_at: sampledAt,
+        };
+      }),
     );
 
     const body: CreateNodesResponse = result;
@@ -186,13 +190,21 @@ export async function registerRoutes(
     if (!deviceId) {
       return reply.code(400).send(badRequest("device_id required"));
     }
+    // Reject path-traversal via client_uuid (Codex P1).
+    const uuidRe =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (clientUuid && !uuidRe.test(clientUuid)) {
+      return reply.code(400).send(badRequest("client_uuid must be a UUID"));
+    }
     touchDevice(db, deviceId);
 
     // Persist raw audio first so we never lose data on transcribe failure (PRD §9.6).
     const audioDir = join(config.dataDir, "audio");
     mkdirSync(audioDir, { recursive: true });
-    const audioId = clientUuid ?? uuid();
-    const audioPath = join(audioDir, `${audioId}-${filename}`);
+    const audioId = clientUuid && uuidRe.test(clientUuid) ? clientUuid : uuid();
+    const safeName =
+      filename.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80) || "audio.webm";
+    const audioPath = join(audioDir, `${audioId}-${safeName}`);
     writeFileSync(audioPath, fileBuf);
 
     let transcript: string | null = null;
@@ -233,10 +245,7 @@ export async function registerRoutes(
   app.post("/api/health", async (req, reply) => {
     const token =
       (req.headers["x-return-token"] as string | undefined) ??
-      (req.headers["authorization"] as string | undefined)?.replace(
-        /^Bearer\s+/i,
-        "",
-      );
+      (req.headers.authorization as string | undefined)?.replace(/^Bearer\s+/i, "");
     if (!token || token !== config.healthToken) {
       return reply.code(401).send(unauthorized("invalid health token"));
     }
@@ -245,39 +254,33 @@ export async function registerRoutes(
       return reply.code(400).send(badRequest(parsed.error.message));
     }
 
-    // Idempotent per date: same date re-upload overwrites via new node,
-    // but client_uuid is deterministic per date so re-posts dedupe.
+    // Idempotent per date: deterministic client_uuid; re-posts always refresh.
     const clientUuid = uuidFromSeed(`health:${parsed.data.date}`);
-    const { node } = insertNode(db, {
+    const content = JSON.stringify({
+      sleep_minutes: parsed.data.sleep_minutes,
+      steps: parsed.data.steps,
+    });
+    const source_meta = {
+      sleep_minutes: parsed.data.sleep_minutes,
+      steps: parsed.data.steps,
+      source: "shortcuts",
+    };
+    const { node, duplicate } = insertNode(db, {
       client_uuid: clientUuid,
       kind: "health_daily",
       title: `Health ${parsed.data.date}`,
-      content: JSON.stringify({
-        sleep_minutes: parsed.data.sleep_minutes,
-        steps: parsed.data.steps,
-      }),
+      content,
       date: parsed.data.date,
-      source_meta: {
-        sleep_minutes: parsed.data.sleep_minutes,
-        steps: parsed.data.steps,
-        source: "shortcuts",
-      },
+      source_meta,
     });
 
-    // If duplicate (same client_uuid), still update content/meta so re-runs refresh.
-    if (node.source_meta && (node.source_meta as { sleep_minutes?: number }).sleep_minutes !== parsed.data.sleep_minutes) {
+    if (duplicate) {
       db.prepare(
-        `UPDATE nodes SET content = ?, source_meta = ? WHERE client_uuid = ?`,
+        `UPDATE nodes SET content = ?, source_meta = ?, title = ? WHERE client_uuid = ?`,
       ).run(
-        JSON.stringify({
-          sleep_minutes: parsed.data.sleep_minutes,
-          steps: parsed.data.steps,
-        }),
-        JSON.stringify({
-          sleep_minutes: parsed.data.sleep_minutes,
-          steps: parsed.data.steps,
-          source: "shortcuts",
-        }),
+        content,
+        JSON.stringify(source_meta),
+        `Health ${parsed.data.date}`,
         clientUuid,
       );
     }
@@ -458,8 +461,8 @@ function uuidFromSeed(seed: string): string {
   return [
     hex.slice(0, 8),
     hex.slice(8, 12),
-    "4" + hex.slice(13, 16),
-    ((parseInt(hex.slice(16, 18), 16) & 0x3f) | 0x80)
+    `4${hex.slice(13, 16)}`,
+    ((Number.parseInt(hex.slice(16, 18), 16) & 0x3f) | 0x80)
       .toString(16)
       .padStart(2, "0") + hex.slice(18, 20),
     hex.slice(20, 32),

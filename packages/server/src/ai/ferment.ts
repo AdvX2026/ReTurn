@@ -1,4 +1,4 @@
-import { FermentResultSchema, type FermentResult } from "@return/shared";
+import { type FermentResult, FermentResultSchema } from "@return/shared";
 import type { NodeRecord, Session } from "@return/shared";
 import { config } from "../config.js";
 
@@ -31,9 +31,7 @@ export class FermentError extends Error {
  * One LLM call → structured ferment JSON.
  * Timeout + single retry + Zod validate (PRD §6.3).
  */
-export async function runFerment(
-  ctx: FermentContext,
-): Promise<FermentResult> {
+export async function runFerment(ctx: FermentContext): Promise<FermentResult> {
   if (!config.llm.apiKey) {
     throw new FermentError("LLM_API_KEY not configured");
   }
@@ -75,9 +73,7 @@ function buildPrompt(ctx: FermentContext): string {
     )
     .join("\n");
 
-  const recent = ctx.recentSummaries
-    .map((r) => `- ${r.date}: ${r.summary}`)
-    .join("\n");
+  const recent = ctx.recentSummaries.map((r) => `- ${r.date}: ${r.summary}`).join("\n");
 
   const linkable = ctx.linkableNodes
     .map(
@@ -177,7 +173,7 @@ function extractJson(raw: string): unknown {
 
 function truncate(s: string | null, n: number): string | null {
   if (s == null) return null;
-  return s.length <= n ? s : s.slice(0, n) + "…";
+  return s.length <= n ? s : `${s.slice(0, n)}…`;
 }
 
 export function buildFermentContext(input: {

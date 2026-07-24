@@ -1,6 +1,6 @@
-import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 const SCHEMA = `
 PRAGMA journal_mode = WAL;
@@ -44,8 +44,8 @@ CREATE INDEX IF NOT EXISTS idx_nodes_created ON nodes(created_at);
 
 CREATE TABLE IF NOT EXISTS edges (
   id                  TEXT PRIMARY KEY,
-  src_node_id         TEXT NOT NULL REFERENCES nodes(id),
-  dst_node_id         TEXT NOT NULL REFERENCES nodes(id),
+  src_node_id         TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+  dst_node_id         TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
   relation            TEXT NOT NULL,
   created_by_day_id   TEXT NOT NULL REFERENCES days(id)
 );

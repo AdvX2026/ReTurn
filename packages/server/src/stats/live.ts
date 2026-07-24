@@ -1,15 +1,15 @@
 import type { CharacterState, NodeRecord, Stats } from "@return/shared";
-import type { Db } from "../db/schema.js";
+import { config } from "../config.js";
 import {
   countCrossDayEdges,
   getDayByDate,
   listNodesByDate,
   todoCompletionRate,
 } from "../db/repo.js";
-import { config } from "../config.js";
-import { allSessions } from "./sessions.js";
-import { computeStats, extractHealth } from "./compute.js";
+import type { Db } from "../db/schema.js";
 import { resolveCharacterState } from "./character.js";
+import { computeStats, extractHealth } from "./compute.js";
+import { allSessions } from "./sessions.js";
 
 export interface LiveStats {
   date: string;
@@ -25,9 +25,7 @@ export function computeLiveStats(db: Db, date: string): LiveStats {
   const day = getDayByDate(db, date);
   const nodes = listNodesByDate(db, date);
   const sessions = allSessions(nodes, config.sampleIntervalMin);
-  const todos = day
-    ? todoCompletionRate(db, day.id)
-    : { total: 0, done: 0, rate: 0 };
+  const todos = day ? todoCompletionRate(db, day.id) : { total: 0, done: 0, rate: 0 };
   const crossDayEdges = day ? countCrossDayEdges(db, day.id) : 0;
   const health = extractHealth(nodes);
 
@@ -38,7 +36,8 @@ export function computeLiveStats(db: Db, date: string): LiveStats {
       return {
         date,
         stats,
-        character_state: (day.character_state as CharacterState) ?? resolveCharacterState(stats),
+        character_state:
+          (day.character_state as CharacterState) ?? resolveCharacterState(stats),
         sessions,
         nodes,
         saved: true,

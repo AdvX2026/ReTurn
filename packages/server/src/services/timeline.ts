@@ -1,9 +1,9 @@
-import type { TimelineResponse, TimelineSegment, NodeRecord } from "@return/shared";
-import type { Db } from "../db/schema.js";
-import { listNodesByDate } from "../db/repo.js";
-import { allSessions } from "../stats/sessions.js";
-import { extractHealth } from "../stats/compute.js";
+import type { NodeRecord, TimelineResponse, TimelineSegment } from "@return/shared";
 import { config } from "../config.js";
+import { listNodesByDate } from "../db/repo.js";
+import type { Db } from "../db/schema.js";
+import { extractHealth } from "../stats/compute.js";
+import { allSessions } from "../stats/sessions.js";
 import { parseDate } from "../util/time.js";
 
 /** App → coarse category for timeline coloring. */
@@ -62,17 +62,12 @@ export function buildTimeline(db: Db, date: string): TimelineResponse {
   const sleep = sleepSegment(nodes, date);
   if (sleep) segments.push(sleep);
 
-  segments.sort(
-    (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime(),
-  );
+  segments.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
 
   return { date, segments };
 }
 
-function sleepSegment(
-  nodes: NodeRecord[],
-  date: string,
-): TimelineSegment | null {
+function sleepSegment(nodes: NodeRecord[], date: string): TimelineSegment | null {
   const { sleepMinutes } = extractHealth(nodes);
   if (sleepMinutes == null || sleepMinutes <= 0) return null;
 

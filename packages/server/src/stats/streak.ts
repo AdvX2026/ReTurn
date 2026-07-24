@@ -5,10 +5,7 @@ import { addDays, todayDate } from "../util/time.js";
  * Streak = consecutive saved days ending at the most recent saved day
  * that is today or yesterday (so missing "today not yet saved" doesn't break it).
  */
-export function computeStreak(
-  savedDates: string[],
-  asOf: string = todayDate(),
-): number {
+export function computeStreak(savedDates: string[], asOf: string = todayDate()): number {
   if (savedDates.length === 0) return 0;
   const set = new Set(savedDates);
   // Start from asOf if saved, else yesterday.

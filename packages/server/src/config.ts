@@ -1,5 +1,5 @@
-import { config as loadEnv } from "dotenv";
 import { resolve } from "node:path";
+import { config as loadEnv } from "dotenv";
 
 loadEnv();
 
@@ -19,6 +19,16 @@ export const config = {
   host: str("HOST", "0.0.0.0"),
   dataDir: resolve(str("DATA_DIR", "./data")),
   healthToken: str("HEALTH_TOKEN", "change-me-health-token"),
+  /**
+   * Shared secret for device/desktop clients (header X-Return-Token or Bearer).
+   * Empty = open LAN mode (demo only). Set in real/demo-on-shared-wifi.
+   */
+  apiToken: str("API_TOKEN", ""),
+  /** Comma-separated CORS origins. Empty = reflect request origin (dev). */
+  corsOrigins: str("CORS_ORIGINS", "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
   sampleIntervalMin: num("SAMPLE_INTERVAL_MIN", 5),
   version: "0.1.0",
 
@@ -30,7 +40,9 @@ export const config = {
   },
 
   whisper: {
-    baseUrl: str("WHISPER_BASE_URL") || str("LLM_BASE_URL", "https://api.openai.com/v1").replace(/\/$/, ""),
+    baseUrl:
+      str("WHISPER_BASE_URL") ||
+      str("LLM_BASE_URL", "https://api.openai.com/v1").replace(/\/$/, ""),
     apiKey: str("WHISPER_API_KEY") || str("LLM_API_KEY"),
     model: str("WHISPER_MODEL", "whisper-1"),
     timeoutMs: num("WHISPER_TIMEOUT_MS", 60_000),

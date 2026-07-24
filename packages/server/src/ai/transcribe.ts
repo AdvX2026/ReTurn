@@ -43,9 +43,7 @@ export async function transcribeAudio(
     });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
-      throw new TranscribeError(
-        `Whisper HTTP ${res.status}: ${body.slice(0, 300)}`,
-      );
+      throw new TranscribeError(`Whisper HTTP ${res.status}: ${body.slice(0, 300)}`);
     }
     const data = (await res.json()) as { text?: string };
     if (!data.text) throw new TranscribeError("empty transcript");
