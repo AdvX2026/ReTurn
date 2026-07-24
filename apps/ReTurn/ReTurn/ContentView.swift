@@ -152,18 +152,21 @@ struct ContentView: View {
         )
         .background(.ultraThinMaterial, in: Capsule())
         .overlay {
-            Capsule()
-                .strokeBorder(
-                    ReTurnDesign.Colors.composerHighlight,
-                    lineWidth: ReTurnDesign.Metrics.composerHighlightLineWidth
-                )
+            ZStack {
+                Capsule()
+                    .strokeBorder(
+                        ReTurnDesign.Colors.composerGlow,
+                        lineWidth: ReTurnDesign.Metrics.composerGlowLineWidth
+                    )
+                    .blur(radius: ReTurnDesign.Metrics.composerGlowBlurRadius)
+
+                Capsule()
+                    .strokeBorder(
+                        ReTurnDesign.Colors.composerHighlight,
+                        lineWidth: ReTurnDesign.Metrics.composerHighlightLineWidth
+                    )
+            }
         }
-        .shadow(
-            color: ReTurnDesign.Colors.composerGlow,
-            radius: ReTurnDesign.Metrics.composerGlowRadius,
-            x: ReTurnDesign.Metrics.composerGlowX,
-            y: ReTurnDesign.Metrics.composerGlowY
-        )
         .shadow(
             color: ReTurnDesign.Colors.composerShadow,
             radius: ReTurnDesign.Metrics.composerShadowRadius,

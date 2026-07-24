@@ -21,14 +21,23 @@ enum ReTurnDesign {
         static let voiceButtonBackground = Color.black
         static let voiceButtonForeground = Color.white
         static let composerHighlight = LinearGradient(
-            colors: [
-                Color.white.opacity(0.8),
-                Color.white.opacity(0.12)
-            ],
+            gradient: Gradient(stops: [
+                .init(color: Color.white.opacity(0.82), location: 0),
+                .init(color: Color.white.opacity(0.1), location: 0.5),
+                .init(color: Color.white.opacity(0.62), location: 1)
+            ]),
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
-        static let composerGlow = Color.white.opacity(0.55)
+        static let composerGlow = LinearGradient(
+            gradient: Gradient(stops: [
+                .init(color: Color.white.opacity(0.32), location: 0),
+                .init(color: Color.clear, location: 0.5),
+                .init(color: Color.white.opacity(0.24), location: 1)
+            ]),
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
         static let composerShadow = Color.black.opacity(0.1)
     }
 
@@ -54,9 +63,8 @@ enum ReTurnDesign {
         static let mascotAspectRatio: CGFloat = 175 / 150
         static let heroOpticalLift: CGFloat = 38
         static let composerHighlightLineWidth: CGFloat = 1
-        static let composerGlowRadius: CGFloat = 7
-        static let composerGlowX: CGFloat = -1
-        static let composerGlowY: CGFloat = -1
+        static let composerGlowLineWidth: CGFloat = 3
+        static let composerGlowBlurRadius: CGFloat = 5
         static let composerShadowRadius: CGFloat = 12
         static let composerShadowY: CGFloat = 4
     }
