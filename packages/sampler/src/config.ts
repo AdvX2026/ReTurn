@@ -15,13 +15,17 @@ function str(name: string, fallback = ""): string {
   return process.env[name] ?? fallback;
 }
 
-/** Explicit "0"/"false" disables; "1"/"true" enables; unset/empty → fallback. */
+/** Explicit "0"/"false"/"off"/"no" disables; "1"/"true"/"on"/"yes" enables; unset/empty → fallback. */
 function bool(name: string, fallback: boolean): boolean {
   const v = process.env[name];
   if (v === undefined || v === "") return fallback;
   const lower = v.toLowerCase();
-  if (lower === "0" || lower === "false") return false;
-  if (lower === "1" || lower === "true") return true;
+  if (lower === "0" || lower === "false" || lower === "off" || lower === "no") {
+    return false;
+  }
+  if (lower === "1" || lower === "true" || lower === "on" || lower === "yes") {
+    return true;
+  }
   return fallback;
 }
 
