@@ -178,30 +178,32 @@ struct ContentView: View {
                 : ReTurnDesign.Metrics.composerHeight
         )
 
-        return Group {
-            if #available(iOS 26.0, macOS 26.0, *) {
-                composerContent
-                    .glassEffect(.regular.interactive(), in: composerShape)
-            } else {
-                composerContent
-                    .background(.ultraThinMaterial, in: composerShape)
-                    .shadow(
-                        color: ReTurnDesign.Colors.composerFallbackShadow,
-                        radius: ReTurnDesign.Metrics.composerFallbackShadowRadius,
-                        y: ReTurnDesign.Metrics.composerFallbackShadowY
-                    )
+        return composerContent
+            .background {
+                if #available(iOS 26.0, macOS 26.0, *) {
+                    composerShape
+                        .fill(.clear)
+                        .glassEffect(.regular.interactive(), in: composerShape)
+                } else {
+                    composerShape
+                        .fill(.ultraThinMaterial)
+                        .shadow(
+                            color: ReTurnDesign.Colors.composerFallbackShadow,
+                            radius: ReTurnDesign.Metrics.composerFallbackShadowRadius,
+                            y: ReTurnDesign.Metrics.composerFallbackShadowY
+                        )
+                }
             }
-        }
-        .contentShape(composerShape)
-        .animation(
-            .spring(
-                response: ReTurnDesign.Motion.composerResponse,
-                dampingFraction: ReTurnDesign.Motion.composerDampingFraction
-            ),
-            value: isComposerFocused
-        )
-        .padding(.top, ReTurnDesign.Spacing.medium)
-        .padding(.bottom, ReTurnDesign.Spacing.medium)
+            .contentShape(composerShape)
+            .animation(
+                .spring(
+                    response: ReTurnDesign.Motion.composerResponse,
+                    dampingFraction: ReTurnDesign.Motion.composerDampingFraction
+                ),
+                value: isComposerFocused
+            )
+            .padding(.top, ReTurnDesign.Spacing.medium)
+            .padding(.bottom, ReTurnDesign.Spacing.medium)
     }
 }
 
