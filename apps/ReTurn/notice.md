@@ -27,7 +27,8 @@
 ## Main timeline UI
 
 - The current Main timeline/composer design is iOS-only. macOS uses a different product layout; keep iOS-specific layout and interaction changes behind `#if os(iOS)` unless a separate macOS design is explicitly provided.
-- `ContentView` is a horizontal Before / Now / After pager, defaulting to Now. Its segmented `Picker` and swipe position share one `TimelinePage` selection.
+- `ContentView` is a horizontal Before / Now / After pager, defaulting to Now. The top navigation and the swipe position share one `TimelinePage` selection.
+- That navigation is three plain labels, deliberately **not** a segmented `Picker` — the filled capsule was the only opaque surface on the screen and outweighed the flat mascot and translucent composer around it. Once a page settles the row fades to `navigationDimmedOpacity`; it dims rather than hides so the current page stays readable, the row keeps hinting that other pages exist, and the labels stay tappable (opacity does not affect hit testing). Changing pages restarts the timer via `.task(id:)` and restores full strength.
 - The initial Now visual follows Figma file `ilZuF3hqB1HH7f1usiMmPM`, node `7:1182`. Shared HIG colors, spacing, semantic typography, and adaptive layout rules live in `DesignTokens.swift`; do not scatter replacement literals through views.
 - Timeline chrome uses the available container width with compact-screen insets and readable iPad caps. The composer expands with a spring animation while focused and grows vertically from one to five text lines before scrolling internally; preserve this responsive behavior instead of restoring device-specific widths or a single-line field.
 - On iOS/macOS 26, the composer surface uses the native interactive `glassEffect`; do not add manual highlight, glow, or shadow overlays on top. Older systems retain the standard Material fallback.
