@@ -70,7 +70,7 @@ import { search } from "./search/query.js";
 import { ChatError, handleChat } from "./services/chat.js";
 import { handleResume } from "./services/resume.js";
 import { saveToday } from "./services/save.js";
-import { buildTimeline } from "./services/timeline.js";
+import { TimelineRangeError, buildTimeline } from "./services/timeline.js";
 import { computeLiveStats } from "./stats/live.js";
 import { computeStreak, savedDatesFromDays } from "./stats/streak.js";
 import {
@@ -430,24 +430,31 @@ export async function registerRoutes(app: FastifyInstance, db: Db): Promise<void
   app.get("/api/timeline", async (req, reply) => {
     const q = req.query as { date?: string; from?: string; to?: string };
     const dateRe = /^\d{4}-\d{2}-\d{2}$/;
-    if (q.from || q.to) {
-      const from = q.from ?? q.to!;
-      const to = q.to ?? q.from!;
-      if (!dateRe.test(from) || !dateRe.test(to)) {
-        return reply.code(400).send(badRequest("from/to must be YYYY-MM-DD"));
+    try {
+      if (q.from || q.to) {
+        const from = q.from ?? q.to!;
+        const to = q.to ?? q.from!;
+        if (!dateRe.test(from) || !dateRe.test(to)) {
+          return reply.code(400).send(badRequest("from/to must be YYYY-MM-DD"));
+        }
+        if (from > to) {
+          return reply.code(400).send(badRequest("from must be ≤ to"));
+        }
+        const body: TimelineResponse = buildTimeline(db, { from, to });
+        return body;
       }
-      if (from > to) {
-        return reply.code(400).send(badRequest("from must be ≤ to"));
+      const date = q.date ?? todayDate();
+      if (!dateRe.test(date)) {
+        return reply.code(400).send(badRequest("date must be YYYY-MM-DD"));
       }
-      const body: TimelineResponse = buildTimeline(db, { from, to });
+      const body: TimelineResponse = buildTimeline(db, date);
       return body;
+    } catch (err) {
+      if (err instanceof TimelineRangeError) {
+        return reply.code(400).send(badRequest(err.message));
+      }
+      throw err;
     }
-    const date = q.date ?? todayDate();
-    if (!dateRe.test(date)) {
-      return reply.code(400).send(badRequest("date must be YYYY-MM-DD"));
-    }
-    const body: TimelineResponse = buildTimeline(db, date);
-    return body;
   });
 
   // ── days (status overview) ────────────────────────────

@@ -27,7 +27,17 @@ function categorize(app: string): string {
 /**
  * Build timeline from existing nodes (PRD F7).
  * Single day or inclusive from/to range. No new tables — pure aggregation.
+ * Range is capped at MAX_TIMELINE_DAYS inclusive days; larger spans throw.
  */
+export const MAX_TIMELINE_DAYS = 31;
+
+export class TimelineRangeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TimelineRangeError";
+  }
+}
+
 export function buildTimeline(
   db: Db,
   dateOrRange: string | { from: string; to: string },
@@ -84,11 +94,26 @@ export function buildTimeline(
   };
 }
 
+/** Inclusive day count between YYYY-MM-DD from..to (assumes from ≤ to). */
+export function inclusiveDayCount(from: string, to: string): number {
+  const a = parseDate(from).getTime();
+  const b = parseDate(to).getTime();
+  return Math.floor((b - a) / 86_400_000) + 1;
+}
+
 function dateSpan(from: string, to: string): string[] {
+  if (from > to) {
+    throw new TimelineRangeError("from must be ≤ to");
+  }
+  const days = inclusiveDayCount(from, to);
+  if (days > MAX_TIMELINE_DAYS) {
+    throw new TimelineRangeError(
+      `timeline range exceeds ${MAX_TIMELINE_DAYS} days (got ${days})`,
+    );
+  }
   const out: string[] = [];
   let cur = from;
-  // Cap range to 31 days to protect Pi.
-  for (let i = 0; i < 31 && cur <= to; i++) {
+  while (cur <= to) {
     out.push(cur);
     const [y, m, d] = cur.split("-").map(Number);
     const dt = new Date(y!, m! - 1, d! + 1);

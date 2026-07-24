@@ -266,4 +266,12 @@ describe("http smoke", () => {
     });
     assert.equal(res.statusCode, 200, res.body);
   });
+
+  it("GET /api/timeline range >31 days → 400", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/timeline?from=2026-01-01&to=2026-03-15",
+    });
+    assert.equal(res.statusCode, 400);
+  });
 });

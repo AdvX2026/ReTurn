@@ -1,11 +1,18 @@
 import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
-import { insertNode, listCards, listMessages, listTasks } from "../db/repo.js";
+import {
+  insertCard,
+  insertMessage,
+  insertNode,
+  listCards,
+  listMessages,
+  listTasks,
+} from "../db/repo.js";
 import { type Db, openMemoryDb } from "../db/schema.js";
 import { handleChat, parseTriageJson, triageHeuristic } from "./chat.js";
 import { handleResume } from "./resume.js";
 import { saveToday } from "./save.js";
-import { buildTimeline } from "./timeline.js";
+import { TimelineRangeError, buildTimeline } from "./timeline.js";
 
 describe("triage", () => {
   it("offline heuristic classifies idea / retrieval / question", () => {
@@ -105,5 +112,77 @@ describe("v0.6 chat / cards / tasks / resume / timeline range", () => {
     assert.equal(tl.from, "2026-07-22");
     assert.equal(tl.to, "2026-07-23");
     assert.ok(tl.segments.length >= 2);
+  });
+
+  it("timeline rejects ranges over 31 days", () => {
+    assert.throws(
+      () => buildTimeline(db, { from: "2026-01-01", to: "2026-03-01" }),
+      (err: unknown) => err instanceof TimelineRangeError && /31 days/.test(err.message),
+    );
+  });
+
+  it("messages pagination keeps same-timestamp rows across pages", () => {
+    const ts = "2026-07-24T12:00:00.000Z";
+    // Insert three messages with identical created_at (chat user+agent pattern).
+    for (const content of ["a", "b", "c"]) {
+      insertMessage(db, {
+        role: "agent",
+        content,
+        created_at: ts,
+      });
+    }
+    const page1 = listMessages(db, { limit: 2 });
+    assert.equal(page1.messages.length, 2);
+    assert.ok(page1.next_cursor);
+    const page2 = listMessages(db, { cursor: page1.next_cursor!, limit: 2 });
+    assert.equal(page2.messages.length, 1);
+    const allIds = new Set([
+      ...page1.messages.map((m) => m.id),
+      ...page2.messages.map((m) => m.id),
+    ]);
+    assert.equal(allIds.size, 3);
+  });
+
+  it("before cards cursor includes earlier date with later created_at", () => {
+    // First: older date, inserted first (earlier created_at).
+    insertCard(db, {
+      type: "briefing",
+      date: "2026-07-20",
+      content: { summary: "old day" },
+    });
+    // Force a later created_at for the "newer day" card, then insert an even
+    // later created_at card on an older date (backfill scenario).
+    const recent = insertCard(db, {
+      type: "briefing",
+      date: "2026-07-24",
+      content: { summary: "today" },
+    });
+    // Manually bump a backfill card: insert then rewrite created_at later than recent.
+    const backfill = insertCard(db, {
+      type: "briefing",
+      date: "2026-07-21",
+      content: { summary: "backfill" },
+    });
+    db.prepare(`UPDATE cards SET created_at = ? WHERE id = ?`).run(
+      "2099-01-01T00:00:00.000Z",
+      backfill.id,
+    );
+    void recent;
+
+    const page1 = listCards(db, { direction: "before", limit: 1 });
+    assert.equal(page1.cards.length, 1);
+    // Newest sort key should be the backfill (date 07-21 with huge created_at)
+    // or today — either way, page2 must still surface remaining cards.
+    assert.ok(page1.next_cursor);
+    const page2 = listCards(db, {
+      direction: "before",
+      cursor: page1.next_cursor!,
+      limit: 10,
+    });
+    const ids = new Set([
+      ...page1.cards.map((c) => c.id),
+      ...page2.cards.map((c) => c.id),
+    ]);
+    assert.ok(ids.size >= 3, `expected ≥3 unique cards, got ${ids.size}`);
   });
 });

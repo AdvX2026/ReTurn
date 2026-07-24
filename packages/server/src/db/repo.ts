@@ -605,25 +605,32 @@ export function setMessageIntent(
   return getMessage(db, id);
 }
 
-/** Cursor = created_at ISO of last item; returns newer-to-older page. */
+/** Cursor = created_at|id of last item; returns newer-to-older page. */
 export function listMessages(
   db: Db,
   opts?: { cursor?: string; limit?: number },
 ): { messages: MessageRecord[]; next_cursor: string | null } {
   const limit = Math.min(Math.max(opts?.limit ?? 50, 1), 100);
+  const cur = decodeTimeIdCursor(opts?.cursor);
   const rows = (
-    opts?.cursor
+    cur
       ? db
           .prepare(
-            `SELECT * FROM messages WHERE created_at < ? ORDER BY created_at DESC LIMIT ?`,
+            `SELECT * FROM messages
+             WHERE created_at < ? OR (created_at = ? AND id < ?)
+             ORDER BY created_at DESC, id DESC
+             LIMIT ?`,
           )
-          .all(opts.cursor, limit)
-      : db.prepare(`SELECT * FROM messages ORDER BY created_at DESC LIMIT ?`).all(limit)
+          .all(cur.created_at, cur.created_at, cur.id, limit)
+      : db
+          .prepare(`SELECT * FROM messages ORDER BY created_at DESC, id DESC LIMIT ?`)
+          .all(limit)
   ) as MessageRow[];
   const messages = rows.map(messageToRecord);
+  const last = messages[messages.length - 1];
   const next_cursor =
-    messages.length === limit
-      ? (messages[messages.length - 1]?.created_at ?? null)
+    messages.length === limit && last
+      ? encodeTimeIdCursor(last.created_at, last.id)
       : null;
   return { messages, next_cursor };
 }
@@ -767,7 +774,7 @@ export function insertCard(
 /**
  * before = cards on dates ≤ today, newest first (past / briefing).
  * future = idea / todo_suggestion / health cards, newest first.
- * cursor = created_at of last card.
+ * cursor encodes sort keys: time|id (future) or date|created_at|id (before).
  */
 export function listCards(
   db: Db,
@@ -777,42 +784,106 @@ export function listCards(
   const today = todayDate();
   let rows: CardRow[];
   if (opts.direction === "before") {
+    const cur = decodeDateTimeIdCursor(opts.cursor);
     rows = (
-      opts.cursor
+      cur
         ? db
             .prepare(
-              `SELECT * FROM cards WHERE date <= ? AND created_at < ?
-               ORDER BY date DESC, created_at DESC LIMIT ?`,
+              `SELECT * FROM cards
+               WHERE date <= ?
+                 AND (
+                   date < ?
+                   OR (date = ? AND created_at < ?)
+                   OR (date = ? AND created_at = ? AND id < ?)
+                 )
+               ORDER BY date DESC, created_at DESC, id DESC
+               LIMIT ?`,
             )
-            .all(today, opts.cursor, limit)
+            .all(
+              today,
+              cur.date,
+              cur.date,
+              cur.created_at,
+              cur.date,
+              cur.created_at,
+              cur.id,
+              limit,
+            )
         : db
             .prepare(
               `SELECT * FROM cards WHERE date <= ?
-               ORDER BY date DESC, created_at DESC LIMIT ?`,
+               ORDER BY date DESC, created_at DESC, id DESC LIMIT ?`,
             )
             .all(today, limit)
     ) as CardRow[];
   } else {
+    const cur = decodeTimeIdCursor(opts.cursor);
     rows = (
-      opts.cursor
+      cur
         ? db
             .prepare(
               `SELECT * FROM cards
-               WHERE type IN ('idea','todo_suggestion','health') AND created_at < ?
-               ORDER BY created_at DESC LIMIT ?`,
+               WHERE type IN ('idea','todo_suggestion','health')
+                 AND (created_at < ? OR (created_at = ? AND id < ?))
+               ORDER BY created_at DESC, id DESC
+               LIMIT ?`,
             )
-            .all(opts.cursor, limit)
+            .all(cur.created_at, cur.created_at, cur.id, limit)
         : db
             .prepare(
               `SELECT * FROM cards
                WHERE type IN ('idea','todo_suggestion','health')
-               ORDER BY created_at DESC LIMIT ?`,
+               ORDER BY created_at DESC, id DESC LIMIT ?`,
             )
             .all(limit)
     ) as CardRow[];
   }
   const cards = rows.map(cardToRecord);
-  const next_cursor =
-    cards.length === limit ? (cards[cards.length - 1]?.created_at ?? null) : null;
+  const last = cards[cards.length - 1];
+  let next_cursor: string | null = null;
+  if (cards.length === limit && last) {
+    next_cursor =
+      opts.direction === "before"
+        ? encodeDateTimeIdCursor(last.date, last.created_at, last.id)
+        : encodeTimeIdCursor(last.created_at, last.id);
+  }
   return { cards, next_cursor };
+}
+
+// ── pagination cursors (stable composite keys) ───────────
+
+/** created_at|id — for messages / future cards. */
+export function encodeTimeIdCursor(created_at: string, id: string): string {
+  return `${created_at}|${id}`;
+}
+
+export function decodeTimeIdCursor(
+  cursor?: string,
+): { created_at: string; id: string } | null {
+  if (!cursor) return null;
+  const i = cursor.indexOf("|");
+  if (i <= 0 || i === cursor.length - 1) return null;
+  return { created_at: cursor.slice(0, i), id: cursor.slice(i + 1) };
+}
+
+/** date|created_at|id — for before cards (matches ORDER BY date, created_at, id). */
+export function encodeDateTimeIdCursor(
+  date: string,
+  created_at: string,
+  id: string,
+): string {
+  return `${date}|${created_at}|${id}`;
+}
+
+export function decodeDateTimeIdCursor(
+  cursor?: string,
+): { date: string; created_at: string; id: string } | null {
+  if (!cursor) return null;
+  const parts = cursor.split("|");
+  if (parts.length < 3) return null;
+  const date = parts[0]!;
+  const id = parts[parts.length - 1]!;
+  const created_at = parts.slice(1, -1).join("|");
+  if (!date || !created_at || !id) return null;
+  return { date, created_at, id };
 }
