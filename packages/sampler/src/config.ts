@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { config as loadEnv } from "dotenv";
 
 loadEnv();
@@ -13,6 +13,26 @@ function num(name: string, fallback: number): number {
 
 function str(name: string, fallback = ""): string {
   return process.env[name] ?? fallback;
+}
+
+/**
+ * Comma-separated dirs → absolute paths; empty default disables git scan.
+ * Always resolve to absolute so client_uuid seed `git:{repoPath}:{sha}` is
+ * stable across relative vs ~/ vs absolute config spellings (Codex P2).
+ */
+function dirs(name: string): string[] {
+  const raw = process.env[name] ?? "";
+  if (!raw.trim()) return [];
+  const home = homedir();
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((p) => {
+      if (p === "~") return home;
+      if (p.startsWith("~/")) return join(home, p.slice(2));
+      return resolve(p);
+    });
 }
 
 const dataDir = str("SAMPLER_DATA_DIR", join(homedir(), ".return", "sampler"));
@@ -29,4 +49,9 @@ export const config = {
   outboxPath: join(dataDir, "outbox.db"),
   /** Stable device id file so restarts reuse registration. */
   deviceIdPath: join(dataDir, "device_id"),
+  /**
+   * Code roots to scan for today's local git commits.
+   * Empty (default) = feature off — no git processes spawned.
+   */
+  gitScanDirs: dirs("GIT_SCAN_DIRS"),
 } as const;
