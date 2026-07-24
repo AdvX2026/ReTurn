@@ -5,12 +5,18 @@
   "packageManager": "pnpm@9.15.0",
   "scripts": {
     "dev:server": "pnpm --filter @return/server dev",
-    "build": "pnpm -r build",
-    "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test",
+    "build": "pnpm --filter @return/shared build && pnpm --filter @return/server build",
+    "typecheck": "pnpm --filter @return/shared build && pnpm -r typecheck",
+    "test": "pnpm --filter @return/shared build && pnpm -r test",
+    "check": "pnpm typecheck && pnpm test && pnpm build",
+    "lint": "biome check packages",
+    "lint:fix": "biome check --write packages",
     "start:server": "pnpm --filter @return/server start"
   },
   "engines": {
     "node": ">=22.13"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "1.9.4"
   }
 }
