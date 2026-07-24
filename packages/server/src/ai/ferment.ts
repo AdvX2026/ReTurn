@@ -145,10 +145,7 @@ async function chatCompletion(userPrompt: string): Promise<string> {
       json: true,
     });
   } catch (err) {
-    throw new FermentError(
-      err instanceof Error ? err.message : "LLM call failed",
-      err,
-    );
+    throw new FermentError(err instanceof Error ? err.message : "LLM call failed", err);
   }
 }
 

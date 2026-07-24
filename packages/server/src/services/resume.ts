@@ -68,8 +68,7 @@ function templateRecap(
 
 async function tinyRecap(sessionLines: string, hours: number): Promise<string> {
   return llmChat({
-    system:
-      "用一两句中文告诉用户他刚才在忙什么。口语、简短、不要列表。只根据给定会话。",
+    system: "用一两句中文告诉用户他刚才在忙什么。口语、简短、不要列表。只根据给定会话。",
     user: `最近${hours}小时会话：\n${sessionLines}`,
     temperature: 0.3,
     timeoutMs: Math.min(config.llm.timeoutMs, 20_000),
