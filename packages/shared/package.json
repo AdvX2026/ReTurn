@@ -14,13 +14,14 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --import tsx --test src/ferment.test.ts",
+    "test": "node --import tsx --test src/ferment.test.ts src/api.search.test.ts",
     "dev": "tsc -p tsconfig.json --watch"
   },
   "dependencies": {
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@types/node": "^22.10.2",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }

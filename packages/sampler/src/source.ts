@@ -4,8 +4,9 @@
  * Each source owns its full pipeline: collect → map → in-process dedupe →
  * NodeInput[]. The orchestrator (collect.ts) never knows feature internals.
  */
-import { createHash } from "node:crypto";
 import type { NodeInput } from "@return/shared";
+
+export { uuidFromSeed } from "@return/shared";
 
 /** Shared clock / mode for one sample tick. */
 export interface SampleContext {
@@ -43,20 +44,6 @@ export function todayLocal(d = new Date()): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
-}
-
-/** Stable UUIDv4-shaped id from seed — survives sampler restarts. */
-export function uuidFromSeed(seed: string): string {
-  const hex = createHash("sha256").update(seed).digest("hex");
-  return [
-    hex.slice(0, 8),
-    hex.slice(8, 12),
-    `4${hex.slice(13, 16)}`,
-    ((Number.parseInt(hex.slice(16, 18), 16) & 0x3f) | 0x80)
-      .toString(16)
-      .padStart(2, "0") + hex.slice(18, 20),
-    hex.slice(20, 32),
-  ].join("-");
 }
 
 /**

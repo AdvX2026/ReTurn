@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { NodeInput } from "@return/shared";
+import type { CadenceMode, CreateNodesResponse, NodeInput } from "@return/shared";
 import { config } from "./config.js";
 import type { Outbox } from "./outbox.js";
 
@@ -8,6 +8,15 @@ export interface PiStatus {
   online: boolean;
   deviceId: string | null;
   lastError?: string;
+}
+
+export interface FlushResult {
+  flushed: number;
+  remaining: number;
+  online: boolean;
+  deviceId: string | null;
+  /** Latest cadence from Pi via /api/nodes or empty-outbox /api/ping (PRD F2). */
+  cadence: CadenceMode | null;
 }
 
 let cachedDeviceId: string | null = null;
@@ -45,12 +54,21 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
-export async function pingPi(): Promise<boolean> {
+export async function pingPi(): Promise<{
+  online: boolean;
+  cadence: CadenceMode | null;
+}> {
   try {
-    await fetchJson<{ ok: boolean }>("/api/ping");
-    return true;
+    const res = await fetchJson<{
+      ok: boolean;
+      cadence?: CadenceMode | null;
+    }>("/api/ping");
+    return {
+      online: true,
+      cadence: parseCadence(res.cadence),
+    };
   } catch {
-    return false;
+    return { online: false, cadence: null };
   }
 }
 
@@ -68,43 +86,49 @@ export async function ensureDevice(): Promise<string> {
   return res.device_id;
 }
 
-export async function postNodes(deviceId: string, nodes: NodeInput[]): Promise<void> {
-  await fetchJson("/api/nodes", {
+export async function postNodes(
+  deviceId: string,
+  nodes: NodeInput[],
+): Promise<CreateNodesResponse> {
+  return fetchJson<CreateNodesResponse>("/api/nodes", {
     method: "POST",
     body: JSON.stringify({ device_id: deviceId, nodes }),
   });
 }
 
+function parseCadence(value: unknown): CadenceMode | null {
+  return value === "active" || value === "night" ? value : null;
+}
+
 /** FIFO flush. Stops on network/5xx to preserve order. */
-export async function flushOutbox(outbox: Outbox): Promise<{
-  flushed: number;
-  remaining: number;
-  online: boolean;
-  deviceId: string | null;
-}> {
+export async function flushOutbox(outbox: Outbox): Promise<FlushResult> {
   if (outbox.size() === 0) {
-    const online = await pingPi();
+    // Empty outbox still pings for cadence (midnight night→active restore).
+    const ping = await pingPi();
     return {
       flushed: 0,
       remaining: 0,
-      online,
+      online: ping.online,
       deviceId: loadDeviceId(),
+      cadence: ping.cadence,
     };
   }
 
   let deviceId: string;
   try {
     deviceId = await ensureDevice();
-  } catch (err) {
+  } catch {
     return {
       flushed: 0,
       remaining: outbox.size(),
       online: false,
       deviceId: loadDeviceId(),
+      cadence: null,
     };
   }
 
   let flushed = 0;
+  let cadence: CadenceMode | null = null;
   for (const row of outbox.peekAll()) {
     let nodes: NodeInput[];
     try {
@@ -114,7 +138,9 @@ export async function flushOutbox(outbox: Outbox): Promise<{
       continue;
     }
     try {
-      await postNodes(deviceId, nodes);
+      const res = await postNodes(deviceId, nodes);
+      const next = parseCadence(res.cadence);
+      if (next) cadence = next;
       outbox.remove(row.id);
       flushed++;
     } catch (err) {
@@ -128,6 +154,7 @@ export async function flushOutbox(outbox: Outbox): Promise<{
     remaining: outbox.size(),
     online: true,
     deviceId,
+    cadence,
   };
 }
 

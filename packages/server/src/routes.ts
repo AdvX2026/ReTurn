@@ -1,10 +1,13 @@
-import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   AcceptTodoRequest,
   type AcceptTodoResponse,
+  AskRequest,
+  type AskResponse,
   type CharacterState,
+  ChatRequest,
+  type ChatResponse,
   type ContinueResponse,
   CreateNodesRequest,
   type CreateNodesResponse,
@@ -13,18 +16,27 @@ import {
   type DismissTodoResponse,
   HealthRequest,
   type HealthResponse,
+  type ListCardsResponse,
+  type ListMessagesResponse,
   type ListNodesResponse,
+  type ListTasksResponse,
+  PatchMessageIntentRequest,
+  type PatchMessageIntentResponse,
   PatchTodoRequest,
   type PatchTodoResponse,
   type PingResponse,
   RegisterDeviceRequest,
   type RegisterDeviceResponse,
+  ResumeRequest,
+  type ResumeResponse,
   type ReviewPoint,
   SaveRequest,
+  type SearchResponse,
   type Stats,
   type StatsTodayResponse,
   type TimelineResponse,
   type VoiceResponse,
+  uuidFromSeed,
 } from "@return/shared";
 import type { FastifyInstance } from "fastify";
 import { TranscribeError, transcribeAudio } from "./ai/transcribe.js";
@@ -32,6 +44,7 @@ import { config, isHealthTokenConfigured } from "./config.js";
 import {
   type DayRow,
   acceptTodo,
+  currentCadence,
   dayReviewPoints,
   dayStats,
   deleteNode,
@@ -39,21 +52,32 @@ import {
   ensureDay,
   getDayByDate,
   getLatestSavedDay,
+  getMessage,
   getNodeById,
   getTodo,
   insertNode,
   insertNodes,
+  listCards,
   listDaysInRange,
+  listMessages,
   listNodesByDate,
   listSavedDays,
+  listTasks,
   listTodosByDay,
+  reindexNode,
+  setMessageIntent,
   setTodoDone,
   touchDevice,
   upsertDevice,
 } from "./db/repo.js";
 import type { Db } from "./db/schema.js";
+import { AskConfigError, ask } from "./search/ask.js";
+import { search } from "./search/query.js";
+import { ChatError, handleChat } from "./services/chat.js";
+import type { MeetingTaskDispatcher } from "./services/meeting-tasks.js";
+import { handleResume } from "./services/resume.js";
 import { saveToday } from "./services/save.js";
-import { buildTimeline } from "./services/timeline.js";
+import { TimelineRangeError, buildTimeline } from "./services/timeline.js";
 import { computeLiveStats } from "./stats/live.js";
 import { computeStreak, savedDatesFromDays } from "./stats/streak.js";
 import {
@@ -77,13 +101,18 @@ function unauthorized(message: string) {
   return { statusCode: 401 as const, error: "Unauthorized", message };
 }
 
-export async function registerRoutes(app: FastifyInstance, db: Db): Promise<void> {
+export async function registerRoutes(
+  app: FastifyInstance,
+  db: Db,
+  meetingTasks: MeetingTaskDispatcher,
+): Promise<void> {
   // ── ping ──────────────────────────────────────────────
   app.get("/api/ping", async () => {
     const body: PingResponse = {
       ok: true,
       server_time: nowIso(),
       version: config.version,
+      cadence: currentCadence(db),
     };
     return body;
   });
@@ -129,7 +158,10 @@ export async function registerRoutes(app: FastifyInstance, db: Db): Promise<void
       }),
     );
 
-    const body: CreateNodesResponse = result;
+    const body: CreateNodesResponse = {
+      ...result,
+      cadence: currentCadence(db),
+    };
     return body;
   });
 
@@ -237,6 +269,26 @@ export async function registerRoutes(app: FastifyInstance, db: Db): Promise<void
       node,
       transcript: transcript ?? "",
     };
+
+    // v0.6: if we have a transcript, also run chat triage (same semantics as /api/chat).
+    if (transcript?.trim() && !pending) {
+      try {
+        await handleChat(
+          db,
+          {
+            text: transcript,
+            device_id: deviceId,
+          },
+          meetingTasks,
+        );
+      } catch (err) {
+        console.warn(
+          "[voice] chat triage after transcript failed:",
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+
     return body;
   });
 
@@ -289,6 +341,7 @@ export async function registerRoutes(app: FastifyInstance, db: Db): Promise<void
         `Health ${parsed.data.date}`,
         clientUuid,
       );
+      reindexNode(db, node.id);
     }
 
     const fresh = getNodeById(db, node.id)!;
@@ -384,19 +437,40 @@ export async function registerRoutes(app: FastifyInstance, db: Db): Promise<void
       stats: live.stats,
       character_state: live.character_state,
       saved: live.saved,
+      cadence: currentCadence(db, date),
     };
     return body;
   });
 
-  // ── timeline ──────────────────────────────────────────
+  // ── timeline (single day or from/to range) ──────────
   app.get("/api/timeline", async (req, reply) => {
-    const q = req.query as { date?: string };
-    const date = q.date ?? todayDate();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      return reply.code(400).send(badRequest("date must be YYYY-MM-DD"));
+    const q = req.query as { date?: string; from?: string; to?: string };
+    const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+    try {
+      if (q.from || q.to) {
+        const from = q.from ?? q.to!;
+        const to = q.to ?? q.from!;
+        if (!dateRe.test(from) || !dateRe.test(to)) {
+          return reply.code(400).send(badRequest("from/to must be YYYY-MM-DD"));
+        }
+        if (from > to) {
+          return reply.code(400).send(badRequest("from must be ≤ to"));
+        }
+        const body: TimelineResponse = buildTimeline(db, { from, to });
+        return body;
+      }
+      const date = q.date ?? todayDate();
+      if (!dateRe.test(date)) {
+        return reply.code(400).send(badRequest("date must be YYYY-MM-DD"));
+      }
+      const body: TimelineResponse = buildTimeline(db, date);
+      return body;
+    } catch (err) {
+      if (err instanceof TimelineRangeError) {
+        return reply.code(400).send(badRequest(err.message));
+      }
+      throw err;
     }
-    const body: TimelineResponse = buildTimeline(db, date);
-    return body;
   });
 
   // ── days (status overview) ────────────────────────────
@@ -424,6 +498,209 @@ export async function registerRoutes(app: FastifyInstance, db: Db): Promise<void
     const streak = computeStreak(savedDatesFromDays(allSaved), end);
 
     const body: DaysResponse = { range, days, streak };
+    return body;
+  });
+
+  // ── search ────────────────────────────────────────────
+  app.get("/api/search", async (req, reply) => {
+    const q = req.query as {
+      q?: string;
+      from?: string;
+      to?: string;
+      kinds?: string;
+      limit?: string;
+    };
+    const query = (q.q ?? "").trim();
+    if (!query || query.length > 500) {
+      return reply.code(400).send(badRequest("q is required (1–500 characters)"));
+    }
+    if (q.from && !/^\d{4}-\d{2}-\d{2}$/.test(q.from)) {
+      return reply.code(400).send(badRequest("from must be YYYY-MM-DD"));
+    }
+    if (q.to && !/^\d{4}-\d{2}-\d{2}$/.test(q.to)) {
+      return reply.code(400).send(badRequest("to must be YYYY-MM-DD"));
+    }
+    let limit = 20;
+    if (q.limit != null && q.limit !== "") {
+      const n = Number(q.limit);
+      if (!Number.isFinite(n) || n < 1) {
+        return reply.code(400).send(badRequest("limit must be 1–50"));
+      }
+      limit = Math.min(Math.floor(n), 50);
+    }
+    const kinds = q.kinds
+      ? q.kinds
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : undefined;
+
+    const body: SearchResponse = await search(db, {
+      q: query,
+      from: q.from,
+      to: q.to,
+      kinds,
+      limit,
+    });
+    return body;
+  });
+
+  // ── ask (RAG) ───────────────────────────────────────
+  app.post("/api/ask", async (req, reply) => {
+    const parsed = AskRequest.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send(badRequest(parsed.error.message));
+    }
+    try {
+      const body: AskResponse = await ask(db, {
+        question: parsed.data.question,
+        from: parsed.data.from,
+        to: parsed.data.to,
+      });
+      return body;
+    } catch (err) {
+      if (err instanceof AskConfigError) {
+        return reply.code(503).send({
+          statusCode: 503,
+          error: "Service Unavailable",
+          message: err.message,
+        });
+      }
+      console.error("[ask] error:", err);
+      return reply.code(500).send({
+        statusCode: 500,
+        error: "Internal Server Error",
+        message: err instanceof Error ? err.message : "ask failed",
+      });
+    }
+  });
+
+  // ── chat (v0.6 Input) ─────────────────────────────────
+  app.post("/api/chat", async (req, reply) => {
+    const parsed = ChatRequest.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send(badRequest(parsed.error.message));
+    }
+    if (parsed.data.device_id) touchDevice(db, parsed.data.device_id);
+    try {
+      const body: ChatResponse = await handleChat(db, parsed.data, meetingTasks);
+      return body;
+    } catch (err) {
+      if (err instanceof ChatError) {
+        return reply.code(400).send(badRequest(err.message));
+      }
+      console.error("[chat] error:", err);
+      return reply.code(500).send({
+        statusCode: 500,
+        error: "Internal Server Error",
+        message: err instanceof Error ? err.message : "chat failed",
+      });
+    }
+  });
+
+  // ── messages ────────────────────────────────────────
+  app.get("/api/messages", async (req) => {
+    const q = req.query as { cursor?: string; limit?: string };
+    let limit = 50;
+    if (q.limit) {
+      const n = Number(q.limit);
+      if (Number.isFinite(n)) limit = n;
+    }
+    const body: ListMessagesResponse = listMessages(db, {
+      cursor: q.cursor,
+      limit,
+    });
+    return body;
+  });
+
+  app.patch("/api/messages/:id/intent", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const parsed = PatchMessageIntentRequest.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send(badRequest(parsed.error.message));
+    }
+    const existing = getMessage(db, id);
+    if (!existing) return reply.code(404).send(notFound("message not found"));
+    const message = setMessageIntent(db, id, parsed.data.intent);
+    // If user corrects a prior unknown, re-run chat with forced intent on original text.
+    let follow: ChatResponse | undefined;
+    if (
+      existing.intent === "unknown" &&
+      existing.role === "user" &&
+      parsed.data.intent !== "unknown"
+    ) {
+      try {
+        follow = await handleChat(
+          db,
+          {
+            text: existing.content,
+            intent: parsed.data.intent,
+          },
+          meetingTasks,
+        );
+      } catch (err) {
+        console.warn(
+          "[messages] re-chat after intent patch failed:",
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+    const body: PatchMessageIntentResponse & { follow_up?: ChatResponse } = {
+      message: message!,
+      ...(follow ? { follow_up: follow } : {}),
+    };
+    return body;
+  });
+
+  // ── cards ───────────────────────────────────────────
+  app.get("/api/cards", async (req, reply) => {
+    const q = req.query as {
+      direction?: string;
+      cursor?: string;
+      limit?: string;
+    };
+    const direction = q.direction === "future" ? "future" : "before";
+    if (q.direction && q.direction !== "before" && q.direction !== "future") {
+      return reply.code(400).send(badRequest("direction must be before|future"));
+    }
+    let limit = 30;
+    if (q.limit) {
+      const n = Number(q.limit);
+      if (Number.isFinite(n)) limit = n;
+    }
+    const page = listCards(db, {
+      direction,
+      cursor: q.cursor,
+      limit,
+    });
+    const body: ListCardsResponse = {
+      direction,
+      cards: page.cards,
+      next_cursor: page.next_cursor,
+    };
+    return body;
+  });
+
+  // ── tasks ───────────────────────────────────────────
+  app.get("/api/tasks", async (req) => {
+    const q = req.query as { status?: string };
+    const tasks = listTasks(db, {
+      status: q.status as "queued" | "running" | "done" | "failed" | undefined,
+    });
+    const body: ListTasksResponse = { tasks };
+    return body;
+  });
+
+  // ── resume ──────────────────────────────────────────
+  app.post("/api/resume", async (req, reply) => {
+    const parsed = ResumeRequest.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return reply.code(400).send(badRequest(parsed.error.message));
+    }
+    if (parsed.data.device_id) touchDevice(db, parsed.data.device_id);
+    const body: ResumeResponse = await handleResume(db, {
+      hours: parsed.data.hours,
+    });
     return body;
   });
 
@@ -508,18 +785,4 @@ function sanitizeClientMeta(
     delete meta.sampled_at;
   }
   return meta;
-}
-
-/** Deterministic UUIDv4-shaped id from seed (for health-date idempotency). */
-function uuidFromSeed(seed: string): string {
-  const hex = createHash("sha256").update(seed).digest("hex");
-  return [
-    hex.slice(0, 8),
-    hex.slice(8, 12),
-    `4${hex.slice(13, 16)}`,
-    ((Number.parseInt(hex.slice(16, 18), 16) & 0x3f) | 0x80)
-      .toString(16)
-      .padStart(2, "0") + hex.slice(18, 20),
-    hex.slice(20, 32),
-  ].join("-");
 }

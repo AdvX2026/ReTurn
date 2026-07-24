@@ -51,6 +51,20 @@ export const config = {
     model: str("WHISPER_MODEL", "whisper-1"),
     timeoutMs: num("WHISPER_TIMEOUT_MS", 60_000),
   },
+
+  /**
+   * Embedding channel (global search Phase 2). Explicit only — no LLM_* fallback.
+   * Missing base/key/model → semantic channel off; keyword search still works.
+   * Base URL must be the API root (e.g. https://api.siliconflow.cn/v1), not .../embeddings.
+   */
+  embedding: {
+    baseUrl: str("EMBEDDING_BASE_URL")
+      .replace(/\/$/, "")
+      .replace(/\/embeddings$/i, ""),
+    apiKey: str("EMBEDDING_API_KEY"),
+    model: str("EMBEDDING_MODEL"),
+    timeoutMs: num("EMBEDDING_TIMEOUT_MS", 30_000),
+  },
 } as const;
 
 export type Config = typeof config;
@@ -61,4 +75,15 @@ export function isHealthTokenConfigured(token = config.healthToken): boolean {
   if (!t) return false;
   if (t === "change-me-health-token" || t === "changeme") return false;
   return true;
+}
+
+export function isLlmConfigured(apiKey = config.llm.apiKey): boolean {
+  return Boolean(apiKey?.trim());
+}
+
+/** Semantic channel needs explicit base + key + model (no LLM_* fallback). */
+export function isEmbeddingConfigured(
+  emb: { baseUrl: string; apiKey: string; model: string } = config.embedding,
+): boolean {
+  return Boolean(emb.baseUrl?.trim() && emb.apiKey?.trim() && emb.model?.trim());
 }

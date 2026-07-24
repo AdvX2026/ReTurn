@@ -51,7 +51,10 @@ export const config = {
   /** Pi base URL */
   serverUrl: str("RETURN_SERVER_URL", "http://127.0.0.1:8787").replace(/\/$/, ""),
   deviceName: str("SAMPLER_DEVICE_NAME", "Mac Sampler"),
+  /** Daytime / pre-Save sample period (PRD F2 active cadence). */
   sampleIntervalMin: num("SAMPLE_INTERVAL_MIN", 5),
+  /** After Save (night cadence). PRD: lower frequency until next day. */
+  sampleIntervalNightMin: num("SAMPLE_INTERVAL_NIGHT_MIN", 30),
   /** Control plane for UI — loopback only, not configurable (PRD F2: never LAN). */
   localHost: "127.0.0.1",
   localPort: num("SAMPLER_PORT", 8791),
