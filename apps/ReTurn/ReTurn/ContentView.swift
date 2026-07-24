@@ -17,57 +17,46 @@ enum TimelinePage: String, CaseIterable, Identifiable {
 
 struct ContentView: View {
     @State private var selectedPage: TimelinePage? = .now
-    @State private var composerText = ""
     @FocusState private var isComposerFocused: Bool
 
     var body: some View {
-        GeometryReader { container in
-            let timelineContent = ZStack {
-                ReTurnDesign.Colors.screenBackground
-                    .ignoresSafeArea()
+        let timelineContent = ZStack {
+            ReTurnDesign.Colors.screenBackground
+                .ignoresSafeArea()
 
-                GeometryReader { pageGeometry in
-                    ScrollView(.horizontal) {
-                        LazyHStack(spacing: 0) {
-                            ForEach(TimelinePage.allCases) { page in
-                                pageContent(
-                                    for: page,
-                                    containerWidth: container.size.width
-                                )
-                                .frame(
-                                    width: pageGeometry.size.width,
-                                    height: pageGeometry.size.height
-                                )
-                                .id(page)
-                            }
-                        }
-                        .scrollTargetLayout()
+            ScrollView(.horizontal) {
+                LazyHStack(spacing: 0) {
+                    ForEach(TimelinePage.allCases) { page in
+                        pageContent(for: page)
+                            .containerRelativeFrame([.horizontal, .vertical])
+                            .id(page)
                     }
-                    .scrollIndicators(.hidden)
-                    .scrollTargetBehavior(.paging)
-                    .scrollPosition(id: $selectedPage)
                 }
+                .scrollTargetLayout()
             }
-            .safeAreaInset(edge: .top, spacing: 0) {
-                pagePicker(containerWidth: container.size.width)
-            }
+            .scrollIndicators(.hidden)
+            .scrollTargetBehavior(.paging)
+            .scrollPosition(id: $selectedPage)
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            pagePicker
+        }
 
-            Group {
-                #if os(iOS)
-                timelineContent
-                    .simultaneousGesture(
-                        TapGesture()
-                            .onEnded {
-                                isComposerFocused = false
-                            }
-                    )
-                #else
-                timelineContent
-                #endif
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                composer(containerWidth: container.size.width)
-            }
+        return Group {
+            #if os(iOS)
+            timelineContent
+                .simultaneousGesture(
+                    TapGesture()
+                        .onEnded {
+                            isComposerFocused = false
+                        }
+                )
+            #else
+            timelineContent
+            #endif
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            ComposerBar(isFocused: $isComposerFocused)
         }
     }
 
@@ -82,7 +71,7 @@ struct ContentView: View {
         )
     }
 
-    private func pagePicker(containerWidth: CGFloat) -> some View {
+    private var pagePicker: some View {
         Picker("Timeline", selection: pageSelection) {
             ForEach(TimelinePage.allCases) { page in
                 Text(page.rawValue)
@@ -91,35 +80,38 @@ struct ContentView: View {
         }
         .pickerStyle(.segmented)
         .labelsHidden()
-        .frame(width: ReTurnDesign.Layout.navigationWidth(in: containerWidth))
+        .frame(maxWidth: ReTurnDesign.Metrics.navigationRegularMaxWidth)
+        .padding(.horizontal, ReTurnDesign.Metrics.screenHorizontalInset)
         .padding(.top, ReTurnDesign.Spacing.small)
         .padding(.bottom, ReTurnDesign.Spacing.extraSmall)
     }
 
     @ViewBuilder
-    private func pageContent(
-        for page: TimelinePage,
-        containerWidth: CGFloat
-    ) -> some View {
+    private func pageContent(for page: TimelinePage) -> some View {
         switch page {
         case .before, .after:
             Color.clear
         case .now:
-            nowPage(containerWidth: containerWidth)
+            NowPage()
         }
     }
+}
 
-    private func nowPage(containerWidth: CGFloat) -> some View {
-        let mascotWidth = ReTurnDesign.Layout.mascotWidth(in: containerWidth)
-
-        return VStack(spacing: ReTurnDesign.Spacing.medium) {
+private struct NowPage: View {
+    var body: some View {
+        VStack(spacing: ReTurnDesign.Spacing.medium) {
+            // Sized from the scroll viewport, which only changes on rotation --
+            // the mascot is a preserved vector and re-rasterizes on every new
+            // width, so it must not track the composer or keyboard animation.
             Image("Kongkong")
                 .resizable()
-                .scaledToFit()
-                .frame(
-                    width: mascotWidth,
-                    height: mascotWidth / ReTurnDesign.Metrics.mascotAspectRatio
+                .aspectRatio(
+                    ReTurnDesign.Metrics.mascotAspectRatio,
+                    contentMode: .fit
                 )
+                .containerRelativeFrame(.horizontal) { width, _ in
+                    ReTurnDesign.Layout.mascotWidth(in: width)
+                }
                 .accessibilityHidden(true)
 
             Text("Teethe is back!")
@@ -130,25 +122,15 @@ struct ContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.bottom, ReTurnDesign.Metrics.heroOpticalLift * 2)
     }
+}
 
-    @ViewBuilder
-    private var attachmentMenuItems: some View {
-        ControlGroup {
-            Button("Camera", systemImage: "camera") {
-                // TODO: Present camera capture.
-            }
+/// Owns the draft text so typing invalidates only the composer. Holding it on
+/// `ContentView` rebuilt the pager, its pages and the mascot on every keystroke.
+private struct ComposerBar: View {
+    @FocusState.Binding var isFocused: Bool
+    @State private var text = ""
 
-            Button("Photos", systemImage: "photo") {
-                // TODO: Present the photo picker.
-            }
-
-            Button("Files", systemImage: "folder") {
-                // TODO: Present the file importer.
-            }
-        }
-    }
-
-    private func composer(containerWidth: CGFloat) -> some View {
+    var body: some View {
         let composerShape = RoundedRectangle(
             cornerRadius: ReTurnDesign.Metrics.composerCornerRadius,
             style: .continuous
@@ -200,14 +182,14 @@ struct ContentView: View {
             attachmentMenu
             #endif
 
-            TextField("Ask Return Anything", text: $composerText, axis: .vertical)
+            TextField("Ask Return Anything", text: $text, axis: .vertical)
                 .font(ReTurnDesign.Typography.composer)
                 .textFieldStyle(.plain)
                 .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
                 .lineLimit(1...ReTurnDesign.Metrics.composerMaximumLineCount)
-                .focused($isComposerFocused)
+                .focused($isFocused)
 
-            Image(systemName: composerText.isEmpty ? "waveform.mid" : "arrow.up")
+            Image(systemName: text.isEmpty ? "waveform.mid" : "arrow.up")
                 .foregroundStyle(ReTurnDesign.Colors.voiceButtonForeground)
                 .frame(
                     width: ReTurnDesign.Metrics.composerAccessorySize,
@@ -219,13 +201,10 @@ struct ContentView: View {
         .padding(.horizontal, ReTurnDesign.Metrics.composerHorizontalInset)
         .padding(.vertical, ReTurnDesign.Spacing.small)
         .frame(
-            width: ReTurnDesign.Layout.composerWidth(
-                in: containerWidth,
-                isFocused: isComposerFocused
-            )
+            maxWidth: ReTurnDesign.Layout.composerMaximumWidth(isFocused: isFocused)
         )
         .frame(
-            minHeight: isComposerFocused
+            minHeight: isFocused
                 ? ReTurnDesign.Metrics.composerFocusedHeight
                 : ReTurnDesign.Metrics.composerHeight
         )
@@ -250,7 +229,7 @@ struct ContentView: View {
         // padding dead unless the whole shape raises the keyboard.
         .contentShape(composerShape)
         .onTapGesture {
-            isComposerFocused = true
+            isFocused = true
         }
         .overlay(alignment: .leading) {
             attachmentMenu
@@ -274,7 +253,6 @@ struct ContentView: View {
                 }
             }
             .contentShape(composerShape)
-
         #endif
 
         return surfacedComposer
@@ -283,10 +261,31 @@ struct ContentView: View {
                     response: ReTurnDesign.Motion.composerResponse,
                     dampingFraction: ReTurnDesign.Motion.composerDampingFraction
                 ),
-                value: isComposerFocused
+                value: isFocused
+            )
+            .padding(
+                .horizontal,
+                ReTurnDesign.Layout.composerHorizontalPadding(isFocused: isFocused)
             )
             .padding(.top, ReTurnDesign.Spacing.medium)
             .padding(.bottom, ReTurnDesign.Spacing.medium)
+    }
+
+    @ViewBuilder
+    private var attachmentMenuItems: some View {
+        ControlGroup {
+            Button("Camera", systemImage: "camera") {
+                // TODO: Present camera capture.
+            }
+
+            Button("Photos", systemImage: "photo") {
+                // TODO: Present the photo picker.
+            }
+
+            Button("Files", systemImage: "folder") {
+                // TODO: Present the file importer.
+            }
+        }
     }
 }
 

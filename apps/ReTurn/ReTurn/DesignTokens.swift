@@ -57,28 +57,21 @@ enum ReTurnDesign {
         static let composerFallbackShadowY: CGFloat = 4
     }
 
+    /// Adaptive rules are expressed as a maximum width plus a screen inset, so
+    /// views can apply them with `.frame(maxWidth:)` + `.padding(.horizontal:)`
+    /// instead of measuring the container. Reading geometry here would rebuild
+    /// the whole screen whenever the keyboard or the composer changes height.
     enum Layout {
-        static func navigationWidth(in containerWidth: CGFloat) -> CGFloat {
-            contentWidth(
-                in: containerWidth,
-                horizontalInset: Metrics.screenHorizontalInset,
-                maximumWidth: Metrics.navigationRegularMaxWidth
-            )
+        static func composerMaximumWidth(isFocused: Bool) -> CGFloat {
+            isFocused
+                ? Metrics.composerFocusedRegularMaxWidth
+                : Metrics.composerRegularMaxWidth
         }
 
-        static func composerWidth(
-            in containerWidth: CGFloat,
-            isFocused: Bool
-        ) -> CGFloat {
-            contentWidth(
-                in: containerWidth,
-                horizontalInset: isFocused
-                    ? Metrics.focusedScreenHorizontalInset
-                    : Metrics.screenHorizontalInset,
-                maximumWidth: isFocused
-                    ? Metrics.composerFocusedRegularMaxWidth
-                    : Metrics.composerRegularMaxWidth
-            )
+        static func composerHorizontalPadding(isFocused: Bool) -> CGFloat {
+            isFocused
+                ? Metrics.focusedScreenHorizontalInset
+                : Metrics.screenHorizontalInset
         }
 
         static func mascotWidth(in containerWidth: CGFloat) -> CGFloat {
@@ -89,14 +82,6 @@ enum ReTurnDesign {
                 ),
                 Metrics.mascotMaximumWidth
             )
-        }
-
-        private static func contentWidth(
-            in containerWidth: CGFloat,
-            horizontalInset: CGFloat,
-            maximumWidth: CGFloat
-        ) -> CGFloat {
-            min(max(containerWidth - horizontalInset * 2, 0), maximumWidth)
         }
     }
 
