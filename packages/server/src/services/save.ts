@@ -9,6 +9,7 @@ import { config } from "../config.js";
 import {
   countCrossDayEdges,
   ensureDay,
+  expireSuggestedTodos,
   getDayByDate,
   getLatestSavedDay,
   getNodeByClientUuid,
@@ -20,8 +21,9 @@ import {
   listNodesByDate,
   listSavedDays,
   listTodosByDay,
+  listTodosByStatus,
   markDaySaved,
-  todoCompletionRate,
+  reminderCompletionRate,
 } from "../db/repo.js";
 import type { Db } from "../db/schema.js";
 import { resolveCharacterState } from "../stats/character.js";
@@ -156,6 +158,12 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
     }
   }
 
+  // Preference loop: expire stale suggestions → open reminders + pos/neg samples.
+  expireSuggestedTodos(db, input.date);
+  const rem = reminderCompletionRate(db, input.date);
+  const acceptedTodos = listTodosByStatus(db, "accepted", 20).map((t) => t.text);
+  const dismissedTodos = listTodosByStatus(db, "dismissed", 20).map((t) => t.text);
+
   // ── ferment ───────────────────────────────────────────
   let ferment: FermentResult;
   let degraded = false;
@@ -168,6 +176,9 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
       sessions,
       recentSummaries,
       linkableNodes,
+      openReminders: rem.openTitles,
+      acceptedTodos,
+      dismissedTodos,
     });
     ferment = await runFerment(ctx);
   } catch (err) {
@@ -225,22 +236,30 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
       );
     }
 
-    // Future todos attach to the *next* calendar day (shown on Continue).
+    // Future AI suggestions attach to the *next* calendar day (shown on Continue).
+    // Anchor source_node_id on save_note when present.
     const nextDate = addDays(input.date, 1);
     const nextDay = ensureDay(db, nextDate);
+    const openNorm = new Set(rem.openTitles.map(normalizeTodoText));
     for (const t of ferment.todos) {
-      insertTodo(db, { day_id: nextDay.id, text: t.text });
+      // Server-side dedupe vs open Reminders (LLM may ignore prompt).
+      if (openNorm.has(normalizeTodoText(t.text))) continue;
+      insertTodo(db, {
+        day_id: nextDay.id,
+        text: t.text,
+        source_node_id: saveNoteNodeId,
+      });
     }
 
     const freshNodes = listNodesByDate(db, input.date);
     const freshSessions = allSessions(freshNodes, config.sampleIntervalMin);
-    const todosToday = todoCompletionRate(db, day.id);
+    const remToday = reminderCompletionRate(db, input.date);
     const cross = countCrossDayEdges(db, day.id);
     const health = extractHealth(freshNodes);
     const stats = computeStats({
       nodes: freshNodes,
       sessions: freshSessions,
-      todoRate: todosToday.rate,
+      todoRate: remToday.rate,
       crossDayEdges: cross,
       sleepMinutes: health.sleepMinutes,
       steps: health.steps,
@@ -259,6 +278,11 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
   })();
 
   return buildSaveResponse(db, day.id, input.date, false, degraded);
+}
+
+/** Normalize for loose reminder/todo text match (dedupe). */
+function normalizeTodoText(s: string): string {
+  return s.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 function degradeFerment(

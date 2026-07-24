@@ -15,6 +15,12 @@ export interface FermentContext {
   recentSummaries: Array<{ date: string; summary: string }>;
   /** Node ids from recent days the model may link to. */
   linkableNodes: Array<{ id: string; date: string; title: string | null; kind: string }>;
+  /** Open Apple Reminders — do not re-suggest (dedupe). */
+  openReminders: string[];
+  /** Accepted AI suggestions — positive preference samples. */
+  acceptedTodos: string[];
+  /** Dismissed / expired suggestions — negative samples. */
+  dismissedTodos: string[];
 }
 
 export class FermentError extends Error {
@@ -82,6 +88,10 @@ function buildPrompt(ctx: FermentContext): string {
     )
     .join("\n");
 
+  const openRem = ctx.openReminders.map((t) => `- ${t}`).join("\n");
+  const accepted = ctx.acceptedTodos.map((t) => `- ${t}`).join("\n");
+  const dismissed = ctx.dismissedTodos.map((t) => `- ${t}`).join("\n");
+
   return `You are the ferment engine of ReTurn, a personal "daily save" second brain.
 Produce a structured JSON review for the user's day. Do NOT invent attributes/scores — text only.
 
@@ -90,7 +100,10 @@ Rules:
 - summary: 2–5 sentences of what the day was about.
 - opening_line: one warm sentence spoken to the user the next morning (Before section).
 - review_points: 2–6 concrete wins/misses/insights. Prefer evidence from nodes.
-- todos: 1–7 actionable items for tomorrow. Anchor on the save_note if present; do not invent busywork.
+- todos: 1–7 actionable AI suggestions for tomorrow (NOT the real checklist — that lives in Apple Reminders).
+  * NEVER re-suggest anything already listed under open_reminders (dedupe).
+  * Prefer style/topics of accepted_todos; avoid patterns in dismissed_todos.
+  * Anchor on the save_note if present; do not invent busywork or life-chores.
 - node_tags: map of node id → short tags (1–4 each) for active nodes you were given.
 - edges: links between nodes. Prefer cross-day links using linkable_nodes. relation is a short label (e.g. "continues", "inspired_by", "related").
 
@@ -120,6 +133,15 @@ ${recent || "(none)"}
 
 Linkable nodes from recent days (for edges):
 ${linkable || "(none)"}
+
+Open Apple Reminders (already on the real checklist — do NOT re-suggest):
+${openRem || "(none)"}
+
+Accepted AI suggestions (positive preference samples):
+${accepted || "(none)"}
+
+Dismissed AI suggestions (negative samples — avoid similar):
+${dismissed || "(none)"}
 `;
 }
 
@@ -183,6 +205,9 @@ export function buildFermentContext(input: {
   sessions: Session[];
   recentSummaries: Array<{ date: string; summary: string }>;
   linkableNodes: Array<{ id: string; date: string; title: string | null; kind: string }>;
+  openReminders?: string[];
+  acceptedTodos?: string[];
+  dismissedTodos?: string[];
 }): FermentContext {
   const activeKinds = new Set(["text", "url", "voice", "save_note"]);
   return {
@@ -199,5 +224,8 @@ export function buildFermentContext(input: {
     sessions: input.sessions,
     recentSummaries: input.recentSummaries,
     linkableNodes: input.linkableNodes,
+    openReminders: input.openReminders ?? [],
+    acceptedTodos: input.acceptedTodos ?? [],
+    dismissedTodos: input.dismissedTodos ?? [],
   };
 }

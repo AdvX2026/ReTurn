@@ -6,27 +6,46 @@
  * appending to SOURCES; never put feature code here.
  */
 import type { NodeInput } from "@return/shared";
+import { config } from "./config.js";
 import {
   type SampleContext,
   type SampleSource,
   type SourceResult,
+  createSampleContext,
   todayLocal,
 } from "./source.js";
 import { agentsSource } from "./sources/agents.js";
+import { chromeHistorySource } from "./sources/chrome-history.js";
 import { envSource, getLastEnv } from "./sources/env.js";
 import { gitSource } from "./sources/git.js";
 import { gmailSource } from "./sources/gmail.js";
+import { remindersSource } from "./sources/reminders.js";
+import { safariHistorySource } from "./sources/safari-history.js";
+import { vscodeSource } from "./sources/vscode.js";
 
 export { todayLocal, uuidFromSeed } from "./source.js";
 export { resetSeenAgentKeys } from "./sources/agents.js";
+export { resetSeenVisits } from "./sources/chrome-history.js";
 export { resetSeenCommitShas } from "./sources/git.js";
 export { resetSeenEmailKeys } from "./sources/gmail.js";
+export { resetSeenReminderKeys } from "./sources/reminders.js";
+export { resetSeenSafariVisits } from "./sources/safari-history.js";
+export { resetSeenVscodeKeys } from "./sources/vscode.js";
 
 /**
  * Registered sources, in emit order.
- * env first (app/tabs), then feature sources. Git / future sources append here.
+ * env first (app/tabs), then feature sources. T1 sources append here.
  */
-const SOURCES: SampleSource[] = [envSource, agentsSource, gitSource, gmailSource];
+export const SOURCES: readonly SampleSource[] = [
+  envSource,
+  agentsSource,
+  gitSource,
+  gmailSource,
+  remindersSource,
+  vscodeSource,
+  chromeHistorySource,
+  safariHistorySource,
+];
 
 /**
  * Snapshot of the last tick — status / control-plane surface.
@@ -52,23 +71,27 @@ export interface SampleResult {
  */
 export async function collectSample(opts?: {
   asSnapshot?: boolean;
+  now?: Date;
+  timezone?: string;
+  sources?: readonly SampleSource[];
 }): Promise<SampleResult> {
-  const at = new Date().toISOString();
-  const platform = process.platform;
-  const ctx: SampleContext = {
-    at,
-    platform,
-    asSnapshot: Boolean(opts?.asSnapshot),
-  };
+  const ctx: SampleContext = createSampleContext({
+    now: opts?.now ?? config.fixedNow ?? undefined,
+    timezone: opts?.timezone ?? config.timezone,
+    asSnapshot: opts?.asSnapshot,
+  });
+  const { at, platform } = ctx;
 
   const results = await Promise.all(
-    SOURCES.map(async (src): Promise<{ id: string; result: SourceResult }> => {
-      try {
-        return { id: src.id, result: await src.sample(ctx) };
-      } catch {
-        return { id: src.id, result: { nodes: [], stats: { error: 1 } } };
-      }
-    }),
+    (opts?.sources ?? SOURCES).map(
+      async (src): Promise<{ id: string; result: SourceResult }> => {
+        try {
+          return { id: src.id, result: await src.sample(ctx) };
+        } catch {
+          return { id: src.id, result: { nodes: [], stats: { error: 1 } } };
+        }
+      },
+    ),
   );
 
   const nodes: NodeInput[] = [];
@@ -101,7 +124,7 @@ export async function collectSample(opts?: {
         stats,
       },
       client_created_at: at,
-      date: todayLocal(),
+      date: ctx.day,
     });
   }
 

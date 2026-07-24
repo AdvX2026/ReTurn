@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { NodeInput } from "@return/shared";
 import { config } from "./config.js";
-import type { Outbox } from "./outbox.js";
+import { MAX_NODES_PER_BATCH, type Outbox, chunkNodes } from "./outbox.js";
 
 export interface PiStatus {
   online: boolean;
@@ -69,10 +69,13 @@ export async function ensureDevice(): Promise<string> {
 }
 
 export async function postNodes(deviceId: string, nodes: NodeInput[]): Promise<void> {
-  await fetchJson("/api/nodes", {
-    method: "POST",
-    body: JSON.stringify({ device_id: deviceId, nodes }),
-  });
+  // Defense in depth: even pre-chunk outbox rows (or future callers) stay ≤500.
+  for (const batch of chunkNodes(nodes, MAX_NODES_PER_BATCH)) {
+    await fetchJson("/api/nodes", {
+      method: "POST",
+      body: JSON.stringify({ device_id: deviceId, nodes: batch }),
+    });
+  }
 }
 
 /** FIFO flush. Stops on network/5xx to preserve order. */
@@ -95,7 +98,7 @@ export async function flushOutbox(outbox: Outbox): Promise<{
   let deviceId: string;
   try {
     deviceId = await ensureDevice();
-  } catch (err) {
+  } catch {
     return {
       flushed: 0,
       remaining: outbox.size(),

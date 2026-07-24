@@ -14,7 +14,6 @@ import {
   type SampleSource,
   type SourceResult,
   createKeyDedupe,
-  todayLocal,
   uuidFromSeed,
 } from "../source.js";
 
@@ -38,7 +37,7 @@ function agentSeed(a: AgentInterval): string {
   return `agent:${a.provider}|${a.session_id}|${a.start}`;
 }
 
-function agentNode(a: AgentInterval): NodeInput {
+function agentNode(a: AgentInterval, day: string): NodeInput {
   return {
     client_uuid: uuidFromSeed(agentSeed(a)),
     kind: "agent_session",
@@ -54,7 +53,7 @@ function agentNode(a: AgentInterval): NodeInput {
       open: false,
     },
     client_created_at: a.end,
-    date: todayLocal(new Date(a.end)),
+    date: day,
   };
 }
 
@@ -64,14 +63,14 @@ function agentNode(a: AgentInterval): NodeInput {
  */
 export function intervalsToNodes(
   intervals: AgentInterval[],
-  opts: { asSnapshot?: boolean; dedupe?: KeyDedupe } = {},
+  opts: { day: string; asSnapshot?: boolean; dedupe?: KeyDedupe },
 ): NodeInput[] {
   const d = opts.dedupe ?? seen;
   const nodes: NodeInput[] = [];
   for (const a of intervals) {
     if (a.open) continue;
     if (!d.tryAdd(agentKey(a))) continue;
-    nodes.push(agentNode(a));
+    nodes.push(agentNode(a, opts.day));
   }
   return nodes;
 }
@@ -79,10 +78,18 @@ export function intervalsToNodes(
 export const agentsSource: SampleSource = {
   id: "agents",
   async sample(ctx: SampleContext): Promise<SourceResult> {
-    const intervals = await collectAgentIntervals().catch(() => [] as AgentInterval[]);
+    const intervals = await collectAgentIntervals({
+      now: new Date(ctx.at),
+      day: ctx.day,
+      dayStartMs: Date.parse(ctx.dayStart),
+      dayEndMs: Date.parse(ctx.dayEnd),
+    }).catch(() => [] as AgentInterval[]);
     // asSnapshot does not change agent emission — open never enqueued (server insert-only).
     void ctx.asSnapshot;
-    const nodes = intervalsToNodes(intervals);
+    const nodes = intervalsToNodes(intervals, {
+      day: ctx.day,
+      asSnapshot: ctx.asSnapshot,
+    });
     return {
       nodes,
       stats: {

@@ -43,6 +43,9 @@ export interface AgentCollectOptions {
   gapMs?: number;
   /** Local calendar day YYYY-MM-DD. Default: today in local TZ. */
   day?: string;
+  /** Explicit shared tick boundaries; preferred over process-local midnight. */
+  dayStartMs?: number;
+  dayEndMs?: number;
 }
 
 /** Default silence that severs one session file into multiple intervals. */
@@ -100,7 +103,8 @@ export async function collectAgentIntervals(
   const now = opts.now ?? new Date();
   const day = opts.day ?? todayLocal(now);
   const gapMs = opts.gapMs ?? DEFAULT_GAP_MS;
-  const dayStartMs = localDayStartMs(day);
+  const dayStartMs = opts.dayStartMs ?? localDayStartMs(day);
+  const dayEndMs = opts.dayEndMs ?? localDayStartMs(nextDay(day));
   const out: AgentInterval[] = [];
 
   for (const spec of PROVIDERS) {
@@ -113,7 +117,10 @@ export async function collectAgentIntervals(
           const st = await stat(file);
           if (st.mtimeMs < dayStartMs) continue;
 
-          const parsed = await scanSessionFile(file, day);
+          const parsed = await scanSessionFile(file, day, {
+            startMs: dayStartMs,
+            endMs: dayEndMs,
+          });
           if (parsed.times.length === 0) continue;
 
           const project = spec.projectLabel(file, parsed.cwd);
@@ -193,6 +200,7 @@ interface SessionScan {
 export async function scanSessionFile(
   filePath: string,
   day: string,
+  range?: { startMs: number; endMs: number },
 ): Promise<SessionScan> {
   const times: number[] = [];
   let cwd: string | null = null;
@@ -219,7 +227,11 @@ export async function scanSessionFile(
 
       const ts = extractTimestamp(obj);
       if (ts === null) continue;
-      if (todayLocal(new Date(ts)) !== day) continue;
+      if (range) {
+        if (ts < range.startMs || ts >= range.endMs) continue;
+      } else if (todayLocal(new Date(ts)) !== day) {
+        continue;
+      }
       times.push(ts);
     }
   } finally {
@@ -314,4 +326,13 @@ function normalizeCwd(cwd: string): string {
 export function localDayStartMs(day: string): number {
   const [y, m, d] = day.split("-").map(Number);
   return new Date(y!, m! - 1, d!, 0, 0, 0, 0).getTime();
+}
+
+function nextDay(day: string): string {
+  const [y, m, d] = day.split("-").map(Number);
+  const next = new Date(Date.UTC(y!, m! - 1, d! + 1));
+  return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(
+    2,
+    "0",
+  )}-${String(next.getUTCDate()).padStart(2, "0")}`;
 }

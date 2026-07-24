@@ -87,19 +87,15 @@ export function toEmailMessage(raw: RawFetch): EmailMessage | null {
   };
 }
 
-/** Local midnight today — IMAP SINCE is date-granular (>= this day). */
-function startOfTodayLocal(): Date {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
 /**
- * Connect and fetch today's messages from INBOX + Sent.
+ * Connect and fetch messages from INBOX + Sent within the shared tick range.
  * Any connection / search / parse failure yields [] — never throws, so a bad
  * tick never blocks sampling or the outbox flush.
  */
-export async function fetchTodayEmails(cfg: GmailConfig): Promise<EmailMessage[]> {
+export async function fetchTodayEmails(
+  cfg: GmailConfig,
+  range: { start: string; end: string },
+): Promise<EmailMessage[]> {
   const client = new ImapFlow({
     host: cfg.host,
     port: cfg.port,
@@ -111,7 +107,8 @@ export async function fetchTodayEmails(cfg: GmailConfig): Promise<EmailMessage[]
   const out: EmailMessage[] = [];
   try {
     await client.connect();
-    const since = startOfTodayLocal();
+    const since = new Date(range.start);
+    const end = Date.parse(range.end);
 
     const targets: Array<{ path: string; direction: EmailDirection }> = [
       { path: "INBOX", direction: "received" },
@@ -120,7 +117,7 @@ export async function fetchTodayEmails(cfg: GmailConfig): Promise<EmailMessage[]
     if (sentPath) targets.push({ path: sentPath, direction: "sent" });
 
     for (const t of targets) {
-      const msgs = await fetchMailbox(client, t.path, t.direction, since).catch(
+      const msgs = await fetchMailbox(client, t.path, t.direction, since, end).catch(
         () => [] as EmailMessage[],
       );
       out.push(...msgs);
@@ -156,6 +153,7 @@ async function fetchMailbox(
   path: string,
   direction: EmailDirection,
   since: Date,
+  end: number,
 ): Promise<EmailMessage[]> {
   const lock = await client.getMailboxLock(path);
   const res: EmailMessage[] = [];
@@ -187,10 +185,8 @@ async function fetchMailbox(
         envelope: msg.envelope as RawFetch["envelope"],
         text,
       });
-      // IMAP SINCE is date-granular and drifts by timezone (server may return
-      // yesterday's tail). Enforce an exact local-midnight boundary so a daily
-      // run only ingests today's mail — yesterday's was already sampled then.
-      if (email && new Date(email.receivedAt).getTime() >= since.getTime()) {
+      const receivedAt = email ? Date.parse(email.receivedAt) : Number.NaN;
+      if (email && receivedAt >= since.getTime() && receivedAt < end) {
         res.push(email);
       }
     }

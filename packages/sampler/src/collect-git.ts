@@ -88,24 +88,35 @@ async function isGitRepo(dir: string): Promise<boolean> {
  * Scan today's local commits under the given roots.
  * Empty roots → no spawn, return []. Failures per-repo are silent.
  */
-export async function scanTodayCommits(roots: string[]): Promise<GitCommit[]> {
+export async function scanTodayCommits(
+  roots: string[],
+  range?: { start: string; end: string },
+): Promise<GitCommit[]> {
   if (roots.length === 0) return [];
   const repos = await discoverRepos(roots).catch(() => [] as string[]);
   if (repos.length === 0) return [];
 
-  const since = `${todayLocal()}T00:00:00`;
+  const since = range?.start ?? `${todayLocal()}T00:00:00`;
   const results = await Promise.all(
-    repos.map((repoPath) => scanRepo(repoPath, since).catch(() => [] as GitCommit[])),
+    repos.map((repoPath) =>
+      scanRepo(repoPath, since, range?.end).catch(() => [] as GitCommit[]),
+    ),
   );
   return results.flat();
 }
 
-async function scanRepo(repoPath: string, since: string): Promise<GitCommit[]> {
+async function scanRepo(
+  repoPath: string,
+  since: string,
+  until?: string,
+): Promise<GitCommit[]> {
   try {
     // Only this machine's configured author — shared repos must not score coworkers.
     const author = await localGitAuthor(repoPath);
     if (!author) return [];
 
+    const rangeArgs = [`--since=${since}`];
+    if (until) rangeArgs.push(`--until=${until}`);
     const { stdout } = await execFileAsync(
       "git",
       [
@@ -116,7 +127,7 @@ async function scanRepo(repoPath: string, since: string): Promise<GitCommit[]> {
         // --author is a regex by default; fixed-strings so john.doe@x does not match johnXdoe@x
         "--fixed-strings",
         `--author=${author}`,
-        `--since=${since}`,
+        ...rangeArgs,
         // Cap at the source — maxBuffer would drop the whole repo if we buffered then sliced
         `--max-count=${MAX_COMMITS_PER_REPO}`,
         "--pretty=format:%x1e%H%x1f%aI%x1f%s",

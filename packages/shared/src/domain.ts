@@ -11,11 +11,18 @@ export const NodeKind = z.enum([
   "agent_session",
   "git_commit",
   "email",
+  "reminder",
+  "vscode_recent",
+  "browse_history",
   "health_daily",
   "snapshot",
   "todo_check",
 ]);
 export type NodeKind = z.infer<typeof NodeKind>;
+
+/** AI todo suggestion lifecycle. Real checklist lives in Apple Reminders. */
+export const TodoStatus = z.enum(["suggested", "accepted", "dismissed"]);
+export type TodoStatus = z.infer<typeof TodoStatus>;
 
 /** Active feeds count toward 摄取. Samples do not. */
 export const ACTIVE_FEED_KINDS: readonly NodeKind[] = [

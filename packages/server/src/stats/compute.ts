@@ -102,7 +102,8 @@ export function scoreFocus(sessions: Session[], nodes: NodeRecord[]): number {
 }
 
 /**
- * 产出: todo completion + agent duration + git commit count + sent-email count.
+ * 产出: reminder completion + agent duration + git commit count + sent-email count.
+ * todoRate is the real Apple Reminders completion rate.
  * Coefficients are initial; tunable before T+40h.
  */
 export function scoreOutput(
@@ -111,7 +112,7 @@ export function scoreOutput(
   commitCount = 0,
   emailOutCount = 0,
 ): number {
-  // todo completion rate → max 60
+  // reminder completion rate → max 60
   const todoScore = clamp(todoRate * 60, 0, 60);
   const agentMin = sessions
     .filter((s) => s.kind === "agent")

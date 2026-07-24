@@ -39,6 +39,7 @@ function emailSeed(m: EmailMessage): string {
 
 export function emailsToNodes(
   emails: EmailMessage[],
+  day?: string,
   dedupe: KeyDedupe = seen,
 ): NodeInput[] {
   const nodes: NodeInput[] = [];
@@ -63,7 +64,7 @@ export function emailsToNodes(
       },
       client_created_at: m.receivedAt,
       // Bucket by envelope time so cross-midnight mail lands on the right day.
-      date: todayLocal(new Date(m.receivedAt)),
+      date: day ?? todayLocal(new Date(m.receivedAt)),
     });
   }
   return nodes;
@@ -71,12 +72,15 @@ export function emailsToNodes(
 
 export const gmailSource: SampleSource = {
   id: "gmail",
-  async sample(_ctx: SampleContext): Promise<SourceResult> {
+  async sample(ctx: SampleContext): Promise<SourceResult> {
     if (!config.gmail) {
       return { nodes: [], stats: { configured: 0 } };
     }
-    const emails = await fetchTodayEmails(config.gmail).catch(() => [] as EmailMessage[]);
-    const nodes = emailsToNodes(emails);
+    const emails = await fetchTodayEmails(config.gmail, {
+      start: ctx.dayStart,
+      end: ctx.dayEnd,
+    }).catch(() => [] as EmailMessage[]);
+    const nodes = emailsToNodes(emails, ctx.day);
     return {
       nodes,
       stats: {
