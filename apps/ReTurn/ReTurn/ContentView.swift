@@ -159,7 +159,6 @@ struct ContentView: View {
         }
         .menuIndicator(.hidden)
         .buttonBorderShape(.circle)
-        .contentShape(Circle())
         .clipShape(Circle())
         let composerContent = HStack(
             alignment: .center,
