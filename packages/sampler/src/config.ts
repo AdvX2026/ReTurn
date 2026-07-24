@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { config as loadEnv } from "dotenv";
+import type { GmailConfig } from "./collect-gmail.js";
 
 loadEnv();
 
@@ -37,6 +38,22 @@ function dirs(name: string): string[] {
 
 const dataDir = str("SAMPLER_DATA_DIR", join(homedir(), ".return", "sampler"));
 
+/**
+ * Gmail IMAP config. Requires both user + app password; either empty = off
+ * (no connection ever opened, behaviour identical to current).
+ */
+function gmailConfig(): GmailConfig | null {
+  const user = str("GMAIL_IMAP_USER").trim();
+  const password = str("GMAIL_IMAP_PASSWORD");
+  if (!user || !password) return null;
+  return {
+    user,
+    password,
+    host: str("GMAIL_IMAP_HOST", "imap.gmail.com"),
+    port: num("GMAIL_IMAP_PORT", 993),
+  };
+}
+
 export const config = {
   /** Pi base URL */
   serverUrl: str("RETURN_SERVER_URL", "http://127.0.0.1:8787").replace(/\/$/, ""),
@@ -54,4 +71,9 @@ export const config = {
    * Empty (default) = feature off — no git processes spawned.
    */
   gitScanDirs: dirs("GIT_SCAN_DIRS"),
+  /**
+   * Gmail IMAP account for the email source. null (default) = feature off —
+   * no IMAP connection is opened.
+   */
+  gmail: gmailConfig(),
 } as const;
