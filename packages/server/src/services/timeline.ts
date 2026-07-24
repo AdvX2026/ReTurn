@@ -25,47 +25,79 @@ function categorize(app: string): string {
 }
 
 /**
- * Build 24h timeline from existing nodes (PRD F12).
- * No new tables — pure aggregation.
+ * Build timeline from existing nodes (PRD F7).
+ * Single day or inclusive from/to range. No new tables — pure aggregation.
  */
-export function buildTimeline(db: Db, date: string): TimelineResponse {
-  const nodes = listNodesByDate(db, date);
-  const sessions = allSessions(nodes, config.sampleIntervalMin);
+export function buildTimeline(
+  db: Db,
+  dateOrRange: string | { from: string; to: string },
+): TimelineResponse {
+  const from = typeof dateOrRange === "string" ? dateOrRange : dateOrRange.from;
+  const to = typeof dateOrRange === "string" ? dateOrRange : dateOrRange.to;
+  const dates = dateSpan(from, to);
   const segments: TimelineSegment[] = [];
 
-  for (const s of sessions) {
-    segments.push({
-      kind: s.kind === "agent" ? "agent" : "app",
-      start: s.start,
-      end: s.end,
-      label: s.app,
-      category: s.kind === "agent" ? "agent" : categorize(s.app),
-      meta: s.meta,
-    });
-  }
+  for (const date of dates) {
+    const nodes = listNodesByDate(db, date);
+    const sessions = allSessions(nodes, config.sampleIntervalMin);
 
-  // Feed dots (active nodes) — use client event time when present (offline buffer).
-  for (const n of nodes) {
-    if (!["text", "url", "voice", "save_note"].includes(n.kind)) continue;
-    const at = nodeEventTime(n);
-    segments.push({
-      kind: "feed",
-      start: at,
-      end: at,
-      label: n.title || n.kind,
-      node_id: n.id,
-      category: n.kind,
-      meta: { kind: n.kind },
-    });
-  }
+    for (const s of sessions) {
+      segments.push({
+        kind: s.kind === "agent" ? "agent" : "app",
+        start: s.start,
+        end: s.end,
+        label: s.app,
+        category: s.kind === "agent" ? "agent" : categorize(s.app),
+        meta: s.meta,
+        date,
+      });
+    }
 
-  // Sleep segment from health_daily
-  const sleep = sleepSegment(nodes, date);
-  if (sleep) segments.push(sleep);
+    for (const n of nodes) {
+      if (!["text", "url", "voice", "save_note", "idea", "image"].includes(n.kind)) {
+        continue;
+      }
+      const at = nodeEventTime(n);
+      segments.push({
+        kind: "feed",
+        start: at,
+        end: at,
+        label: n.title || n.kind,
+        node_id: n.id,
+        category: n.kind,
+        meta: { kind: n.kind },
+        date,
+      });
+    }
+
+    const sleep = sleepSegment(nodes, date);
+    if (sleep) segments.push({ ...sleep, date });
+  }
 
   segments.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
 
-  return { date, segments };
+  return {
+    date: from,
+    from: from !== to ? from : undefined,
+    to: from !== to ? to : undefined,
+    segments,
+  };
+}
+
+function dateSpan(from: string, to: string): string[] {
+  const out: string[] = [];
+  let cur = from;
+  // Cap range to 31 days to protect Pi.
+  for (let i = 0; i < 31 && cur <= to; i++) {
+    out.push(cur);
+    const [y, m, d] = cur.split("-").map(Number);
+    const dt = new Date(y!, m! - 1, d! + 1);
+    const yy = dt.getFullYear();
+    const mm = String(dt.getMonth() + 1).padStart(2, "0");
+    const dd = String(dt.getDate()).padStart(2, "0");
+    cur = `${yy}-${mm}-${dd}`;
+  }
+  return out;
 }
 
 function sleepSegment(nodes: NodeRecord[], date: string): TimelineSegment | null {

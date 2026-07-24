@@ -8,11 +8,13 @@ import { buildFermentContext, runFerment } from "../ai/ferment.js";
 import { config } from "../config.js";
 import {
   countCrossDayEdges,
+  currentCadence,
   ensureDay,
   getDayByDate,
   getLatestSavedDay,
   getNodeByClientUuid,
   getNodeById,
+  insertCard,
   insertEdge,
   insertNode,
   insertTodo,
@@ -227,11 +229,13 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
       reindexNode(db, nodeId);
     }
 
-    // Future todos attach to the *next* calendar day (shown on Continue).
+    // Future todos attach to the *next* calendar day (shown on Continue / Future).
     const nextDate = addDays(input.date, 1);
     const nextDay = ensureDay(db, nextDate);
+    const todoIds: string[] = [];
     for (const t of ferment.todos) {
-      insertTodo(db, { day_id: nextDay.id, text: t.text });
+      const todo = insertTodo(db, { day_id: nextDay.id, text: t.text });
+      todoIds.push(todo.id);
     }
 
     const freshNodes = listNodesByDate(db, input.date);
@@ -258,6 +262,65 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
       stats,
       character_state,
     });
+
+    // v0.6 cards (briefing / todo_suggestion / health / auto ideas)
+    const briefingBody = ferment.briefing ?? ferment.summary;
+    insertCard(db, {
+      type: "briefing",
+      date: input.date,
+      content: {
+        summary: ferment.summary,
+        opening_line: ferment.opening_line,
+        briefing: briefingBody,
+        review_points: ferment.review_points,
+        stats,
+        character_state,
+        node_ids: freshNodes
+          .filter((n) => ["text", "url", "voice", "save_note", "idea"].includes(n.kind))
+          .map((n) => n.id)
+          .slice(0, 40),
+      },
+    });
+    if (ferment.todos.length > 0) {
+      insertCard(db, {
+        type: "todo_suggestion",
+        date: nextDate,
+        content: {
+          todos: ferment.todos.map((t) => t.text),
+          todo_ids: todoIds,
+        },
+      });
+    }
+    if (ferment.health_advice) {
+      insertCard(db, {
+        type: "health",
+        date: nextDate,
+        content: {
+          advice: ferment.health_advice,
+          sleep_minutes: health.sleepMinutes,
+          steps: health.steps,
+        },
+      });
+    }
+    for (const idea of ferment.ideas ?? []) {
+      const { node } = insertNode(db, {
+        client_uuid: uuid(),
+        kind: "idea",
+        title: idea.text.slice(0, 60),
+        content: idea.text,
+        date: input.date,
+        source_meta: { provenance: "auto", source: "ferment" },
+      });
+      insertCard(db, {
+        type: "idea",
+        date: input.date,
+        content: {
+          text: idea.text,
+          node_ids: [node.id],
+          provenance: "auto",
+        },
+      });
+    }
   })();
 
   return buildSaveResponse(db, day.id, input.date, false, degraded);
@@ -271,7 +334,7 @@ function degradeFerment(
 ): FermentResult {
   const prev = getLatestSavedDay(db, date);
   const active = nodes.filter((n) =>
-    ["text", "url", "voice", "save_note"].includes(n.kind),
+    ["text", "url", "voice", "save_note", "idea", "image"].includes(n.kind),
   );
 
   const summary =
@@ -304,8 +367,11 @@ function degradeFerment(
   return {
     summary,
     opening_line,
+    briefing: summary,
     review_points,
     todos: saveNote ? [{ text: saveNote.slice(0, 200) }] : [],
+    health_advice: null,
+    ideas: [],
     node_tags: {},
     edges: [],
   };
@@ -337,6 +403,12 @@ function buildSaveResponse(
     review_points = [];
   }
 
+  const cardsCreated = (
+    db
+      .prepare(`SELECT COUNT(*) AS n FROM cards WHERE date = ? OR date = ?`)
+      .get(date, addDays(date, 1)) as { n: number }
+  ).n;
+
   return {
     day_id: dayId,
     date,
@@ -345,11 +417,14 @@ function buildSaveResponse(
     degraded,
     summary: day.summary,
     opening_line: day.opening_line,
+    briefing: day.summary,
     review_points,
     todos: nextTodos.length > 0 ? nextTodos : todos,
     stats: live.stats,
     character_state: live.character_state,
     streak,
     edges_created: edges.length,
+    cards_created: cardsCreated,
+    cadence: currentCadence(db, date),
   };
 }

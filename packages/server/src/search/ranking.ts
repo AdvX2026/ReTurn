@@ -18,6 +18,8 @@ export const KIND_WEIGHTS: Readonly<Record<string, number>> = {
   url: 1.0,
   voice: 1.0,
   save_note: 1.0,
+  idea: 1.0,
+  image: 0.9,
   day_summary: 1.0,
   git_commit: 0.7,
   agent_session: 0.7,

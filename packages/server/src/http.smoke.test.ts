@@ -225,4 +225,45 @@ describe("http smoke", () => {
     });
     assert.equal(res.statusCode, 503);
   });
+
+  it("POST /api/chat idea + GET messages/cards", async () => {
+    const chat = await app.inject({
+      method: "POST",
+      url: "/api/chat",
+      payload: { text: "灵感: 双向流" },
+    });
+    assert.equal(chat.statusCode, 200, chat.body);
+    const body = chat.json() as { intent: string; message_id: string };
+    assert.equal(body.intent, "idea");
+
+    const msgs = await app.inject({ method: "GET", url: "/api/messages" });
+    assert.equal(msgs.statusCode, 200);
+    const mb = msgs.json() as { messages: unknown[] };
+    assert.ok(mb.messages.length >= 1);
+
+    const cards = await app.inject({
+      method: "GET",
+      url: "/api/cards?direction=future",
+    });
+    assert.equal(cards.statusCode, 200);
+  });
+
+  it("POST /api/resume + GET /api/tasks", async () => {
+    const resume = await app.inject({
+      method: "POST",
+      url: "/api/resume",
+      payload: {},
+    });
+    assert.equal(resume.statusCode, 200, resume.body);
+    const tasks = await app.inject({ method: "GET", url: "/api/tasks" });
+    assert.equal(tasks.statusCode, 200);
+  });
+
+  it("GET /api/timeline?from&to", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/timeline?from=${date}&to=${date}`,
+    });
+    assert.equal(res.statusCode, 200, res.body);
+  });
 });

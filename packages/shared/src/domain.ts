@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-/** Node kinds accepted by the system (PRD §5.1 + git T1). */
+/** Node kinds accepted by the system (PRD v0.6 §5.1 + git T1). */
 export const NodeKind = z.enum([
   "text",
   "url",
@@ -13,6 +13,8 @@ export const NodeKind = z.enum([
   "health_daily",
   "snapshot",
   "todo_check",
+  "idea",
+  "image",
 ]);
 export type NodeKind = z.infer<typeof NodeKind>;
 
@@ -22,7 +24,32 @@ export const ACTIVE_FEED_KINDS: readonly NodeKind[] = [
   "url",
   "voice",
   "save_note",
+  "idea",
+  "image",
 ] as const;
+
+/** Chat triage intents (PRD F4). */
+export const ChatIntent = z.enum(["idea", "retrieval", "question", "unknown"]);
+export type ChatIntent = z.infer<typeof ChatIntent>;
+
+export const MessageRole = z.enum(["user", "agent"]);
+export type MessageRole = z.infer<typeof MessageRole>;
+
+export const TaskType = z.enum(["meeting_notes", "image_extract", "generic"]);
+export type TaskType = z.infer<typeof TaskType>;
+
+export const TaskStatus = z.enum(["queued", "running", "done", "failed"]);
+export type TaskStatus = z.infer<typeof TaskStatus>;
+
+export const CardType = z.enum(["briefing", "idea", "todo_suggestion", "health"]);
+export type CardType = z.infer<typeof CardType>;
+
+/** Sampler rhythm after Save (PRD F2). */
+export const CadenceMode = z.enum(["active", "night"]);
+export type CadenceMode = z.infer<typeof CadenceMode>;
+
+export const IdeaProvenance = z.enum(["user", "auto"]);
+export type IdeaProvenance = z.infer<typeof IdeaProvenance>;
 
 export const CharacterState = z.enum([
   "tired",

@@ -1,9 +1,18 @@
 import type {
+  CadenceMode,
+  CardRecord,
+  CardType,
   CharacterState,
+  ChatIntent,
+  MessageRecord,
+  MessageRole,
   NodeKind,
   NodeRecord,
   ReviewPoint,
   Stats,
+  TaskRecord,
+  TaskStatus,
+  TaskType,
   TodoRecord,
 } from "@return/shared";
 import {
@@ -510,4 +519,300 @@ export function todoCompletionRate(
     .get(dayId) as { total: number; done: number };
   const rate = row.total === 0 ? 0 : row.done / row.total;
   return { total: row.total, done: row.done, rate };
+}
+
+// ── cadence (sampler rhythm) ─────────────────────────────
+
+/** Night mode if today is already saved; else active. */
+export function currentCadence(db: Db, date = todayDate()): CadenceMode {
+  const day = getDayByDate(db, date);
+  return day?.saved_at ? "night" : "active";
+}
+
+// ── messages ─────────────────────────────────────────────
+
+interface MessageRow {
+  id: string;
+  role: string;
+  content: string;
+  intent: string | null;
+  task_id: string | null;
+  meta_json: string | null;
+  created_at: string;
+}
+
+function messageToRecord(row: MessageRow): MessageRecord {
+  return {
+    id: row.id,
+    role: row.role as MessageRole,
+    content: row.content,
+    intent: (row.intent as ChatIntent | null) ?? null,
+    task_id: row.task_id,
+    created_at: row.created_at,
+    meta: parseJson<Record<string, unknown> | null>(row.meta_json, null),
+  };
+}
+
+export function insertMessage(
+  db: Db,
+  input: {
+    role: MessageRole | string;
+    content: string;
+    intent?: ChatIntent | string | null;
+    task_id?: string | null;
+    meta?: Record<string, unknown> | null;
+    created_at?: string;
+  },
+): MessageRecord {
+  const id = uuid();
+  const created_at = input.created_at ?? nowIso();
+  db.prepare(
+    `INSERT INTO messages (id, role, content, intent, task_id, meta_json, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    id,
+    input.role,
+    input.content,
+    input.intent ?? null,
+    input.task_id ?? null,
+    input.meta ? JSON.stringify(input.meta) : null,
+    created_at,
+  );
+  return {
+    id,
+    role: input.role as MessageRole,
+    content: input.content,
+    intent: (input.intent as ChatIntent | null) ?? null,
+    task_id: input.task_id ?? null,
+    created_at,
+    meta: input.meta ?? null,
+  };
+}
+
+export function getMessage(db: Db, id: string): MessageRecord | undefined {
+  const row = db.prepare(`SELECT * FROM messages WHERE id = ?`).get(id) as
+    | MessageRow
+    | undefined;
+  return row ? messageToRecord(row) : undefined;
+}
+
+export function setMessageIntent(
+  db: Db,
+  id: string,
+  intent: ChatIntent | string,
+): MessageRecord | undefined {
+  db.prepare(`UPDATE messages SET intent = ? WHERE id = ?`).run(intent, id);
+  return getMessage(db, id);
+}
+
+/** Cursor = created_at ISO of last item; returns newer-to-older page. */
+export function listMessages(
+  db: Db,
+  opts?: { cursor?: string; limit?: number },
+): { messages: MessageRecord[]; next_cursor: string | null } {
+  const limit = Math.min(Math.max(opts?.limit ?? 50, 1), 100);
+  const rows = (
+    opts?.cursor
+      ? db
+          .prepare(
+            `SELECT * FROM messages WHERE created_at < ? ORDER BY created_at DESC LIMIT ?`,
+          )
+          .all(opts.cursor, limit)
+      : db.prepare(`SELECT * FROM messages ORDER BY created_at DESC LIMIT ?`).all(limit)
+  ) as MessageRow[];
+  const messages = rows.map(messageToRecord);
+  const next_cursor =
+    messages.length === limit
+      ? (messages[messages.length - 1]?.created_at ?? null)
+      : null;
+  return { messages, next_cursor };
+}
+
+// ── tasks ────────────────────────────────────────────────
+
+interface TaskRow {
+  id: string;
+  type: string;
+  status: string;
+  input_json: string;
+  result_message_id: string | null;
+  created_at: string;
+  finished_at: string | null;
+}
+
+function taskToRecord(row: TaskRow): TaskRecord {
+  return {
+    id: row.id,
+    type: row.type as TaskType,
+    status: row.status as TaskStatus,
+    input: parseJson<Record<string, unknown>>(row.input_json, {}),
+    result_message_id: row.result_message_id,
+    created_at: row.created_at,
+    finished_at: row.finished_at,
+  };
+}
+
+export function insertTask(
+  db: Db,
+  input: {
+    type: TaskType | string;
+    status?: TaskStatus | string;
+    input: Record<string, unknown>;
+  },
+): TaskRecord {
+  const id = uuid();
+  const created_at = nowIso();
+  const status = input.status ?? "queued";
+  db.prepare(
+    `INSERT INTO tasks (id, type, status, input_json, result_message_id, created_at, finished_at)
+     VALUES (?, ?, ?, ?, NULL, ?, NULL)`,
+  ).run(id, input.type, status, JSON.stringify(input.input), created_at);
+  return {
+    id,
+    type: input.type as TaskType,
+    status: status as TaskStatus,
+    input: input.input,
+    result_message_id: null,
+    created_at,
+    finished_at: null,
+  };
+}
+
+export function updateTask(
+  db: Db,
+  id: string,
+  patch: {
+    status?: TaskStatus | string;
+    result_message_id?: string | null;
+    finished_at?: string | null;
+  },
+): TaskRecord | undefined {
+  const existing = db.prepare(`SELECT * FROM tasks WHERE id = ?`).get(id) as
+    | TaskRow
+    | undefined;
+  if (!existing) return undefined;
+  const status = patch.status ?? existing.status;
+  const result_message_id =
+    patch.result_message_id !== undefined
+      ? patch.result_message_id
+      : existing.result_message_id;
+  const finished_at =
+    patch.finished_at !== undefined ? patch.finished_at : existing.finished_at;
+  db.prepare(
+    `UPDATE tasks SET status = ?, result_message_id = ?, finished_at = ? WHERE id = ?`,
+  ).run(status, result_message_id, finished_at, id);
+  return getTask(db, id);
+}
+
+export function getTask(db: Db, id: string): TaskRecord | undefined {
+  const row = db.prepare(`SELECT * FROM tasks WHERE id = ?`).get(id) as
+    | TaskRow
+    | undefined;
+  return row ? taskToRecord(row) : undefined;
+}
+
+export function listTasks(db: Db, opts?: { status?: TaskStatus | string }): TaskRecord[] {
+  const rows = (
+    opts?.status
+      ? db
+          .prepare(`SELECT * FROM tasks WHERE status = ? ORDER BY created_at DESC`)
+          .all(opts.status)
+      : db.prepare(`SELECT * FROM tasks ORDER BY created_at DESC LIMIT 100`).all()
+  ) as TaskRow[];
+  return rows.map(taskToRecord);
+}
+
+// ── cards ────────────────────────────────────────────────
+
+interface CardRow {
+  id: string;
+  type: string;
+  date: string;
+  content_json: string;
+  created_at: string;
+}
+
+function cardToRecord(row: CardRow): CardRecord {
+  return {
+    id: row.id,
+    type: row.type as CardType,
+    date: row.date,
+    content: parseJson<Record<string, unknown>>(row.content_json, {}),
+    created_at: row.created_at,
+  };
+}
+
+export function insertCard(
+  db: Db,
+  input: {
+    type: CardType | string;
+    date: string;
+    content: Record<string, unknown>;
+  },
+): CardRecord {
+  const id = uuid();
+  const created_at = nowIso();
+  db.prepare(
+    `INSERT INTO cards (id, type, date, content_json, created_at) VALUES (?, ?, ?, ?, ?)`,
+  ).run(id, input.type, input.date, JSON.stringify(input.content), created_at);
+  return {
+    id,
+    type: input.type as CardType,
+    date: input.date,
+    content: input.content,
+    created_at,
+  };
+}
+
+/**
+ * before = cards on dates ≤ today, newest first (past / briefing).
+ * future = idea / todo_suggestion / health cards, newest first.
+ * cursor = created_at of last card.
+ */
+export function listCards(
+  db: Db,
+  opts: { direction: "before" | "future"; cursor?: string; limit?: number },
+): { cards: CardRecord[]; next_cursor: string | null } {
+  const limit = Math.min(Math.max(opts.limit ?? 30, 1), 100);
+  const today = todayDate();
+  let rows: CardRow[];
+  if (opts.direction === "before") {
+    rows = (
+      opts.cursor
+        ? db
+            .prepare(
+              `SELECT * FROM cards WHERE date <= ? AND created_at < ?
+               ORDER BY date DESC, created_at DESC LIMIT ?`,
+            )
+            .all(today, opts.cursor, limit)
+        : db
+            .prepare(
+              `SELECT * FROM cards WHERE date <= ?
+               ORDER BY date DESC, created_at DESC LIMIT ?`,
+            )
+            .all(today, limit)
+    ) as CardRow[];
+  } else {
+    rows = (
+      opts.cursor
+        ? db
+            .prepare(
+              `SELECT * FROM cards
+               WHERE type IN ('idea','todo_suggestion','health') AND created_at < ?
+               ORDER BY created_at DESC LIMIT ?`,
+            )
+            .all(opts.cursor, limit)
+        : db
+            .prepare(
+              `SELECT * FROM cards
+               WHERE type IN ('idea','todo_suggestion','health')
+               ORDER BY created_at DESC LIMIT ?`,
+            )
+            .all(limit)
+    ) as CardRow[];
+  }
+  const cards = rows.map(cardToRecord);
+  const next_cursor =
+    cards.length === limit ? (cards[cards.length - 1]?.created_at ?? null) : null;
+  return { cards, next_cursor };
 }

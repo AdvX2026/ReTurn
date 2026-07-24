@@ -43,6 +43,8 @@ const INDEXABLE_KINDS = new Set<string>([
   "todo_check",
   "snapshot",
   "health_daily",
+  "idea",
+  "image",
 ]);
 
 /** High-value kinds that get embeddings (Phase 2). Samples excluded. */
@@ -52,6 +54,8 @@ export const EMBEDDABLE_KINDS = new Set<string>([
   "voice",
   "save_note",
   "git_commit",
+  "idea",
+  "image",
 ]);
 
 export function nodeDocId(nodeId: string): string {

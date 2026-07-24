@@ -88,9 +88,12 @@ Produce a structured JSON review for the user's day. Do NOT invent attributes/sc
 Rules:
 - Output ONLY valid JSON matching the schema below. No markdown fences, no prose outside JSON.
 - summary: 2–5 sentences of what the day was about.
-- opening_line: one warm sentence spoken to the user the next morning (Before section).
+- opening_line: one warm sentence for next-morning greeting / briefing headline.
+- briefing: optional longer briefing body (defaults to summary if omitted).
 - review_points: 2–6 concrete wins/misses/insights. Prefer evidence from nodes.
 - todos: 1–7 actionable items for tomorrow. Anchor on the save_note if present; do not invent busywork.
+- health_advice: optional one short health tip from sleep/steps if present.
+- ideas: optional auto-extracted ideas (short), provenance will be marked auto.
 - node_tags: map of node id → short tags (1–4 each) for active nodes you were given.
 - edges: links between nodes. Prefer cross-day links using linkable_nodes. relation is a short label (e.g. "continues", "inspired_by", "related").
 
@@ -98,8 +101,11 @@ Schema:
 {
   "summary": string,
   "opening_line": string,
+  "briefing": string,
   "review_points": [{"text": string, "kind": "win"|"miss"|"insight"|"other"}],
   "todos": [{"text": string}],
+  "health_advice": string|null,
+  "ideas": [{"text": string}],
   "node_tags": { "<node_uuid>": string[] },
   "edges": [{"src_node_id": string, "dst_node_id": string, "relation": string}]
 }
@@ -184,7 +190,7 @@ export function buildFermentContext(input: {
   recentSummaries: Array<{ date: string; summary: string }>;
   linkableNodes: Array<{ id: string; date: string; title: string | null; kind: string }>;
 }): FermentContext {
-  const activeKinds = new Set(["text", "url", "voice", "save_note"]);
+  const activeKinds = new Set(["text", "url", "voice", "save_note", "idea", "image"]);
   return {
     date: input.date,
     saveNote: input.saveNote,
