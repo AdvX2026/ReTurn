@@ -123,7 +123,7 @@ struct ContentView: View {
             style: .continuous
         )
         let composerContent = HStack(
-            alignment: .bottom,
+            alignment: .center,
             spacing: ReTurnDesign.Spacing.medium
         ) {
             Image(systemName: "plus")
