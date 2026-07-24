@@ -1,6 +1,6 @@
 # apps/ReTurn — Agent Notice
 
-- SwiftUI multiplatform Xcode project (deployment targets iOS 17.0 / macOS 14.0). Built with Xcode 26; system components auto-adopt Liquid Glass on OS 26 and auto-fallback on older OSes. Demo is only ever verified on OS 26 — do not use OS-26-only APIs (no `#available` branches wanted). visionOS removed. macOS App Sandbox is OFF per PRD §6.1 (sandbox without outgoing-network entitlement blocks LAN access to Pi/sampler).
+- SwiftUI multiplatform Xcode project (deployment targets iOS 17.0 / macOS 14.0). Built with Xcode 26; system components auto-adopt Liquid Glass on OS 26 and auto-fallback on older OSes. Demo is only ever verified on OS 26. Avoid OS-26-only APIs by default; the explicitly approved exception is the composer surface, which uses one localized `#available` branch for native Liquid Glass and standard Material fallback. visionOS removed. macOS App Sandbox is OFF per PRD §6.1 (sandbox without outgoing-network entitlement blocks LAN access to Pi/sampler).
 - `project.pbxproj` uses synchronized folder groups: any file added under `ReTurn/` / `ReTurnTests/` is picked up automatically — never hand-edit the pbxproj to add files.
 
 ## Models.swift (shared-contract mirror)
@@ -22,4 +22,5 @@
 - `ContentView` is a horizontal Before / Now / After pager, defaulting to Now. Its segmented `Picker` and swipe position share one `TimelinePage` selection.
 - The initial Now visual follows Figma file `ilZuF3hqB1HH7f1usiMmPM`, node `7:1182`. Shared HIG colors, spacing, semantic typography, and adaptive layout rules live in `DesignTokens.swift`; do not scatter replacement literals through views.
 - Timeline chrome uses the available container width with compact-screen insets and readable iPad/macOS caps. The composer expands with a spring animation while focused; preserve this responsive behavior instead of restoring device-specific widths.
+- On iOS/macOS 26, the composer surface uses the native interactive `glassEffect`; do not add manual highlight, glow, or shadow overlays on top. Older systems retain the standard Material fallback.
 - `Kongkong.imageset` is the exact vector exported by Figma. Keep the asset rather than redrawing the mascot in SwiftUI.

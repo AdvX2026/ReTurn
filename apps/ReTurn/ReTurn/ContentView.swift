@@ -118,7 +118,7 @@ struct ContentView: View {
     }
 
     private func composer(containerWidth: CGFloat) -> some View {
-        HStack(spacing: ReTurnDesign.Spacing.medium) {
+        let composerContent = HStack(spacing: ReTurnDesign.Spacing.medium) {
             Image(systemName: "plus")
                 .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
                 .accessibilityHidden(true)
@@ -150,28 +150,21 @@ struct ContentView: View {
                 ? ReTurnDesign.Metrics.composerFocusedHeight
                 : ReTurnDesign.Metrics.composerHeight
         )
-        .background(.ultraThinMaterial, in: Capsule())
-        .overlay {
-            ZStack {
-                Capsule()
-                    .strokeBorder(
-                        ReTurnDesign.Colors.composerGlow,
-                        lineWidth: ReTurnDesign.Metrics.composerGlowLineWidth
-                    )
-                    .blur(radius: ReTurnDesign.Metrics.composerGlowBlurRadius)
 
-                Capsule()
-                    .strokeBorder(
-                        ReTurnDesign.Colors.composerHighlight,
-                        lineWidth: ReTurnDesign.Metrics.composerHighlightLineWidth
+        return Group {
+            if #available(iOS 26.0, macOS 26.0, *) {
+                composerContent
+                    .glassEffect(.regular.interactive(), in: Capsule())
+            } else {
+                composerContent
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .shadow(
+                        color: ReTurnDesign.Colors.composerFallbackShadow,
+                        radius: ReTurnDesign.Metrics.composerFallbackShadowRadius,
+                        y: ReTurnDesign.Metrics.composerFallbackShadowY
                     )
             }
         }
-        .shadow(
-            color: ReTurnDesign.Colors.composerShadow,
-            radius: ReTurnDesign.Metrics.composerShadowRadius,
-            y: ReTurnDesign.Metrics.composerShadowY
-        )
         .contentShape(Capsule())
         .onTapGesture {
             isComposerFocused = true
