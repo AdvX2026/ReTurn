@@ -15,3 +15,5 @@ See root `.env.example`. `LLM_API_KEY` / `HEALTH_TOKEN` never ship to clients.
 - mDNS (`return.local`) not implemented yet — clients use IP for now.
 - URL fetch enrichment (title/body summary on `kind=url`) not done; desktop/server can add later.
 - Ferment without `LLM_API_KEY` always degrades (tests rely on this).
+- Global search / node layering: see `docs/architecture-nodes-search.md` (PR #8).
+- Swift `Models.swift` mirror for Search/Ask + `git_commit` waits on `apps/ReturnApp`.

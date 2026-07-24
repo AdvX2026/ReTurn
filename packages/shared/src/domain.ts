@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-/** Node kinds accepted by the system (PRD §5.1). */
+/** Node kinds accepted by the system (PRD §5.1 + git T1). */
 export const NodeKind = z.enum([
   "text",
   "url",
@@ -9,6 +9,7 @@ export const NodeKind = z.enum([
   "app_sample",
   "tab_sample",
   "agent_session",
+  "git_commit",
   "health_daily",
   "snapshot",
   "todo_check",

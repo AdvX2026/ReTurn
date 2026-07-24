@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { AskRequest, AskResponse, SearchHit, SearchResponse } from "./api.js";
+import { AskRequest, AskResponse, NodeRecord, SearchHit, SearchResponse } from "./api.js";
+import { NodeKind } from "./domain.js";
 
 describe("search/ask contracts", () => {
   it("SearchResponse accepts valid payload", () => {
@@ -59,6 +60,23 @@ describe("search/ask contracts", () => {
       ],
       retrieved: 1,
       degraded: true,
+    });
+    assert.equal(parsed.success, true);
+  });
+
+  it("NodeKind and NodeRecord accept git_commit", () => {
+    assert.equal(NodeKind.safeParse("git_commit").success, true);
+    const parsed = NodeRecord.safeParse({
+      id: "00000000-0000-4000-8000-000000000001",
+      day_id: "00000000-0000-4000-8000-000000000002",
+      device_id: null,
+      kind: "git_commit",
+      title: "feat: search",
+      content: "subject",
+      source_meta: { repo: "ReTurn", subject: "feat: search", sha: "abc" },
+      client_uuid: "00000000-0000-4000-8000-000000000003",
+      created_at: "2026-07-24T00:00:00.000Z",
+      date: "2026-07-24",
     });
     assert.equal(parsed.success, true);
   });
