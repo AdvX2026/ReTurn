@@ -108,13 +108,9 @@ export async function registerRoutes(app: FastifyInstance, db: Db): Promise<void
     const result = insertNodes(
       db,
       parsed.data.nodes.map((n) => {
-        const meta = {
-          ...(n.source_meta ?? {}),
-          ...(n.client_created_at ? { client_created_at: n.client_created_at } : {}),
-        } as Record<string, unknown>;
-        // Prefer validated client sample time for offline-buffered timeline/stats.
-        // Reject non-ISO sampled_at so NodeRecord.created_at stays a datetime (Codex P2).
-        const created_at = pickClientEventTime(meta, n.client_created_at);
+        // created_at is always server-stamped (shared NodeInput contract / Codex P2).
+        // Client event time lives only in source_meta for timeline/session aggregation.
+        const meta = sanitizeClientMeta(n.source_meta, n.client_created_at);
         return {
           client_uuid: n.client_uuid,
           kind: n.kind,
@@ -123,7 +119,6 @@ export async function registerRoutes(app: FastifyInstance, db: Db): Promise<void
           source_meta: meta,
           device_id: parsed.data.device_id,
           date: n.date,
-          created_at,
         };
       }),
     );
@@ -461,18 +456,24 @@ export async function registerRoutes(app: FastifyInstance, db: Db): Promise<void
   });
 }
 
-/** ISO-8601 datetime only; invalid sampled_at falls back to client_created_at then server time. */
-function pickClientEventTime(
-  meta: Record<string, unknown>,
+/**
+ * Client event times go into source_meta only — never overwrite server created_at.
+ * Drop non-parseable sampled_at; keep Zod-validated client_created_at.
+ */
+function sanitizeClientMeta(
+  sourceMeta: Record<string, unknown> | null | undefined,
   clientCreatedAt?: string,
-): string | undefined {
-  const candidates = [meta.sampled_at, clientCreatedAt];
-  for (const c of candidates) {
-    if (typeof c !== "string" || !c) continue;
-    const t = Date.parse(c);
-    if (!Number.isNaN(t)) return new Date(t).toISOString();
+): Record<string, unknown> {
+  const meta: Record<string, unknown> = { ...(sourceMeta ?? {}) };
+  if (clientCreatedAt) meta.client_created_at = clientCreatedAt;
+  if (typeof meta.sampled_at === "string") {
+    const t = Date.parse(meta.sampled_at);
+    if (Number.isNaN(t)) delete meta.sampled_at;
+    else meta.sampled_at = new Date(t).toISOString();
+  } else if (meta.sampled_at != null) {
+    delete meta.sampled_at;
   }
-  return undefined;
+  return meta;
 }
 
 /** Deterministic UUIDv4-shaped id from seed (for health-date idempotency). */

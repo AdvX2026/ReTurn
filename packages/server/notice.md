@@ -2,7 +2,7 @@
 
 ## Architecture
 - Fastify HTTP API on Pi; SQLite is sole source of truth (`$DATA_DIR/return.db`).
-- SQLite via **Node built-in `node:sqlite`** (not better-sqlite3) — requires **Node ≥ 22.5**. Same SQLite engine; avoids native compile on Windows/arm64.
+- SQLite via **Node built-in `node:sqlite`** (not better-sqlite3) — requires **Node ≥ 22.13**. Same SQLite engine; avoids native compile on Windows/arm64.
 - Shared Zod contracts live in `@return/shared` (API + ferment JSON). Server validates at trust boundary.
 - Stats/character are pure code (`src/stats/*`). LLM only produces text products (summary/opening/todos/tags/edges).
 - Save is idempotent per day; ferment failure degrades and still seals the day.

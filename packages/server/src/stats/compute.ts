@@ -7,6 +7,7 @@ import {
   type Stats,
 } from "@return/shared";
 import { clamp } from "../util/time.js";
+import { nodeEventTime } from "./sessions.js";
 
 export interface StatsInput {
   nodes: NodeRecord[];
@@ -125,10 +126,11 @@ export function scoreEnergy(input: StatsInput): number {
 
 function lateNightPenalty(nodes: NodeRecord[]): number {
   // Active samples between 00:00–06:00 local → −5 each, cap −25
+  // Use client event time when present (offline buffer / Codex contract).
   let count = 0;
   for (const n of nodes) {
     if (n.kind !== "app_sample" && n.kind !== "agent_session") continue;
-    const h = new Date(n.created_at).getHours();
+    const h = new Date(nodeEventTime(n)).getHours();
     if (h >= 0 && h < 6) count++;
   }
   return clamp(count * 5, 0, 25);

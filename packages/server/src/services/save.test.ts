@@ -11,8 +11,7 @@ describe("saveToday", () => {
 
   beforeEach(() => {
     db = openMemoryDb();
-    // No LLM key → ferment degrades (still seals the day).
-    process.env.LLM_API_KEY = undefined;
+    // LLM keys cleared in test-setup.ts (before config import).
   });
 
   it("seals day and is idempotent on second save", async () => {

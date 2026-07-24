@@ -19,7 +19,7 @@ pnpm --filter @return/shared build
 pnpm dev:server
 ```
 
-Requires **Node ≥ 22.5** (uses built-in `node:sqlite`).
+Requires **Node ≥ 22.13** (built-in `node:sqlite` without experimental flag).
 
 ## Docs
 
