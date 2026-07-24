@@ -53,15 +53,16 @@ export const config = {
   },
 
   /**
-   * Embedding channel (global search Phase 2). Defaults fall back to LLM_*.
-   * Empty key → semantic channel off; keyword search still works.
+   * Embedding channel (global search Phase 2). Explicit only — no LLM_* fallback.
+   * Missing base/key/model → semantic channel off; keyword search still works.
+   * Base URL must be the API root (e.g. https://api.siliconflow.cn/v1), not .../embeddings.
    */
   embedding: {
-    baseUrl: (
-      str("EMBEDDING_BASE_URL") || str("LLM_BASE_URL", "https://api.openai.com/v1")
-    ).replace(/\/$/, ""),
-    apiKey: str("EMBEDDING_API_KEY") || str("LLM_API_KEY"),
-    model: str("EMBEDDING_MODEL", "text-embedding-3-small"),
+    baseUrl: str("EMBEDDING_BASE_URL")
+      .replace(/\/$/, "")
+      .replace(/\/embeddings$/i, ""),
+    apiKey: str("EMBEDDING_API_KEY"),
+    model: str("EMBEDDING_MODEL"),
     timeoutMs: num("EMBEDDING_TIMEOUT_MS", 30_000),
   },
 } as const;
@@ -80,6 +81,9 @@ export function isLlmConfigured(apiKey = config.llm.apiKey): boolean {
   return Boolean(apiKey?.trim());
 }
 
-export function isEmbeddingConfigured(apiKey = config.embedding.apiKey): boolean {
-  return Boolean(apiKey?.trim());
+/** Semantic channel needs explicit base + key + model (no LLM_* fallback). */
+export function isEmbeddingConfigured(
+  emb: { baseUrl: string; apiKey: string; model: string } = config.embedding,
+): boolean {
+  return Boolean(emb.baseUrl?.trim() && emb.apiKey?.trim() && emb.model?.trim());
 }
