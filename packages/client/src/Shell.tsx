@@ -93,9 +93,7 @@ export function Shell() {
   return (
     <div className="shell">
       <h1>ReTurn</h1>
-      <p className="sub">
-        Shell only — product UI later. Dual-process wiring check.
-      </p>
+      <p className="sub">Shell only — product UI later. Dual-process wiring check.</p>
 
       <div className="card">
         <h2>Pi server</h2>
@@ -128,11 +126,7 @@ export function Shell() {
         <div className="row">
           <span>status</span>
           <span className={samplerErr ? "bad" : "ok"}>
-            {samplerErr
-              ? `unreachable (${samplerErr})`
-              : sampler
-                ? "running"
-                : "…"}
+            {samplerErr ? `unreachable (${samplerErr})` : sampler ? "running" : "…"}
           </span>
         </div>
         {sampler && (
@@ -169,6 +163,7 @@ export function Shell() {
         )}
         <div className="actions">
           <button
+            type="button"
             className="btn"
             disabled={busy}
             onClick={() => void sampleNow(false)}
@@ -176,13 +171,14 @@ export function Shell() {
             sample-now
           </button>
           <button
+            type="button"
             className="btn ghost"
             disabled={busy}
             onClick={() => void sampleNow(true)}
           >
             sample-now (snapshot)
           </button>
-          <button className="btn ghost" onClick={() => void refresh()}>
+          <button type="button" className="btn ghost" onClick={() => void refresh()}>
             refresh
           </button>
         </div>
@@ -191,16 +187,14 @@ export function Shell() {
       {log && (
         <div className="card">
           <h2>last response</h2>
-          <pre style={{ margin: 0, fontSize: 12, whiteSpace: "pre-wrap" }}>
-            {log}
-          </pre>
+          <pre style={{ margin: 0, fontSize: 12, whiteSpace: "pre-wrap" }}>{log}</pre>
         </div>
       )}
 
       <p className="note">
         Run <code>pnpm dev:server</code> + <code>pnpm dev:sampler</code> +{" "}
-        <code>pnpm --filter @return/client tauri:dev</code>. Sampler is a
-        separate Node process; closing this window must not stop sampling.
+        <code>pnpm --filter @return/client tauri:dev</code>. Sampler is a separate Node
+        process; closing this window must not stop sampling.
       </p>
     </div>
   );

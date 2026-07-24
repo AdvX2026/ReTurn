@@ -4,10 +4,10 @@
  * GET  /status
  * POST /sample-now
  */
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { type IncomingMessage, type ServerResponse, createServer } from "node:http";
+import type { SampleSnapshot } from "./collect.js";
 import { config } from "./config.js";
 import type { Outbox } from "./outbox.js";
-import type { SampleSnapshot } from "./collect.js";
 import { getCachedDeviceId } from "./pi.js";
 
 export interface SamplerRuntime {
@@ -58,7 +58,10 @@ export function startLocalServer(rt: SamplerRuntime): Promise<void> {
         return;
       }
 
-      const url = new URL(req.url ?? "/", `http://${config.localHost}:${config.localPort}`);
+      const url = new URL(
+        req.url ?? "/",
+        `http://${config.localHost}:${config.localPort}`,
+      );
 
       if (req.method === "GET" && url.pathname === "/health") {
         send(res, 200, {

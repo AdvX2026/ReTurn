@@ -1,10 +1,5 @@
 import { z } from "zod";
-import {
-  CharacterState,
-  NodeKind,
-  Platform,
-  StatsSchema,
-} from "./domain.js";
+import { CharacterState, NodeKind, Platform, StatsSchema } from "./domain.js";
 
 // ── devices ──────────────────────────────────────────────
 
@@ -84,7 +79,11 @@ export type VoiceResponse = z.infer<typeof VoiceResponse>;
 
 export const HealthRequest = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  sleep_minutes: z.number().int().min(0).max(24 * 60),
+  sleep_minutes: z
+    .number()
+    .int()
+    .min(0)
+    .max(24 * 60),
   steps: z.number().int().min(0).max(200_000),
 });
 export type HealthRequest = z.infer<typeof HealthRequest>;

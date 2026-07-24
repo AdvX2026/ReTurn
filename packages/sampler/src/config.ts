@@ -1,6 +1,6 @@
-import { config as loadEnv } from "dotenv";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { config as loadEnv } from "dotenv";
 
 loadEnv();
 

@@ -26,6 +26,15 @@ pnpm dev:client     # vite :1420  (or pnpm dev:desktop for Tauri)
 
 Requires **Node ≥ 22.13** (built-in `node:sqlite` without experimental flag).
 
+## Quality
+
+```bash
+pnpm check   # typecheck + test + build (mirrors CI)
+pnpm lint    # Biome
+```
+
+GitHub Actions: `.github/workflows/ci.yml` on PR/push to `main`.
+
 ## Docs
 
 - Product: `docs/PRD.md`
