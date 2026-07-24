@@ -195,4 +195,34 @@ describe("http smoke", () => {
     const body = days.json() as { days: unknown[]; streak: number };
     assert.equal(body.days.length, 7);
   });
+
+  it("GET /api/search finds save note", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/search?q=ci%20save",
+    });
+    assert.equal(res.statusCode, 200, res.body);
+    const body = res.json() as {
+      query: string;
+      took_ms: number;
+      results: Array<{ kind: string; snippet: string }>;
+    };
+    assert.equal(body.query, "ci save");
+    assert.ok(typeof body.took_ms === "number");
+    assert.ok(body.results.length >= 1);
+  });
+
+  it("GET /api/search requires q", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/search" });
+    assert.equal(res.statusCode, 400);
+  });
+
+  it("POST /api/ask without LLM key → 503", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      payload: { question: "今天存了什么？" },
+    });
+    assert.equal(res.statusCode, 503);
+  });
 });

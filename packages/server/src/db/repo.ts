@@ -6,6 +6,13 @@ import type {
   Stats,
   TodoRecord,
 } from "@return/shared";
+import {
+  deleteNodeFts,
+  enqueueEmbed,
+  isEmbeddableKind,
+  upsertDayFts,
+  upsertNodeFts,
+} from "../search/index.js";
 import { nowIso, todayDate, uuid } from "../util/time.js";
 import type { Db } from "./schema.js";
 
@@ -235,6 +242,15 @@ export function markDaySaved(
     payload.character_state,
     dayId,
   );
+
+  // Refresh day_summary FTS doc + embed queue in the same writer path.
+  const day = getDayById(db, dayId);
+  if (day) {
+    upsertDayFts(db, day);
+    if (day.summary) {
+      enqueueEmbed(db, `day:${day.date}`, payload.saved_at);
+    }
+  }
 }
 
 // ── nodes ────────────────────────────────────────────────
@@ -282,6 +298,19 @@ export function insertNode(
     input.client_uuid,
     created_at,
   );
+
+  // Keep search_fts in the same transaction as the authority row (PRD §6.3).
+  upsertNodeFts(db, {
+    id,
+    kind: String(input.kind),
+    date,
+    title: input.title ?? null,
+    content: input.content ?? null,
+    source_meta: input.source_meta ?? null,
+  });
+  if (isEmbeddableKind(String(input.kind))) {
+    enqueueEmbed(db, id, created_at);
+  }
 
   return {
     node: {
@@ -358,8 +387,29 @@ export function deleteNode(db: Db, id: string): boolean {
     db.prepare(`DELETE FROM edges WHERE src_node_id = ? OR dst_node_id = ?`).run(id, id);
     db.prepare(`UPDATE todos SET source_node_id = NULL WHERE source_node_id = ?`).run(id);
     changes = db.prepare(`DELETE FROM nodes WHERE id = ?`).run(id).changes;
+    if (changes > 0) deleteNodeFts(db, id);
   })();
   return changes > 0;
+}
+
+/** Re-index an existing node after in-place content updates (e.g. health refresh, tags). */
+export function reindexNode(db: Db, nodeId: string): void {
+  const node = getNodeById(db, nodeId);
+  if (!node) {
+    deleteNodeFts(db, nodeId);
+    return;
+  }
+  upsertNodeFts(db, {
+    id: node.id,
+    kind: node.kind,
+    date: node.date,
+    title: node.title,
+    content: node.content,
+    source_meta: node.source_meta,
+  });
+  if (isEmbeddableKind(node.kind)) {
+    enqueueEmbed(db, node.id, nowIso());
+  }
 }
 
 // ── edges ────────────────────────────────────────────────

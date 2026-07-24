@@ -1,6 +1,7 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { SEARCH_SCHEMA } from "../search/index.js";
 
 const SCHEMA = `
 PRAGMA journal_mode = WAL;
@@ -130,6 +131,7 @@ export function openDb(dataDir: string, filename = "return.db"): Db {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA);
+  db.exec(SEARCH_SCHEMA);
   return db;
 }
 
@@ -138,5 +140,6 @@ export function openMemoryDb(): Db {
   const db = new Db(raw);
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA);
+  db.exec(SEARCH_SCHEMA);
   return db;
 }

@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  AskRequest,
+  type AskResponse,
   type CharacterState,
   type ContinueResponse,
   CreateNodesRequest,
@@ -17,6 +19,7 @@ import {
   type RegisterDeviceResponse,
   type ReviewPoint,
   SaveRequest,
+  type SearchResponse,
   type Stats,
   type StatsTodayResponse,
   type TimelineResponse,
@@ -41,11 +44,14 @@ import {
   listNodesByDate,
   listSavedDays,
   listTodosByDay,
+  reindexNode,
   setTodoDone,
   touchDevice,
   upsertDevice,
 } from "./db/repo.js";
 import type { Db } from "./db/schema.js";
+import { AskConfigError, ask } from "./search/ask.js";
+import { search } from "./search/query.js";
 import { saveToday } from "./services/save.js";
 import { buildTimeline } from "./services/timeline.js";
 import { computeLiveStats } from "./stats/live.js";
@@ -283,6 +289,7 @@ export async function registerRoutes(app: FastifyInstance, db: Db): Promise<void
         `Health ${parsed.data.date}`,
         clientUuid,
       );
+      reindexNode(db, node.id);
     }
 
     const fresh = getNodeById(db, node.id)!;
@@ -419,6 +426,80 @@ export async function registerRoutes(app: FastifyInstance, db: Db): Promise<void
 
     const body: DaysResponse = { range, days, streak };
     return body;
+  });
+
+  // ── search ────────────────────────────────────────────
+  app.get("/api/search", async (req, reply) => {
+    const q = req.query as {
+      q?: string;
+      from?: string;
+      to?: string;
+      kinds?: string;
+      limit?: string;
+    };
+    const query = (q.q ?? "").trim();
+    if (!query || query.length > 500) {
+      return reply.code(400).send(badRequest("q is required (1–500 characters)"));
+    }
+    if (q.from && !/^\d{4}-\d{2}-\d{2}$/.test(q.from)) {
+      return reply.code(400).send(badRequest("from must be YYYY-MM-DD"));
+    }
+    if (q.to && !/^\d{4}-\d{2}-\d{2}$/.test(q.to)) {
+      return reply.code(400).send(badRequest("to must be YYYY-MM-DD"));
+    }
+    let limit = 20;
+    if (q.limit != null && q.limit !== "") {
+      const n = Number(q.limit);
+      if (!Number.isFinite(n) || n < 1) {
+        return reply.code(400).send(badRequest("limit must be 1–50"));
+      }
+      limit = Math.min(Math.floor(n), 50);
+    }
+    const kinds = q.kinds
+      ? q.kinds
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : undefined;
+
+    const body: SearchResponse = await search(db, {
+      q: query,
+      from: q.from,
+      to: q.to,
+      kinds,
+      limit,
+    });
+    return body;
+  });
+
+  // ── ask (RAG) ───────────────────────────────────────
+  app.post("/api/ask", async (req, reply) => {
+    const parsed = AskRequest.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send(badRequest(parsed.error.message));
+    }
+    try {
+      const body: AskResponse = await ask(db, {
+        question: parsed.data.question,
+        from: parsed.data.from,
+        to: parsed.data.to,
+      });
+      return body;
+    } catch (err) {
+      if (err instanceof AskConfigError) {
+        return reply.code(503).send({
+          statusCode: 503,
+          error: "Service Unavailable",
+          message: err.message,
+        });
+      }
+      console.error("[ask] error:", err);
+      return reply.code(500).send({
+        statusCode: 500,
+        error: "Internal Server Error",
+        message: err instanceof Error ? err.message : "ask failed",
+      });
+    }
   });
 
   // ── todos ─────────────────────────────────────────────

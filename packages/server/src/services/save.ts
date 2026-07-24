@@ -21,6 +21,7 @@ import {
   listSavedDays,
   listTodosByDay,
   markDaySaved,
+  reindexNode,
   todoCompletionRate,
 } from "../db/repo.js";
 import type { Db } from "../db/schema.js";
@@ -223,6 +224,7 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
         JSON.stringify(meta),
         nodeId,
       );
+      reindexNode(db, nodeId);
     }
 
     // Future todos attach to the *next* calendar day (shown on Continue).
