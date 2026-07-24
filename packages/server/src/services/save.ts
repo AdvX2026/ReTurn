@@ -242,7 +242,7 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
       reindexNode(db, nodeId);
     }
 
-// Future AI suggestions attach to the *next* calendar day (shown on Continue).
+    // Future AI suggestions attach to the *next* calendar day (shown on Continue).
     // Anchor source_node_id on save_note when present.
     const nextDate = addDays(input.date, 1);
     const nextDay = ensureDay(db, nextDate);

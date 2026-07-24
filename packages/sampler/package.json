@@ -7,7 +7,7 @@
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-"test": "node --import tsx --test src/agents.test.ts src/collect.test.ts src/collect-git.test.ts src/collect-reminders.test.ts src/cadence.test.ts"
+    "test": "node --import tsx --test src/agents.test.ts src/collect.test.ts src/collect-git.test.ts src/collect-reminders.test.ts src/cadence.test.ts"
   },
   "dependencies": {
     "@return/shared": "workspace:*",
