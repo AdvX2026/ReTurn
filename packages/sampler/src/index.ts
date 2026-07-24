@@ -1,9 +1,12 @@
 /**
  * Independent sampler process (PRD F2).
  * - setInterval sample → main outbox SQLite → flush to Pi
+ * - cadence from /api/nodes response reschedules the sample interval
  * - localhost control plane for UI (sample-now / health)
  * - UI closed does not stop this process
  */
+import type { CadenceMode } from "@return/shared";
+import { intervalMinForCadence } from "./cadence.js";
 import { type SampleSnapshot, collectSample } from "./collect.js";
 import { config } from "./config.js";
 import { startLocalServer } from "./local-server.js";
@@ -16,6 +19,27 @@ let lastSampleAt: string | null = null;
 let lastError: string | null = null;
 let piOnline = false;
 let tickRunning = false;
+let cadence: CadenceMode = "active";
+let sampleTimer: ReturnType<typeof setInterval> | null = null;
+
+function currentIntervalMin(): number {
+  return intervalMinForCadence(cadence);
+}
+
+function applyCadence(next: CadenceMode | null | undefined): void {
+  if (next !== "active" && next !== "night") return;
+  if (next === cadence) return;
+  const prev = cadence;
+  cadence = next;
+  const min = currentIntervalMin();
+  console.log(`[sampler] cadence ${prev} → ${next} (interval ${min}min)`);
+  rescheduleSampleTimer();
+}
+
+function rescheduleSampleTimer(): void {
+  if (sampleTimer) clearInterval(sampleTimer);
+  sampleTimer = setInterval(() => void tick(), currentIntervalMin() * 60_000);
+}
 
 async function sampleOnce(opts?: { asSnapshot?: boolean }): Promise<{
   snapshot: SampleSnapshot;
@@ -36,12 +60,13 @@ async function sampleOnce(opts?: { asSnapshot?: boolean }): Promise<{
 
   const flush = await flushOutbox(outbox);
   piOnline = flush.online;
+  applyCadence(flush.cadence);
 
   const agentStats = snapshot.stats.agents ?? {};
   const envStats = snapshot.stats.env ?? {};
   const gitStats = snapshot.stats.git ?? {};
   console.log(
-    `[sampler] sample app=${snapshot.app?.name ?? "-"} tabs=${envStats.tabs ?? snapshot.tabs.length} agents=${agentStats.intervals ?? 0} commits=${gitStats.commits ?? 0} emitted=${enqueued} flushed=${flush.flushed} outbox=${flush.remaining} pi=${flush.online}`,
+    `[sampler] sample app=${snapshot.app?.name ?? "-"} tabs=${envStats.tabs ?? snapshot.tabs.length} agents=${agentStats.intervals ?? 0} commits=${gitStats.commits ?? 0} emitted=${enqueued} flushed=${flush.flushed} outbox=${flush.remaining} pi=${flush.online} cadence=${cadence}`,
   );
 
   return { snapshot, enqueued };
@@ -59,6 +84,7 @@ async function tick(): Promise<void> {
     try {
       const flush = await flushOutbox(outbox);
       piOnline = flush.online;
+      applyCadence(flush.cadence);
     } catch {
       piOnline = false;
     }
@@ -70,7 +96,9 @@ async function tick(): Promise<void> {
 async function main(): Promise<void> {
   console.log(`[sampler] Pi → ${config.serverUrl}`);
   console.log(`[sampler] data → ${config.dataDir}`);
-  console.log(`[sampler] interval ${config.sampleIntervalMin}min`);
+  console.log(
+    `[sampler] interval active=${config.sampleIntervalMin}min night=${config.sampleIntervalNightMin}min`,
+  );
 
   piOnline = await pingPi();
   console.log(`[sampler] pi online=${piOnline}`);
@@ -81,24 +109,27 @@ async function main(): Promise<void> {
     getLastSampleAt: () => lastSampleAt,
     getLastError: () => lastError,
     isPiOnline: () => piOnline,
+    getCadence: () => cadence,
+    getIntervalMin: () => currentIntervalMin(),
     sampleNow: sampleOnce,
   });
 
-  // Initial sample + interval
+  // Initial sample + rhythm
   void tick();
-  const ms = config.sampleIntervalMin * 60_000;
-  setInterval(() => void tick(), ms);
+  rescheduleSampleTimer();
 
   // Opportunistic flush every minute when queue non-empty
   setInterval(() => {
     if (outbox.size() === 0) return;
     void flushOutbox(outbox).then((r) => {
       piOnline = r.online;
+      applyCadence(r.cadence);
     });
   }, 60_000);
 
   const stop = () => {
     console.log("[sampler] shutting down");
+    if (sampleTimer) clearInterval(sampleTimer);
     outbox.close();
     process.exit(0);
   };
