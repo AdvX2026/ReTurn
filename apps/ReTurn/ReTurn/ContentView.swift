@@ -17,6 +17,7 @@ enum TimelinePage: String, CaseIterable, Identifiable {
 
 struct ContentView: View {
     @State private var selectedPage: TimelinePage? = .now
+    @State private var isNavigationDimmed = false
     @FocusState private var isComposerFocused: Bool
 
     var body: some View {
@@ -39,7 +40,7 @@ struct ContentView: View {
             .scrollPosition(id: $selectedPage)
         }
         .safeAreaInset(edge: .top, spacing: 0) {
-            pagePicker
+            pageNavigation
         }
 
         return Group {
@@ -64,26 +65,58 @@ struct ContentView: View {
         Binding(
             get: { selectedPage ?? .now },
             set: { page in
-                withAnimation(.easeInOut(duration: 0.25)) {
+                withAnimation(
+                    .easeInOut(duration: ReTurnDesign.Motion.navigationSelectionDuration)
+                ) {
                     selectedPage = page
                 }
             }
         )
     }
 
-    private var pagePicker: some View {
-        Picker("Timeline", selection: pageSelection) {
+    /// Plain labels rather than a segmented `Picker`: the filled control was the
+    /// only opaque surface on the screen and outweighed everything around it.
+    private var pageNavigation: some View {
+        HStack(spacing: ReTurnDesign.Spacing.large) {
             ForEach(TimelinePage.allCases) { page in
-                Text(page.rawValue)
-                    .tag(page)
+                let isSelected = page == pageSelection.wrappedValue
+
+                Button {
+                    pageSelection.wrappedValue = page
+                } label: {
+                    Text(page.rawValue)
+                        .font(ReTurnDesign.Typography.navigationItem)
+                        .fontWeight(isSelected ? .semibold : .regular)
+                        .foregroundStyle(
+                            isSelected
+                                ? ReTurnDesign.Colors.primaryLabel
+                                : ReTurnDesign.Colors.secondaryLabel
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .frame(maxWidth: ReTurnDesign.Metrics.navigationRegularMaxWidth)
         .padding(.horizontal, ReTurnDesign.Metrics.screenHorizontalInset)
         .padding(.top, ReTurnDesign.Spacing.small)
         .padding(.bottom, ReTurnDesign.Spacing.extraSmall)
+        .animation(
+            .easeInOut(duration: ReTurnDesign.Motion.navigationSelectionDuration),
+            value: selectedPage
+        )
+        .opacity(isNavigationDimmed ? ReTurnDesign.Metrics.navigationDimmedOpacity : 1)
+        .animation(
+            .easeInOut(duration: ReTurnDesign.Motion.navigationDimDuration),
+            value: isNavigationDimmed
+        )
+        // Restarts on every page change, so the navigation comes back to full
+        // strength while switching and recedes once the page settles. Opacity
+        // does not affect hit testing, so the labels stay tappable while dimmed.
+        .task(id: selectedPage) {
+            isNavigationDimmed = false
+            try? await Task.sleep(for: .seconds(ReTurnDesign.Motion.navigationDimDelay))
+            isNavigationDimmed = true
+        }
     }
 
     @ViewBuilder

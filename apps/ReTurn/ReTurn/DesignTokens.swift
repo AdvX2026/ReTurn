@@ -9,6 +9,7 @@ import AppKit
 enum ReTurnDesign {
     enum Colors {
         static let primaryLabel = Color.primary
+        static let secondaryLabel = Color.secondary
 
         static var screenBackground: Color {
             #if os(iOS)
@@ -27,10 +28,14 @@ enum ReTurnDesign {
         static let extraSmall: CGFloat = 4
         static let small: CGFloat = 8
         static let medium: CGFloat = 10
+        static let large: CGFloat = 24
     }
 
     enum Metrics {
-        static let navigationRegularMaxWidth: CGFloat = 520
+        /// Resting opacity of the timeline navigation once a page settles. It
+        /// dims rather than disappears so the current page stays readable and
+        /// the labels stay tappable.
+        static let navigationDimmedOpacity: Double = 0.3
         static let composerRegularMaxWidth: CGFloat = 640
         static let composerFocusedRegularMaxWidth: CGFloat = 680
         static let composerHeight: CGFloat = 50
@@ -89,10 +94,15 @@ enum ReTurnDesign {
     enum Typography {
         static let heroTitle = Font.system(.title, design: .rounded, weight: .medium)
         static let composer = Font.body
+        static let navigationItem = Font.body
     }
 
     enum Motion {
         static let composerResponse = 0.32
         static let composerDampingFraction = 0.84
+        static let navigationSelectionDuration = 0.25
+        /// How long the navigation stays at full strength after a page settles.
+        static let navigationDimDelay = 1.5
+        static let navigationDimDuration = 0.45
     }
 }
