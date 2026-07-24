@@ -206,7 +206,94 @@ struct Stats: Codable, Equatable {
 
 ---
 
-## 六、合并 PRD 时的检查清单
+## 六、卡片体系 🟡
+
+### 6.1 三层模型（新概念，PRD 无对应）
+
+PRD 只有「卡片」一个概念。实际需要三层：
+
+```
+CardType（后端数据单元）  →  卡片组（视觉分组）  →  卡片（白色圆角块）
+    briefing            →   Daily Brief        →  [职业卡, Summary 卡, ReviewPoints 卡]
+```
+
+**一条后端记录可渲染成多张视觉卡片。** 设计稿中两张卡的头部都写 "Daily Brief"，即头部标的是**组名**而非单卡名。
+
+### 6.2 Daily Brief 组的构成
+
+| 卡片 | 内容 | 状态 |
+|---|---|---|
+| 职业卡 | 吉祥物（视觉中心）+ 职业名 + 状态 tag + 五维明细行 | 设计稿已定 |
+| Summary 卡 | 一段/一句文本 | 设计稿已定，**待定接哪个字段（见 6.3）** |
+| ReviewPoints 卡 | `win / miss / insight / other` 分类行 | ✅ 已确认独立成卡 |
+
+### 6.3 字段落位 ⚠️ 存在语义偏差
+
+`BriefingCardContent` 字段与实际语义（来自 `packages/server/src/ai/ferment.ts` 的发酵 prompt 与 `packages/shared/src/ferment.ts` 注释）：
+
+| 字段 | **真实语义** | 落位 |
+|---|---|---|
+| `stats` + `characterState` + 职业(待加) | 五维 / 状态 / 职业 | 职业卡 |
+| `reviewPoints` | 2–6 条具体的 wins/misses/insights | ReviewPoints 卡 |
+| `openingLine` | **一句**温暖的话，用于次日问候 / 早报标题 | ❓ 见下 |
+| `summary` | **2–5 句**，讲这一天是关于什么的 | ❓ 见下 |
+| `briefing` | `summary` 的**可选长版，省略时等于 summary** | ❓ 疑似冗余 |
+| `nodeIds` | 节点引用，不直接展示 | — |
+
+**待定 1：Summary 卡接哪个字段。**
+设计稿中的 `Put away the design work, do the art work.` 是**一句、格言式**，形态上匹配 `openingLine` 而非 `summary`（后者是 2–5 句叙述）。产品语义上「Summary」又该对应 `summary`。需拍板，否则前端必然接错。
+
+**待定 2：`briefing` 是否展示。**
+它默认等于 `summary`，若无差异化用途建议不展示，避免同一内容出现两遍。
+
+**待定 3：`streak` 契约缺口。**
+PRD §4.3「streak 保留为 briefing 卡上的一行文本」，但 `BriefingCardContent` **无 streak 字段**（仅 `SaveResponse` 有，见 `packages/shared/src/api.ts:163`）。需后端补，或前端另走接口。
+
+**命名冲突提示**：概念层的「Briefing = 卡片组（包）」与契约层的 `briefing: String`（一个文本字段）是两回事，文档与代码中需区分，建议 UI 层统一称 **Daily Brief 卡片组**。
+
+### 6.4 页面归属：类型 + 日期的函数 ✅ 已确认
+
+归属**按概念**判定，而非按类型静态绑定：
+
+| 页面 | 概念 |
+|---|---|
+| **Now** | 用户现在就要知道的（今天的早报） |
+| **After** | 之后要做的、之后建议的（todo 建议、健康建议、灵感） |
+| **Before** | 已经过去的 |
+
+推论（PRD 第 42 行已隐含：「次日打开 Now 收到问候 + briefing；**Before 流顶部出现昨日卡片**」）：
+
+| 卡片类型 | 归属规则 |
+|---|---|
+| `briefing` | `date == 今天` → **Now**；否则 → **Before** |
+| `todo_suggestion` / `health` / `idea` | 恒为 **After** |
+
+**因此 Before 会积累全部历史早报 + 时间线，是内容最重的一页**，而非最少。
+
+### 6.5 统一卡片外壳
+
+三级规格，收进 `DesignTokens`：
+
+- **组级**：组名 + 组图标（如 `📖 Daily Brief`）、组内卡片间距、组间距、可选分组大标题（设计稿中的 "Summary" 即是）
+- **卡级**：白底 / 圆角 / 内边距 / 卡内分隔线 / 可选头部（图标 + 标题 + 右侧次要信息 + chevron）
+- **行级**：彩色圆点或图标 + 名称 + 右侧数值 + 下方灰色归因文案。五维、reviewPoints、健康建议共用此规格
+
+**强调色只出现在标识位**（图标与分类名），正文保持黑/灰——这是 Apple 健康「活泼但不花」的关键。
+
+### 6.6 与 Before 时间线的对齐
+
+Before 时间线由**另一位 agent 负责**，本文件不涉及其实现，仅记录需要共用的约定。
+
+其视觉语言与早报卡外壳一致（彩色图标 + 同色分类名 + 黑色主标题 + 灰色次要信息 + 白色圆角卡），另有两点应统一到 Now 侧：
+
+1. **轻重分级**：轻量条目仅一行，重条目才升级为白色卡片并内嵌浅灰子列表。早报中同理（如 streak 一行文本不必成卡）。
+2. **标题层级**：时间线有 `FRIDAY` / `Jul 24` / `12 Events` 三级；Now 页目前无标题层级，两页需一致。
+
+⚠️ **色板冲突风险（需与 Before 侧对齐）**：时间线已占用 Sleep 紫 / Voice 青 / Design 品红 / Agent 橙 / Git 灰 / Text 绿。早报五维与各卡片组也需配色，**两套必须收进同一 token 命名空间统一分配**，否则同一颜色在不同页面表示不同概念。
+
+---
+
+## 七、合并 PRD 时的检查清单
 
 - [ ] §0 变更摘要、§3 F3：上下滑动 → 左右滑动
 - [ ] 全文 `Future` → `After`（或反向统一）
@@ -219,3 +306,7 @@ struct Stats: Codable, Equatable {
 - [ ] §5 API：`BriefingCardContent` 新增五维分项计数字段（文案模板在客户端）
 - [ ] §7：补充 Apple 健康 / 手记作为设计参照系
 - [ ] §3 F3：补充 Now 四态状态机
+- [ ] §5 / §3：补充「卡片组」概念——一条 CardType 记录可渲染为多张视觉卡片
+- [ ] §3 F3：页面归属改为「类型 + 日期」的函数；更正 Before 的内容体量描述
+- [ ] §5 API：`BriefingCardContent` 补 `streak`（PRD §4.3 已要求展示，契约缺字段）
+- [ ] §6.3：澄清 `summary` / `opening_line` / `briefing` 三者语义与展示归属
