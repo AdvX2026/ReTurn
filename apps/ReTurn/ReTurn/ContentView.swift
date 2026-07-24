@@ -22,7 +22,7 @@ struct ContentView: View {
 
     var body: some View {
         GeometryReader { container in
-            ZStack {
+            let timelineContent = ZStack {
                 ReTurnDesign.Colors.screenBackground
                     .ignoresSafeArea()
 
@@ -50,6 +50,20 @@ struct ContentView: View {
             }
             .safeAreaInset(edge: .top, spacing: 0) {
                 pagePicker(containerWidth: container.size.width)
+            }
+
+            Group {
+                #if os(iOS)
+                timelineContent
+                    .simultaneousGesture(
+                        TapGesture()
+                            .onEnded {
+                                isComposerFocused = false
+                            }
+                    )
+                #else
+                timelineContent
+                #endif
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 composer(containerWidth: container.size.width)
