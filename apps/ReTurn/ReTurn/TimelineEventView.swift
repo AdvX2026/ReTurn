@@ -27,7 +27,7 @@ struct TimelineEventView: View {
         .frame(
             maxWidth: .infinity,
             minHeight: TimelineDesign.Layout.minimumHeight(for: item.presentation),
-            alignment: .topLeading
+            alignment: item.presentation == .ambient ? .leading : .topLeading
         )
         .background(alignment: .leading) {
             TimelineRail(
