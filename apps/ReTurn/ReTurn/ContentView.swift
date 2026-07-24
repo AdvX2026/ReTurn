@@ -135,52 +135,36 @@ private struct ComposerBar: View {
             cornerRadius: ReTurnDesign.Metrics.composerCornerRadius,
             style: .continuous
         )
-        let addButtonLabel = Label("Add", systemImage: "plus")
-            .labelStyle(.iconOnly)
-            .font(.title2)
-            .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
-            .frame(
-                width: ReTurnDesign.Metrics.composerAccessorySize,
-                height: ReTurnDesign.Metrics.composerAccessorySize
-            )
-
-        #if os(iOS)
-        // The visible plus lives in the glass content layer, so this menu only
-        // supplies hit testing, the presentation anchor and accessibility. Its
-        // label is sized to the HIG minimum target instead of the glyph bounds;
-        // a clip or content shape around the glyph would shrink it back below 44.
+        let hitPadding = ReTurnDesign.Metrics.composerAccessoryHitPadding
+        // A single menu whose label is the visible plus. `.plain` keeps the
+        // system from drawing a bordered pressed state around it and from
+        // treating the button as a glass surface to morph into the menu -- the
+        // menu lifts only the glyph, leaving the composer in place.
         let attachmentMenu = Menu {
             attachmentMenuItems
         } label: {
-            addButtonLabel
-                .opacity(0.001)
+            Label("Add", systemImage: "plus")
+                .labelStyle(.iconOnly)
+                .font(.title2)
+                .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
                 .frame(
-                    width: ReTurnDesign.Metrics.composerAccessoryHitSize,
-                    height: ReTurnDesign.Metrics.composerAccessoryHitSize
+                    width: ReTurnDesign.Metrics.composerAccessorySize,
+                    height: ReTurnDesign.Metrics.composerAccessorySize
                 )
+                // Grow the touch target to the HIG minimum, then cancel the
+                // growth so the glyph keeps its place in the composer.
+                .padding(hitPadding)
                 .contentShape(.rect)
+                .padding(-hitPadding)
         }
         .menuIndicator(.hidden)
-        #else
-        let attachmentMenu = Menu {
-            attachmentMenuItems
-        } label: {
-            addButtonLabel
-        }
-        .menuIndicator(.hidden)
-        .buttonBorderShape(.circle)
-        #endif
+        .buttonStyle(.plain)
 
         let composerContent = HStack(
             alignment: .center,
             spacing: ReTurnDesign.Spacing.medium
         ) {
-            #if os(iOS)
-            addButtonLabel
-                .accessibilityHidden(true)
-            #else
             attachmentMenu
-            #endif
 
             TextField("Ask Return Anything", text: $text, axis: .vertical)
                 .font(ReTurnDesign.Typography.composer)
@@ -224,16 +208,12 @@ private struct ComposerBar: View {
                     )
             }
         }
-        // Placed before the menu overlay so the plus keeps hit priority: the
-        // TextField only covers one line of the surface, leaving the vertical
-        // padding dead unless the whole shape raises the keyboard.
+        // The TextField only covers one text line, so the surface's vertical
+        // padding is otherwise dead. The plus and the field are children of this
+        // view and keep hit priority over the shape's tap gesture.
         .contentShape(composerShape)
         .onTapGesture {
             isFocused = true
-        }
-        .overlay(alignment: .leading) {
-            attachmentMenu
-                .padding(.leading, ReTurnDesign.Metrics.composerAttachmentHitInset)
         }
         #else
         let surfacedComposer = composerContent
