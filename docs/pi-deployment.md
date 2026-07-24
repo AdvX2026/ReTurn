@@ -143,7 +143,9 @@ sudo ./deploy/backup.sh
 
 Only the newest three local archives are retained. Copy the final pre-demo
 archive to the maintenance Mac. Secrets in `/etc/return/return.env` are not
-included.
+included. If the server was active before the backup but cannot be restarted,
+the command exits non-zero and reports the service failure even when the
+archive itself was created successfully.
 
 Restore only after verifying the selected archive path:
 

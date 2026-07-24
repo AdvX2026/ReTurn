@@ -59,16 +59,30 @@ service_was_active=0
 
 restart_service() {
   if [ "$service_was_active" -eq 1 ]; then
-    systemctl start return-server.service || true
+    if systemctl start return-server.service; then
+      service_was_active=0
+    else
+      return 1
+    fi
   fi
 }
 
 cleanup() {
-  restart_service
+  status=$?
+  trap - EXIT HUP INT TERM
+
+  if ! restart_service; then
+    echo "error: failed to restart return-server.service" >&2
+    [ "$status" -ne 0 ] || status=1
+  fi
   rm -rf -- "$manifest_dir"
   [ -z "$archive_tmp" ] || rm -f -- "$archive_tmp"
+  exit "$status"
 }
-trap cleanup EXIT HUP INT TERM
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 timestamp=$(date -u +%Y%m%dT%H%M%SZ)
 archive="$output_dir/return-backup-$timestamp.tar.gz"
@@ -96,8 +110,10 @@ chmod 0600 "$archive_tmp"
 mv "$archive_tmp" "$archive"
 archive_tmp=""
 
-restart_service
-service_was_active=0
+if ! restart_service; then
+  echo "error: backup created, but return-server.service failed to restart" >&2
+  exit 1
+fi
 
 find "$output_dir" -maxdepth 1 -type f -name 'return-backup-*.tar.gz' \
   -printf '%T@ %p\n' | sort -nr | awk -v keep="$keep" '
