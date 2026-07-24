@@ -9,7 +9,12 @@ import {
   listTasks,
 } from "../db/repo.js";
 import { type Db, openMemoryDb } from "../db/schema.js";
-import { handleChat, parseTriageJson, triageHeuristic } from "./chat.js";
+import {
+  flushMeetingJobs,
+  handleChat,
+  parseTriageJson,
+  triageHeuristic,
+} from "./chat.js";
 import { handleResume } from "./resume.js";
 import { saveToday } from "./save.js";
 import { TimelineRangeError, buildTimeline } from "./timeline.js";
@@ -63,12 +68,31 @@ describe("v0.6 chat / cards / tasks / resume / timeline range", () => {
     assert.ok(r.jump == null || r.jump.date);
   });
 
-  it("meeting notes become a done task", async () => {
+  it("meeting notes stay running until async process completes", async () => {
     const notes = `会议纪要\n${"1. 讨论第二大脑\n2. 对齐 v0.6 API\n".repeat(30)}`;
     const r = await handleChat(db, { text: notes });
     assert.ok(r.task_id);
-    const tasks = listTasks(db);
-    assert.ok(tasks.some((t) => t.id === r.task_id && t.status === "done"));
+    assert.match(r.reply, /正在整理/);
+    let tasks = listTasks(db);
+    assert.ok(
+      tasks.some((t) => t.id === r.task_id && t.status === "running"),
+      "client must see running task before completion",
+    );
+
+    await flushMeetingJobs();
+
+    tasks = listTasks(db);
+    const done = tasks.find((t) => t.id === r.task_id);
+    assert.ok(done);
+    assert.equal(done!.status, "done");
+    assert.ok(done!.result_message_id);
+    const msgs = listMessages(db);
+    assert.ok(
+      msgs.messages.some(
+        (m) => m.role === "agent" && /已整理并入库/.test(m.content),
+      ),
+      "completion message should land on Now after processing",
+    );
   });
 
   it("resume writes an agent message", async () => {

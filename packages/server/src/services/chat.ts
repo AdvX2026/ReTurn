@@ -349,6 +349,43 @@ async function runQuestion(
   };
 }
 
+/** In-flight meeting-notes jobs (tests await via flushMeetingJobs). */
+const meetingJobs = new Set<Promise<void>>();
+
+/** Wait for all scheduled meeting-notes completions (tests / graceful shutdown). */
+export async function flushMeetingJobs(): Promise<void> {
+  while (meetingJobs.size > 0) {
+    await Promise.all([...meetingJobs]);
+  }
+}
+
+function scheduleMeetingJob(job: () => void | Promise<void>): void {
+  // setImmediate (not microtask) so the HTTP response can return with
+  // status=running before the completion write lands — clients poll tasks.
+  const p = new Promise<void>((resolve) => {
+    setImmediate(() => {
+      Promise.resolve()
+        .then(job)
+        .catch((err) => {
+          console.warn(
+            "[chat] meeting job failed:",
+            err instanceof Error ? err.message : err,
+          );
+        })
+        .finally(resolve);
+    });
+  });
+  meetingJobs.add(p);
+  void p.finally(() => {
+    meetingJobs.delete(p);
+  });
+}
+
+/**
+ * Accept meeting notes as a running Task (PRD F11): return immediately so the
+ * client can show in-progress state; complete asynchronously with a high-weight
+ * node + completion message on Now.
+ */
 function runMeetingTask(
   db: Db,
   text: string,
@@ -359,35 +396,25 @@ function runMeetingTask(
     status: "running",
     input: { text: text.slice(0, 20_000) },
   });
-  const title = text.slice(0, 40).replace(/\s+/g, " ");
-  const { node } = insertNode(db, {
-    client_uuid: uuid(),
-    kind: "text",
-    title: `会议纪要: ${title}`,
-    content: text,
-    device_id: deviceId ?? null,
-    date: todayDate(),
-    source_meta: { source: "task", task_id: task.id, weight: "high" },
-  });
-  const reply = `会议纪要已整理并入库（高权重）。节点 ${node.id.slice(0, 8)}…`;
-  const agent = insertMessage(db, {
-    role: "agent",
-    content: reply,
-    intent: null,
-    task_id: task.id,
-    meta: { node_id: node.id },
-  });
-  updateTask(db, task.id, {
-    status: "done",
-    result_message_id: agent.id,
-    finished_at: nowIso(),
-  });
   const userMsg = insertMessage(db, {
     role: "user",
     content: text.slice(0, 500) + (text.length > 500 ? "…" : ""),
     intent: null,
     task_id: task.id,
   });
+  const reply = "会议纪要已提交，正在整理…";
+  const agent = insertMessage(db, {
+    role: "agent",
+    content: reply,
+    intent: null,
+    task_id: task.id,
+    meta: { phase: "accepted", user_message_id: userMsg.id },
+  });
+
+  scheduleMeetingJob(() =>
+    processMeetingNotes(db, task.id, text, deviceId, userMsg.id),
+  );
+
   return {
     message_id: agent.id,
     user_message_id: userMsg.id,
@@ -396,6 +423,58 @@ function runMeetingTask(
     reply,
     task_id: task.id,
   };
+}
+
+function processMeetingNotes(
+  db: Db,
+  taskId: string,
+  text: string,
+  deviceId: string | undefined,
+  userMessageId: string,
+): void {
+  try {
+    const title = text.slice(0, 40).replace(/\s+/g, " ");
+    const { node } = insertNode(db, {
+      client_uuid: uuid(),
+      kind: "text",
+      title: `会议纪要: ${title}`,
+      content: text,
+      device_id: deviceId ?? null,
+      date: todayDate(),
+      source_meta: { source: "task", task_id: taskId, weight: "high" },
+    });
+    const doneReply = `会议纪要已整理并入库（高权重）。节点 ${node.id.slice(0, 8)}…`;
+    const agent = insertMessage(db, {
+      role: "agent",
+      content: doneReply,
+      intent: null,
+      task_id: taskId,
+      meta: {
+        phase: "done",
+        node_id: node.id,
+        user_message_id: userMessageId,
+      },
+    });
+    updateTask(db, taskId, {
+      status: "done",
+      result_message_id: agent.id,
+      finished_at: nowIso(),
+    });
+  } catch (err) {
+    const failReply = `会议纪要处理失败：${err instanceof Error ? err.message : String(err)}`;
+    const agent = insertMessage(db, {
+      role: "agent",
+      content: failReply,
+      intent: null,
+      task_id: taskId,
+      meta: { phase: "failed", user_message_id: userMessageId },
+    });
+    updateTask(db, taskId, {
+      status: "failed",
+      result_message_id: agent.id,
+      finished_at: nowIso(),
+    });
+  }
 }
 
 function runImageTask(db: Db, image: string, deviceId: string | undefined): ChatResponse {
