@@ -107,9 +107,9 @@ describe("http smoke", () => {
   });
 
   it("POST /api/health with token", async () => {
-    // config.healthToken is snapshotted at import; use env default from config
-    // which falls back to change-me-health-token unless HEALTH_TOKEN set before process.
+    // test-setup.ts sets HEALTH_TOKEN before config import
     const { config } = await import("./config.js");
+    assert.ok(config.healthToken, "test-setup must set HEALTH_TOKEN");
     const res = await app.inject({
       method: "POST",
       url: "/api/health",

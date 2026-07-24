@@ -18,7 +18,11 @@ export const config = {
   port: num("PORT", 8787),
   host: str("HOST", "0.0.0.0"),
   dataDir: resolve(str("DATA_DIR", "./data")),
-  healthToken: str("HEALTH_TOKEN", "change-me-health-token"),
+  /**
+   * Shortcuts health write token. Empty / weak placeholder → /api/health disabled (503).
+   * No insecure default (Codex P2). Set explicitly in .env.
+   */
+  healthToken: str("HEALTH_TOKEN", ""),
   /**
    * Shared secret for device/desktop clients (header X-Return-Token or Bearer).
    * Empty = open LAN mode (demo only). Set in real/demo-on-shared-wifi.
@@ -50,3 +54,11 @@ export const config = {
 } as const;
 
 export type Config = typeof config;
+
+/** Reject empty / known-placeholder health tokens (Codex P2). */
+export function isHealthTokenConfigured(token = config.healthToken): boolean {
+  const t = token.trim();
+  if (!t) return false;
+  if (t === "change-me-health-token" || t === "changeme") return false;
+  return true;
+}

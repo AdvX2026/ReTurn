@@ -24,14 +24,18 @@ Listens on `http://0.0.0.0:8787` by default. SQLite at `$DATA_DIR/return.db`.
 | GET | `/api/nodes?date=` | day node stream |
 | DELETE | `/api/nodes/:id` | |
 | POST | `/api/voice` | multipart audio → whisper → voice node |
-| POST | `/api/health` | header `X-Return-Token` (Shortcuts) |
+| POST | `/api/health` | header `X-Return-Token` (Shortcuts); **503 if HEALTH_TOKEN unset/weak** |
 | POST | `/api/save` | ferment + stats freeze (idempotent) |
 | GET | `/api/continue` | Before / Future + character |
 | GET | `/api/stats/today` | live five-dim |
 | GET | `/api/timeline?date=` | 24h sessions / feeds / sleep |
 | GET | `/api/days?range=30` | overview |
-| PATCH | `/api/todos/:id` | check → `todo_check` node |
+| PATCH | `/api/todos/:id` | check → `todo_check` only on false→true |
 
 ## Env
 
 See root `.env.example`. Keys stay on the Pi — never shipped to clients.
+
+- **`HEALTH_TOKEN`**: required for health writes. Empty / `change-me-health-token` disables the route (503).
+- **`API_TOKEN`** (optional): when set, all non-ping/health `/api/*` need the same header.
+- **`CORS_ORIGINS`** (optional): comma allowlist; empty reflects origin (dev).

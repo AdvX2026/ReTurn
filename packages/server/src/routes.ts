@@ -24,7 +24,7 @@ import {
 } from "@return/shared";
 import type { FastifyInstance } from "fastify";
 import { TranscribeError, transcribeAudio } from "./ai/transcribe.js";
-import { config } from "./config.js";
+import { config, isHealthTokenConfigured } from "./config.js";
 import {
   type DayRow,
   dayReviewPoints,
@@ -112,11 +112,9 @@ export async function registerRoutes(app: FastifyInstance, db: Db): Promise<void
           ...(n.source_meta ?? {}),
           ...(n.client_created_at ? { client_created_at: n.client_created_at } : {}),
         } as Record<string, unknown>;
-        // Prefer client sample time for offline-buffered timeline/stats (Codex P1).
-        const sampledAt =
-          (typeof meta.sampled_at === "string" && meta.sampled_at) ||
-          n.client_created_at ||
-          undefined;
+        // Prefer validated client sample time for offline-buffered timeline/stats.
+        // Reject non-ISO sampled_at so NodeRecord.created_at stays a datetime (Codex P2).
+        const created_at = pickClientEventTime(meta, n.client_created_at);
         return {
           client_uuid: n.client_uuid,
           kind: n.kind,
@@ -125,7 +123,7 @@ export async function registerRoutes(app: FastifyInstance, db: Db): Promise<void
           source_meta: meta,
           device_id: parsed.data.device_id,
           date: n.date,
-          created_at: sampledAt,
+          created_at,
         };
       }),
     );
@@ -243,6 +241,13 @@ export async function registerRoutes(app: FastifyInstance, db: Db): Promise<void
 
   // ── health (Shortcuts fixed token) ────────────────────
   app.post("/api/health", async (req, reply) => {
+    if (!isHealthTokenConfigured()) {
+      return reply.code(503).send({
+        statusCode: 503,
+        error: "Service Unavailable",
+        message: "HEALTH_TOKEN not configured — /api/health disabled",
+      });
+    }
     const token =
       (req.headers["x-return-token"] as string | undefined) ??
       (req.headers.authorization as string | undefined)?.replace(/^Bearer\s+/i, "");
@@ -433,11 +438,12 @@ export async function registerRoutes(app: FastifyInstance, db: Db): Promise<void
 
     if (parsed.data.device_id) touchDevice(db, parsed.data.device_id);
 
+    const wasDone = existing.done;
     const todo = setTodoDone(db, id, parsed.data.done)!;
     let check_node = null;
 
-    // Checking done lands a todo_check node on today (PRD §6.2).
-    if (parsed.data.done) {
+    // Only emit todo_check on false→true transition (Codex P2 — no retry spam).
+    if (parsed.data.done && !wasDone) {
       const { node } = insertNode(db, {
         client_uuid: uuid(),
         kind: "todo_check",
@@ -453,6 +459,20 @@ export async function registerRoutes(app: FastifyInstance, db: Db): Promise<void
     const body: PatchTodoResponse = { todo, check_node };
     return body;
   });
+}
+
+/** ISO-8601 datetime only; invalid sampled_at falls back to client_created_at then server time. */
+function pickClientEventTime(
+  meta: Record<string, unknown>,
+  clientCreatedAt?: string,
+): string | undefined {
+  const candidates = [meta.sampled_at, clientCreatedAt];
+  for (const c of candidates) {
+    if (typeof c !== "string" || !c) continue;
+    const t = Date.parse(c);
+    if (!Number.isNaN(t)) return new Date(t).toISOString();
+  }
+  return undefined;
 }
 
 /** Deterministic UUIDv4-shaped id from seed (for health-date idempotency). */
