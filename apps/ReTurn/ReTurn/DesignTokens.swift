@@ -22,6 +22,45 @@ enum ReTurnDesign {
         static let voiceButtonBackground = Color.black
         static let voiceButtonForeground = Color.white
         static let composerFallbackShadow = Color.black.opacity(0.1)
+
+        /// Cards sit on `screenBackground`, so they take the plain system
+        /// background to read as raised white surfaces.
+        static var cardBackground: Color {
+            #if os(iOS)
+            Color(uiColor: .systemBackground)
+            #elseif os(macOS)
+            Color(nsColor: .controlBackgroundColor)
+            #endif
+        }
+
+        static var cardNestedBackground: Color {
+            #if os(iOS)
+            Color(uiColor: .secondarySystemBackground)
+            #elseif os(macOS)
+            Color(nsColor: .underPageBackgroundColor)
+            #endif
+        }
+
+        static let cardSeparator = Color.primary.opacity(0.08)
+
+        /// PLACEHOLDER accent palette — the product side has not allocated the
+        /// shared palette yet (it must not collide with the Before timeline's
+        /// categories). Every accent below is referenced only through
+        /// `Accents`, so swapping in the real palette is a one-file change.
+        enum Accents {
+            static let intake = Color.blue
+            static let focus = Color.indigo
+            static let output = Color.orange
+            static let continuity = Color.green
+            static let energy = Color.pink
+
+            static let brief = Color.blue
+            static let review = Color.purple
+            static let todo = Color.orange
+            static let health = Color.pink
+            static let idea = Color.yellow
+            static let unknown = Color.secondary
+        }
     }
 
     enum Spacing {
@@ -95,6 +134,35 @@ enum ReTurnDesign {
         static let heroTitle = Font.system(.title, design: .rounded, weight: .medium)
         static let composer = Font.body
         static let navigationItem = Font.body
+
+        /// Card scale, mirroring Apple Health: a small tinted header, a large
+        /// plain-language headline, then rows of name + value + caption.
+        static let cardGroupTitle = Font.title2.weight(.bold)
+        static let cardHeader = Font.subheadline.weight(.semibold)
+        static let cardHeadline = Font.title3.weight(.semibold)
+        static let cardBody = Font.body
+        static let cardRowName = Font.subheadline.weight(.semibold)
+        static let cardRowValue = Font.subheadline.weight(.semibold)
+        static let cardRowCaption = Font.subheadline
+        static let cardDisplayTitle = Font.largeTitle.weight(.bold)
+        static let cardTag = Font.caption.weight(.semibold)
+    }
+
+    enum Card {
+        static let cornerRadius: CGFloat = 20
+        static let nestedCornerRadius: CGFloat = 12
+        static let padding: CGFloat = 16
+        /// Between cards inside one group.
+        static let spacing: CGFloat = 12
+        /// Between card groups.
+        static let groupSpacing: CGFloat = 28
+        static let headerIconSpacing: CGFloat = 5
+        static let rowSpacing: CGFloat = 14
+        static let rowTextSpacing: CGFloat = 2
+        static let dotSize: CGFloat = 9
+        static let tagHorizontalPadding: CGFloat = 9
+        static let tagVerticalPadding: CGFloat = 4
+        static let mascotWidth: CGFloat = 132
     }
 
     enum Motion {
