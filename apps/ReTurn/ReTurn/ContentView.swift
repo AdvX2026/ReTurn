@@ -136,31 +136,39 @@ struct ContentView: View {
             cornerRadius: ReTurnDesign.Metrics.composerCornerRadius,
             style: .continuous
         )
+        let addButtonLabel = Label("Add", systemImage: "plus")
+            .labelStyle(.iconOnly)
+            .font(.title2)
+            .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
+        let attachmentMenu = Menu {
+            ControlGroup {
+                Button("Camera", systemImage: "camera") {
+                    // TODO: Present camera capture.
+                }
+
+                Button("Photos", systemImage: "photo") {
+                    // TODO: Present the photo picker.
+                }
+
+                Button("Files", systemImage: "folder") {
+                    // TODO: Present the file importer.
+                }
+            }
+        } label: {
+            addButtonLabel
+        }
+        .menuIndicator(.hidden)
         let composerContent = HStack(
             alignment: .center,
             spacing: ReTurnDesign.Spacing.medium
         ) {
-            Menu {
-                ControlGroup {
-                    Button("Camera", systemImage: "camera") {
-                        // TODO: Present camera capture.
-                    }
-
-                    Button("Photos", systemImage: "photo") {
-                        // TODO: Present the photo picker.
-                    }
-
-                    Button("Files", systemImage: "folder") {
-                        // TODO: Present the file importer.
-                    }
-                }
-            } label: {
-                Label("Add", systemImage: "plus")
-                    .labelStyle(.iconOnly)
-                    .font(.title2)
-                    .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
-            }
-            .menuIndicator(.hidden)
+            #if os(iOS)
+            addButtonLabel
+                .hidden()
+                .accessibilityHidden(true)
+            #else
+            attachmentMenu
+            #endif
 
             TextField("Ask Return Anything", text: $composerText, axis: .vertical)
                 .font(ReTurnDesign.Typography.composer)
@@ -192,9 +200,29 @@ struct ContentView: View {
                 : ReTurnDesign.Metrics.composerHeight
         )
 
-        return composerContent
+        #if os(iOS)
+        let surfacedComposer = Group {
+            if #available(iOS 26.0, *) {
+                composerContent
+                    .glassEffect(.regular.interactive(), in: composerShape)
+            } else {
+                composerContent
+                    .background(.ultraThinMaterial, in: composerShape)
+                    .shadow(
+                        color: ReTurnDesign.Colors.composerFallbackShadow,
+                        radius: ReTurnDesign.Metrics.composerFallbackShadowRadius,
+                        y: ReTurnDesign.Metrics.composerFallbackShadowY
+                    )
+            }
+        }
+        .overlay(alignment: .leading) {
+            attachmentMenu
+                .padding(.leading, ReTurnDesign.Metrics.composerHorizontalInset)
+        }
+        #else
+        let surfacedComposer = composerContent
             .background {
-                if #available(iOS 26.0, macOS 26.0, *) {
+                if #available(macOS 26.0, *) {
                     composerShape
                         .fill(.clear)
                         .glassEffect(.regular.interactive(), in: composerShape)
@@ -209,6 +237,10 @@ struct ContentView: View {
                 }
             }
             .contentShape(composerShape)
+
+        #endif
+
+        return surfacedComposer
             .animation(
                 .spring(
                     response: ReTurnDesign.Motion.composerResponse,
