@@ -18,36 +18,42 @@ enum TimelinePage: String, CaseIterable, Identifiable {
 struct ContentView: View {
     @State private var selectedPage: TimelinePage? = .now
     @State private var composerText = ""
+    @FocusState private var isComposerFocused: Bool
 
     var body: some View {
-        ZStack {
-            ReTurnDesign.Colors.screenBackground
-                .ignoresSafeArea()
+        GeometryReader { container in
+            ZStack {
+                ReTurnDesign.Colors.screenBackground
+                    .ignoresSafeArea()
 
-            GeometryReader { geometry in
-                ScrollView(.horizontal) {
-                    LazyHStack(spacing: 0) {
-                        ForEach(TimelinePage.allCases) { page in
-                            pageContent(for: page)
+                GeometryReader { pageGeometry in
+                    ScrollView(.horizontal) {
+                        LazyHStack(spacing: 0) {
+                            ForEach(TimelinePage.allCases) { page in
+                                pageContent(
+                                    for: page,
+                                    containerWidth: container.size.width
+                                )
                                 .frame(
-                                    width: geometry.size.width,
-                                    height: geometry.size.height
+                                    width: pageGeometry.size.width,
+                                    height: pageGeometry.size.height
                                 )
                                 .id(page)
+                            }
                         }
+                        .scrollTargetLayout()
                     }
-                    .scrollTargetLayout()
+                    .scrollIndicators(.hidden)
+                    .scrollTargetBehavior(.paging)
+                    .scrollPosition(id: $selectedPage)
                 }
-                .scrollIndicators(.hidden)
-                .scrollTargetBehavior(.paging)
-                .scrollPosition(id: $selectedPage)
             }
-        }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            pagePicker
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            composer
+            .safeAreaInset(edge: .top, spacing: 0) {
+                pagePicker(containerWidth: container.size.width)
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                composer(containerWidth: container.size.width)
+            }
         }
     }
 
@@ -62,7 +68,7 @@ struct ContentView: View {
         )
     }
 
-    private var pagePicker: some View {
+    private func pagePicker(containerWidth: CGFloat) -> some View {
         Picker("Timeline", selection: pageSelection) {
             ForEach(TimelinePage.allCases) { page in
                 Text(page.rawValue)
@@ -71,30 +77,34 @@ struct ContentView: View {
         }
         .pickerStyle(.segmented)
         .labelsHidden()
-        .frame(maxWidth: ReTurnDesign.Metrics.navigationMaxWidth)
-        .padding(.horizontal, ReTurnDesign.Metrics.screenHorizontalInset)
+        .frame(width: ReTurnDesign.Layout.navigationWidth(in: containerWidth))
         .padding(.top, ReTurnDesign.Spacing.small)
         .padding(.bottom, ReTurnDesign.Spacing.extraSmall)
     }
 
     @ViewBuilder
-    private func pageContent(for page: TimelinePage) -> some View {
+    private func pageContent(
+        for page: TimelinePage,
+        containerWidth: CGFloat
+    ) -> some View {
         switch page {
         case .before, .after:
             Color.clear
         case .now:
-            nowPage
+            nowPage(containerWidth: containerWidth)
         }
     }
 
-    private var nowPage: some View {
-        VStack(spacing: ReTurnDesign.Spacing.medium) {
+    private func nowPage(containerWidth: CGFloat) -> some View {
+        let mascotWidth = ReTurnDesign.Layout.mascotWidth(in: containerWidth)
+
+        return VStack(spacing: ReTurnDesign.Spacing.medium) {
             Image("Kongkong")
                 .resizable()
                 .scaledToFit()
                 .frame(
-                    width: ReTurnDesign.Metrics.mascotWidth,
-                    height: ReTurnDesign.Metrics.mascotHeight
+                    width: mascotWidth,
+                    height: mascotWidth / ReTurnDesign.Metrics.mascotAspectRatio
                 )
                 .accessibilityHidden(true)
 
@@ -107,7 +117,7 @@ struct ContentView: View {
         .padding(.bottom, ReTurnDesign.Metrics.heroOpticalLift * 2)
     }
 
-    private var composer: some View {
+    private func composer(containerWidth: CGFloat) -> some View {
         HStack(spacing: ReTurnDesign.Spacing.medium) {
             Image(systemName: "plus")
                 .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
@@ -117,6 +127,7 @@ struct ContentView: View {
                 .font(ReTurnDesign.Typography.composer)
                 .textFieldStyle(.plain)
                 .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
+                .focused($isComposerFocused)
 
             Image(systemName: "waveform.mid")
                 .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
@@ -129,17 +140,33 @@ struct ContentView: View {
         }
         .padding(.horizontal, ReTurnDesign.Metrics.composerHorizontalInset)
         .frame(
-            maxWidth: .infinity,
-            minHeight: ReTurnDesign.Metrics.composerHeight
+            width: ReTurnDesign.Layout.composerWidth(
+                in: containerWidth,
+                isFocused: isComposerFocused
+            )
         )
-        .frame(maxWidth: ReTurnDesign.Metrics.composerMaxWidth)
+        .frame(
+            minHeight: isComposerFocused
+                ? ReTurnDesign.Metrics.composerFocusedHeight
+                : ReTurnDesign.Metrics.composerHeight
+        )
         .background(.ultraThinMaterial, in: Capsule())
         .shadow(
             color: ReTurnDesign.Colors.composerShadow,
             radius: ReTurnDesign.Metrics.composerShadowRadius,
             y: ReTurnDesign.Metrics.composerShadowY
         )
-        .padding(.horizontal, ReTurnDesign.Metrics.screenHorizontalInset)
+        .contentShape(Capsule())
+        .onTapGesture {
+            isComposerFocused = true
+        }
+        .animation(
+            .spring(
+                response: ReTurnDesign.Motion.composerResponse,
+                dampingFraction: ReTurnDesign.Motion.composerDampingFraction
+            ),
+            value: isComposerFocused
+        )
         .padding(.top, ReTurnDesign.Spacing.medium)
         .padding(.bottom, ReTurnDesign.Spacing.medium)
     }

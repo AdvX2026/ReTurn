@@ -20,5 +20,6 @@
 ## Main timeline UI
 
 - `ContentView` is a horizontal Before / Now / After pager, defaulting to Now. Its segmented `Picker` and swipe position share one `TimelinePage` selection.
-- The initial Now visual follows Figma file `ilZuF3hqB1HH7f1usiMmPM`, node `7:1182`. Shared HIG colors, spacing, typography, and fixed design measurements live in `DesignTokens.swift`; do not scatter replacement literals through views.
+- The initial Now visual follows Figma file `ilZuF3hqB1HH7f1usiMmPM`, node `7:1182`. Shared HIG colors, spacing, semantic typography, and adaptive layout rules live in `DesignTokens.swift`; do not scatter replacement literals through views.
+- Timeline chrome uses the available container width with compact-screen insets and readable iPad/macOS caps. The composer expands with a spring animation while focused; preserve this responsive behavior instead of restoring device-specific widths.
 - `Kongkong.imageset` is the exact vector exported by Figma. Keep the asset rather than redrawing the mascot in SwiftUI.
