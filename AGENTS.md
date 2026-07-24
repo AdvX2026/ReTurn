@@ -7,12 +7,16 @@ Keep it to durable, cross-session guidance — product, rules, standards, securi
 
 ## Product
 
-<!-- TODO: One paragraph describing this project — what it is, who uses it, the platform/runtime target, and any defining constraints (single- vs multi-user, sandboxed or not, deployment target, scale). -->
+ReTurn — a 48h-hackathon "daily save" second brain. Orange Pi 3B home server (Fastify + `node:sqlite`; sole data authority; LLM/transcription API keys live here only) + macOS desktop (SwiftUI UI app + independent Node sampler — two separate processes) + iOS (SwiftUI read-only views + HealthKit upload). Single user, multi-device, home-LAN only. Platform scope is macOS + iOS — no Windows, no web. Product authority: `docs/PRD.md` (v0.5).
 
 ## Project Phase
 
-<!-- TODO: A terse, kept-current snapshot of each app/package — not a log. Update in place; don't append history. -->
-- **<app/package name>**: TODO — what's built, what's tested.
+<!-- Kept-current snapshot — update in place; don't append history. -->
+- **@return/shared**: Zod schemas (API contract + ferment JSON) — the single contract authority, frozen per PRD T+6h. Built, stable.
+- **@return/server**: Pi backend complete (routes, SQLite repo, ferment pipeline, stats/sessions/streak); 34 unit tests + HTTP smoke. On main.
+- **@return/sampler**: independent macOS sampler (osascript app/tab sampling, Claude Code jsonl agent sessions, SQLite outbox, loopback control plane :8791). On main.
+- **packages/client**: DEPRECATED Tauri probe shell — do not extend; deleted when `apps/ReturnApp` lands.
+- **apps/ReturnApp** (upcoming): SwiftUI multiplatform app (macOS 14 / iOS 17 baseline) — all product views; Swift Codable mirror of the shared contract in `Models.swift`.
 
 ## Development Rules
 
@@ -21,16 +25,10 @@ Keep it to durable, cross-session guidance — product, rules, standards, securi
 - Software and internal work stays in English: code, identifiers, comments, commit messages, logs, test names, and your own reasoning/analysis.
 - This governs presentation, not content: do not rename existing identifiers or rewrite existing English docs just to comply, and match the surrounding language of any file you edit.
 
-### Two-Step Confirmation First
-- Never start the moment a requirement is stated or changed. Every new or modified requirement first passes through an understand-and-confirm step before any code is written. The only exception is trivial mechanical actions whose intent is obvious (e.g. `git push`, fixing a typo, a one-line rename).
-- **Step one — reflect and surface, always in the open before building:**
-  - Judge whether the request is sound: is it safe? is it efficient? does it fit the project's scale?
-  - Consider whether a better approach exists than the one asked for.
-  - State your full understanding of the request, your analysis of it (risks, tradeoffs, anything ill-advised), and your concrete recommendation.
-- **Step two — act on the outcome:**
-  - If the request is uncertain (multiple approaches with tradeoffs, may affect other features, or ill-suited to the project's scale), wait for the user's confirmation before modifying code.
-  - If there is a clearly optimal and safe path, you may proceed without waiting for confirmation — but conspicuously notify the user that you are doing so up front, and on completion state plainly what you changed and why it was the better path.
-  - Push back on any request that compromises security, correctness, or runtime efficiency, even when explicitly asked.
+### Confirm Before Irreversible or Architecture-Level Work
+- The understand-and-confirm step — restate the request, surface risks/tradeoffs, give a concrete recommendation, then wait for the user — is required only for architecture-level or hard-to-reverse changes: PRD scope, data schema, the shared API contract, cross-package refactors, anything outward-facing or destructive.
+- Implementation tasks inside an already-agreed plan proceed directly — act, then state plainly what changed and why.
+- Push back on any request that compromises security, correctness, or runtime efficiency, even when explicitly asked.
 
 ### Dry-Run Requests
 - When the user's prompt contains "dry-run", treat the request as read-only: do not modify code, files, or configuration.
@@ -52,11 +50,11 @@ Keep it to durable, cross-session guidance — product, rules, standards, securi
 - Clean up only the orphans your change creates (now-unused imports/vars/functions). Pre-existing dead code: flag it, don't delete it.
 
 ### Coding Standards
-<!-- TODO: Replace the bullets below with this project's real standards. Keep each one concrete and enforceable, not a platitude. Delete what doesn't apply. -->
-- **Source of truth & persistence**: TODO — the single source of truth for state, and how/where it is persisted.
-- **Architecture & boundaries**: TODO — module/layer boundaries, dependency injection, what must stay free of UI/framework imports so it remains testable.
-- **Language / framework conventions**: TODO — follow existing conventions; note key idioms and any banned APIs or patterns.
-- **Security boundary**: TODO — the project's trust boundary; never execute downloaded or arbitrary code; never expose a control surface beyond the intended users.
+- **Source of truth & persistence**: Pi SQLite is the only authoritative datastore. Clients hold outboxes only (sampler: SQLite; UI: JSON file queue) and replay with the original `client_uuid` — the idempotency key. Never regenerate a `client_uuid` on retry.
+- **Contract**: `packages/shared` Zod schemas are the API authority. Any contract change must update the Swift `Models.swift` mirror (`apps/ReturnApp`) in the same commit.
+- **Architecture & boundaries**: sampling lives only in the sampler process — the UI never samples, and talks to the sampler via localhost :8791 only. The sampler control plane binds `127.0.0.1`, hardcoded — never configurable, never LAN. LLM/transcription keys exist only in the Pi server env — never in clients, never in git.
+- **Language / framework conventions**: backend is TS strict + Biome (`pnpm lint`), Node ≥ 22.13 with `node:sqlite` — no native-module DB deps. Swift side is SwiftUI + URLSession async/await; HealthKit code is always guarded by `#if os(iOS)`.
+- **Security boundary**: trust model is a single user on a home LAN. `/api/health` requires the fixed token; other write endpoints are deliberately unauthenticated (hackathon scope) — therefore the server must never be exposed beyond the LAN.
 
 ### Secrets & Sensitive Data
 - Never hardcode secrets or credentials; read them from environment/config. Never print, log, or echo secrets, tokens, or PII.
@@ -69,8 +67,8 @@ Keep it to durable, cross-session guidance — product, rules, standards, securi
 - After verification passes, automatically commit files that were modified by the agent in the current task and belong to the current task.
 - Before committing, inspect dirty files and separate current-task agent edits from unrecognized dirty files. Do not include unrecognized dirty files in commits unless the user explicitly asks to include them.
 - If a dirty file's ownership or task relevance cannot be determined safely, stop and ask the user before committing.
-- Group commits by coherent change unit. Do not push unless explicitly requested.
-- Branching: per-feature work lands on a `feat/*` branch that merges into the mainline. Keep merged `feat/*` branches as historical archives — never delete them (local or remote).
+- Group commits by coherent change unit. Do not push unless explicitly requested. Exception: `docs/PRD.md` edits are pushed immediately once made (team convention).
+- Branching: per-feature work lands on a `feat/*` branch that merges into the mainline. Merged branches on origin are the historical archive — never delete them remotely; local copies may be pruned freely.
 - Commit message format (Conventional Commits):
   ```
   type(scope): short summary
@@ -81,25 +79,10 @@ Keep it to durable, cross-session guidance — product, rules, standards, securi
 
 ### Project Profile
 
-<!-- PROFILE-SETUP (one-time): this template ships multiple rule profiles below.
-     Before real work: (1) infer the project type, (2) ask the user which profile
-     fits — use the platform's structured question mechanism if available,
-     otherwise ask directly, (3) keep that PROFILE block, delete the others and
-     this setup note, then commit. Until resolved, treat all profile-gated rules
-     below as INACTIVE. -->
-
-<!-- PROFILE:service START -->
 **Profile: service / backend** — long-running services, APIs, anything with a datastore or external callers.
 - Tests are required: cover new behavior; for a bug, first add a test that reproduces it, then make it pass.
 - Validate and normalize every input crossing the trust boundary; never trust client-supplied values.
-- **Data integrity & concurrency**: TODO — transactional boundaries, how concurrent writes are serialized, and idempotency for external callbacks. Fill in for this project.
-<!-- PROFILE:service END -->
-
-<!-- PROFILE:tool START -->
-**Profile: lightweight tool / script** — one-off scripts, small CLIs, utilities.
-- Scale verification to the risk: a documented manual check or a smoke test can be enough; don't build a test harness a small tool doesn't warrant.
-- Skip layered architecture and speculative abstraction; keep it a small, readable unit.
-<!-- PROFILE:tool END -->
+- **Data integrity & concurrency**: batch node writes go through `repo.ts` inside a transaction; Save Today is serialized by an in-process lock and is idempotent per day; upload idempotency rests on `client_uuid` (health: deterministic per-date uuid).
 
 ### Session Handoff
 - `notice.md` files are scoped by directory and record durable handoff information for the next agent.
