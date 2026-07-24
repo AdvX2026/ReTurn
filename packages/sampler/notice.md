@@ -27,8 +27,7 @@ UI closed must not stop sampling. Dev: `pnpm dev:sampler`. Prod later: launchd.
 - **codex**: `CODEX_HOME` or `~/.codex/sessions/**/*.jsonl`
 - mtime before local midnight → skip file
 - timestamps gap-split at 15min; tail interval `open` while warm
-- regular sample enqueues **closed** intervals only; Save Today (`as_snapshot`) also flushes open
-- open and closed use **distinct** dedupe keys + `client_uuid` seeds so a Save flush never blocks the later closed terminal (server is insert-only)
+- **only closed** intervals are enqueued (regular tick and Save Today) — server is insert-only on `client_uuid`, so open provisional nodes would double-count when closed arrives
 - single-event intervals report `duration_min: 0` (no 1min floor)
-- `source_meta`: `{ provider, project, start, end, duration_min, session_id, open }`
-- `client_uuid` = sha256 seed `agent:{provider}|{session_id}|{start}|open|closed`
+- `source_meta`: `{ provider, project, start, end, duration_min, session_id, open: false }`
+- `client_uuid` = sha256 seed `agent:{provider}|{session_id}|{start}`

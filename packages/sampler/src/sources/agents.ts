@@ -1,8 +1,9 @@
 /**
  * Agent-session SampleSource.
  *
- * Collects Claude + Codex intervals (agents.ts), maps to agent_session nodes,
- * withholds open intervals on regular ticks, flushes them on Save Today.
+ * Collects Claude + Codex intervals (agents.ts), maps to agent_session nodes.
+ * Only **closed** intervals are enqueued — open ones may still grow, and the
+ * server is insert-only on client_uuid (Codex P1: never dual-emit open+closed).
  * All provider / gap-split / dedupe logic lives here — collect.ts stays dumb.
  */
 import type { NodeInput } from "@return/shared";
@@ -24,21 +25,17 @@ export function resetSeenAgentKeys(): void {
   seen.clear();
 }
 
-/**
- * Dedupe key includes open/closed so a Save Today open flush cannot block
- * the later closed terminal interval (same start, refined end).
- */
+/** Stable key for a closed interval (start fixed across gap-split pieces). */
 function agentKey(a: AgentInterval): string {
-  return `${a.provider}|${a.session_id}|${a.start}|${a.open ? "open" : "closed"}`;
+  return `${a.provider}|${a.session_id}|${a.start}`;
 }
 
 /**
- * client_uuid seeds also differ by open/closed. Server insertNode is insert-only
- * for a given client_uuid — open and closed must not share a seed, or the
- * closed refinement is permanently dropped after Save Today.
+ * Deterministic seed — same closed interval → same client_uuid across restarts.
+ * Open intervals are never seeded (never enqueued).
  */
 function agentSeed(a: AgentInterval): string {
-  return `agent:${a.provider}|${a.session_id}|${a.start}|${a.open ? "open" : "closed"}`;
+  return `agent:${a.provider}|${a.session_id}|${a.start}`;
 }
 
 function agentNode(a: AgentInterval): NodeInput {
@@ -54,7 +51,7 @@ function agentNode(a: AgentInterval): NodeInput {
       end: a.end,
       duration_min: a.duration_min,
       session_id: a.session_id,
-      open: a.open,
+      open: false,
     },
     client_created_at: a.end,
     date: todayLocal(new Date(a.end)),
@@ -62,19 +59,17 @@ function agentNode(a: AgentInterval): NodeInput {
 }
 
 /**
- * Map intervals → nodes with emission policy:
- * - regular tick: closed only
- * - asSnapshot (Save Today): closed + open
- * - in-process dedupe by provider|session_id|start|open|closed
+ * Map intervals → nodes. Only closed intervals emit; open always withheld
+ * (regular tick and Save Today alike). In-process dedupe by provider|session|start.
  */
 export function intervalsToNodes(
   intervals: AgentInterval[],
-  opts: { asSnapshot: boolean; dedupe?: KeyDedupe } = { asSnapshot: false },
+  opts: { asSnapshot?: boolean; dedupe?: KeyDedupe } = {},
 ): NodeInput[] {
   const d = opts.dedupe ?? seen;
   const nodes: NodeInput[] = [];
   for (const a of intervals) {
-    if (a.open && !opts.asSnapshot) continue;
+    if (a.open) continue;
     if (!d.tryAdd(agentKey(a))) continue;
     nodes.push(agentNode(a));
   }
@@ -85,7 +80,9 @@ export const agentsSource: SampleSource = {
   id: "agents",
   async sample(ctx: SampleContext): Promise<SourceResult> {
     const intervals = await collectAgentIntervals().catch(() => [] as AgentInterval[]);
-    const nodes = intervalsToNodes(intervals, { asSnapshot: ctx.asSnapshot });
+    // asSnapshot does not change agent emission — open never enqueued (server insert-only).
+    void ctx.asSnapshot;
+    const nodes = intervalsToNodes(intervals);
     return {
       nodes,
       stats: {

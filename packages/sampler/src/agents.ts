@@ -28,8 +28,8 @@ export interface AgentInterval {
   session_id: string;
   /**
    * true = last interval of a session whose latest event is still within the
-   * gap window of `now` (session may still be active). Regular samples withhold
-   * open intervals; Save Today flushes them.
+   * gap window of `now` (session may still be active). Never enqueued as a
+   * node — sampler waits until the gap window closes (server is insert-only).
    */
   open: boolean;
 }

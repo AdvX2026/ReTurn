@@ -49,7 +49,7 @@ describe("source helpers", () => {
 });
 
 describe("agents source emission policy", () => {
-  it("emits only closed intervals on regular tick; stable uuid across restart", () => {
+  it("emits only closed intervals; open never enqueued (regular or Save)", () => {
     resetSeenAgentKeys();
     const closed = agent({
       session_id: "abc",
@@ -73,6 +73,9 @@ describe("agents source emission policy", () => {
     assert.equal(meta.session_id, "abc");
     assert.equal(meta.open, false);
 
+    // open still withheld on Save Today (server is insert-only; no dual open+closed)
+    assert.equal(intervalsToNodes([open], { asSnapshot: true }).length, 0);
+
     // second call: same closed agent not re-emitted
     assert.equal(intervalsToNodes([closed, open], { asSnapshot: false }).length, 0);
 
@@ -83,39 +86,26 @@ describe("agents source emission policy", () => {
     assert.equal(restarted[0]!.client_uuid, nodes[0]!.client_uuid);
   });
 
-  it("asSnapshot flushes open intervals once", () => {
-    resetSeenAgentKeys();
-    const open = agent({
-      provider: "codex",
-      project: "/Users/dev/Coding/Other",
-      session_id: "rollout-1",
-      start: "2026-07-24T03:00:00.000Z",
-      end: "2026-07-24T03:05:00.000Z",
-      open: true,
-      duration_min: 5,
-    });
-
-    assert.equal(intervalsToNodes([open], { asSnapshot: false }).length, 0);
-
-    const flushed = intervalsToNodes([open], { asSnapshot: true });
-    assert.equal(flushed.length, 1);
-    assert.equal((flushed[0]!.source_meta as Record<string, unknown>).open, true);
-    assert.equal((flushed[0]!.source_meta as Record<string, unknown>).provider, "codex");
-
-    // second Save does not re-emit same open
-    assert.equal(intervalsToNodes([open], { asSnapshot: true }).length, 0);
-  });
-
-  it("closed terminal still emits after open was flushed (Save Today refine)", () => {
+  it("closed after warm session uses stable seed (no open predecessor in outbox)", () => {
     resetSeenAgentKeys();
     const start = "2026-07-24T03:00:00.000Z";
-    const open = agent({
-      session_id: "live",
-      start,
-      end: "2026-07-24T03:05:00.000Z",
-      open: true,
-      duration_min: 5,
-    });
+    // Save while warm would have emitted nothing for open
+    assert.equal(
+      intervalsToNodes(
+        [
+          agent({
+            session_id: "live",
+            start,
+            end: "2026-07-24T03:05:00.000Z",
+            open: true,
+            duration_min: 5,
+          }),
+        ],
+        { asSnapshot: true },
+      ).length,
+      0,
+    );
+
     const closed = agent({
       session_id: "live",
       start,
@@ -123,17 +113,14 @@ describe("agents source emission policy", () => {
       open: false,
       duration_min: 60,
     });
-
-    const flushed = intervalsToNodes([open], { asSnapshot: true });
-    assert.equal(flushed.length, 1);
-    assert.equal((flushed[0]!.source_meta as Record<string, unknown>).open, true);
-
-    // later regular tick with closed must still emit (different seed/key)
     const terminal = intervalsToNodes([closed], { asSnapshot: false });
     assert.equal(terminal.length, 1);
     assert.equal((terminal[0]!.source_meta as Record<string, unknown>).open, false);
-    assert.notEqual(terminal[0]!.client_uuid, flushed[0]!.client_uuid);
     assert.equal((terminal[0]!.source_meta as Record<string, unknown>).end, closed.end);
+    assert.equal(
+      terminal[0]!.client_uuid,
+      uuidFromSeed("agent:claude|live|2026-07-24T03:00:00.000Z"),
+    );
   });
 });
 
