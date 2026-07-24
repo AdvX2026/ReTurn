@@ -85,7 +85,8 @@ export function scoreFocus(sessions: Session[], nodes: NodeRecord[]): number {
 }
 
 /**
- * 产出: todo completion + agent duration + git commit count.
+ * 产出: reminder completion + agent duration + git commit count.
+ * todoRate param is now reminderCompletionRate (real checklist = Reminders).
  * Coefficients are initial; tunable before T+40h.
  */
 export function scoreOutput(
@@ -93,7 +94,7 @@ export function scoreOutput(
   sessions: Session[],
   commitCount = 0,
 ): number {
-  // todo completion rate → max 60
+  // reminder completion rate → max 60
   const todoScore = clamp(todoRate * 60, 0, 60);
   const agentMin = sessions
     .filter((s) => s.kind === "agent")

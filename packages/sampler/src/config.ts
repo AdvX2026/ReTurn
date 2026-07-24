@@ -15,6 +15,16 @@ function str(name: string, fallback = ""): string {
   return process.env[name] ?? fallback;
 }
 
+/** Explicit "0"/"false" disables; "1"/"true" enables; unset/empty → fallback. */
+function bool(name: string, fallback: boolean): boolean {
+  const v = process.env[name];
+  if (v === undefined || v === "") return fallback;
+  const lower = v.toLowerCase();
+  if (lower === "0" || lower === "false") return false;
+  if (lower === "1" || lower === "true") return true;
+  return fallback;
+}
+
 /**
  * Comma-separated dirs → absolute paths; empty default disables git scan.
  * Always resolve to absolute so client_uuid seed `git:{repoPath}:{sha}` is
@@ -54,4 +64,9 @@ export const config = {
    * Empty (default) = feature off — no git processes spawned.
    */
   gitScanDirs: dirs("GIT_SCAN_DIRS"),
+  /**
+   * Apple Reminders sample source. Default on; set "0"/"false" to disable.
+   * Source also self-gates on darwin — non-mac always returns empty.
+   */
+  remindersEnabled: bool("REMINDERS_ENABLED", true),
 } as const;

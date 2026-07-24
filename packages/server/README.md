@@ -30,7 +30,9 @@ Listens on `http://0.0.0.0:8787` by default. SQLite at `$DATA_DIR/return.db`.
 | GET | `/api/stats/today` | live five-dim |
 | GET | `/api/timeline?date=` | 24h sessions / feeds / sleep |
 | GET | `/api/days?range=30` | overview |
-| PATCH | `/api/todos/:id` | check → `todo_check` only on false→true |
+| PATCH | `/api/todos/:id` | legacy check → `todo_check` only on false→true |
+| POST | `/api/todos/:id/accept` | UI wrote Reminder → positive sample (`reminder_id?`) |
+| POST | `/api/todos/:id/dismiss` | ignore suggestion → negative sample |
 
 ## Env
 

@@ -40,3 +40,10 @@ UI closed must not stop sampling. Dev: `pnpm dev:sampler`. Prod later: launchd.
 - `client_uuid` = sha256 seed `git:{repoPath}:{sha}` — restart/replay safe (repoPath is absolute).
 - `source_meta`: `{ repo, sha, committed_at, files_changed, insertions, deletions }`
 - Failures silent; never blocks sample main path or outbox flush.
+
+## Apple Reminders (preference-loop positive samples)
+- Source: `sources/reminders.ts` + `collect-reminders.ts`
+- **darwin only**; non-mac always empty. Opt-out: `REMINDERS_ENABLED=0`.
+- Read-only JXA; never writes. Emits `kind: "reminder"` (open + completed).
+- `client_uuid` = sha256 seed `reminder:{date}:{id}:{0|1}` — daily snapshot + completed flip → new node.
+- `source_meta`: `{ list, completed, due, reminder_id, creation_date, modification_date }`
