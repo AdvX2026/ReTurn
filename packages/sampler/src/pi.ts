@@ -15,7 +15,7 @@ export interface FlushResult {
   remaining: number;
   online: boolean;
   deviceId: string | null;
-  /** Latest cadence from Pi on a successful /api/nodes (PRD F2). */
+  /** Latest cadence from Pi via /api/nodes or empty-outbox /api/ping (PRD F2). */
   cadence: CadenceMode | null;
 }
 
@@ -54,12 +54,21 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
-export async function pingPi(): Promise<boolean> {
+export async function pingPi(): Promise<{
+  online: boolean;
+  cadence: CadenceMode | null;
+}> {
   try {
-    await fetchJson<{ ok: boolean }>("/api/ping");
-    return true;
+    const res = await fetchJson<{
+      ok: boolean;
+      cadence?: CadenceMode | null;
+    }>("/api/ping");
+    return {
+      online: true,
+      cadence: parseCadence(res.cadence),
+    };
   } catch {
-    return false;
+    return { online: false, cadence: null };
   }
 }
 
@@ -87,20 +96,21 @@ export async function postNodes(
   });
 }
 
-function cadenceFromResponse(res: CreateNodesResponse): CadenceMode | null {
-  return res.cadence === "active" || res.cadence === "night" ? res.cadence : null;
+function parseCadence(value: unknown): CadenceMode | null {
+  return value === "active" || value === "night" ? value : null;
 }
 
 /** FIFO flush. Stops on network/5xx to preserve order. */
 export async function flushOutbox(outbox: Outbox): Promise<FlushResult> {
   if (outbox.size() === 0) {
-    const online = await pingPi();
+    // Empty outbox still pings for cadence (midnight night→active restore).
+    const ping = await pingPi();
     return {
       flushed: 0,
       remaining: 0,
-      online,
+      online: ping.online,
       deviceId: loadDeviceId(),
-      cadence: null,
+      cadence: ping.cadence,
     };
   }
 
@@ -129,7 +139,7 @@ export async function flushOutbox(outbox: Outbox): Promise<FlushResult> {
     }
     try {
       const res = await postNodes(deviceId, nodes);
-      const next = cadenceFromResponse(res);
+      const next = parseCadence(res.cadence);
       if (next) cadence = next;
       outbox.remove(row.id);
       flushed++;

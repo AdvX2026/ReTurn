@@ -61,9 +61,14 @@ describe("http smoke", () => {
   it("GET /api/ping", async () => {
     const res = await app.inject({ method: "GET", url: "/api/ping" });
     assert.equal(res.statusCode, 200);
-    const body = res.json() as { ok: boolean; version: string };
+    const body = res.json() as {
+      ok: boolean;
+      version: string;
+      cadence?: string;
+    };
     assert.equal(body.ok, true);
     assert.ok(body.version);
+    assert.equal(body.cadence, "active");
   });
 
   it("POST /api/devices/register", async () => {

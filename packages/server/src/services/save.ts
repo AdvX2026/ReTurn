@@ -85,7 +85,7 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
   const day = ensureDay(db, input.date);
 
   if (day.saved_at) {
-    return buildSaveResponse(db, day.id, input.date, true, false);
+    return buildSaveResponse(db, day.id, input.date, true, false, 0);
   }
 
   // ── save note ─────────────────────────────────────────
@@ -187,7 +187,7 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
   // Re-check under lock: another waiter may have sealed while we fermented.
   const sealed = getDayByDate(db, input.date);
   if (sealed?.saved_at) {
-    return buildSaveResponse(db, sealed.id, input.date, true, false);
+    return buildSaveResponse(db, sealed.id, input.date, true, false, 0);
   }
 
   const knownIds = new Set([
@@ -195,6 +195,7 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
     ...linkableNodes.map((n) => n.id),
   ]);
 
+  let cardsCreated = 0;
   db.transaction(() => {
     for (const e of ferment.edges) {
       if (!knownIds.has(e.src_node_id) || !knownIds.has(e.dst_node_id)) continue;
@@ -282,6 +283,7 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
           .slice(0, 40),
       },
     });
+    cardsCreated++;
     if (ferment.todos.length > 0) {
       insertCard(db, {
         type: "todo_suggestion",
@@ -291,6 +293,7 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
           todo_ids: todoIds,
         },
       });
+      cardsCreated++;
     }
     if (ferment.health_advice) {
       insertCard(db, {
@@ -302,6 +305,7 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
           steps: health.steps,
         },
       });
+      cardsCreated++;
     }
     for (const idea of ferment.ideas ?? []) {
       const { node } = insertNode(db, {
@@ -321,10 +325,11 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
           provenance: "auto",
         },
       });
+      cardsCreated++;
     }
   })();
 
-  return buildSaveResponse(db, day.id, input.date, false, degraded);
+  return buildSaveResponse(db, day.id, input.date, false, degraded, cardsCreated);
 }
 
 function degradeFerment(
@@ -384,6 +389,8 @@ function buildSaveResponse(
   date: string,
   already_saved: boolean,
   degraded: boolean,
+  /** Cards inserted by this Save call; 0 on already_saved replay. */
+  cardsCreated = 0,
 ): SaveResponse {
   const day = getDayByDate(db, date)!;
   const todos = listTodosByDay(db, dayId);
@@ -403,12 +410,6 @@ function buildSaveResponse(
   } catch {
     review_points = [];
   }
-
-  const cardsCreated = (
-    db
-      .prepare(`SELECT COUNT(*) AS n FROM cards WHERE date = ? OR date = ?`)
-      .get(date, addDays(date, 1)) as { n: number }
-  ).n;
 
   return {
     day_id: dayId,

@@ -259,6 +259,8 @@ export const PingResponse = z.object({
   ok: z.literal(true),
   server_time: z.string().datetime(),
   version: z.string(),
+  /** Sampler rhythm without a node upload (PRD F2 midnight restore). */
+  cadence: CadenceMode.optional(),
 });
 export type PingResponse = z.infer<typeof PingResponse>;
 

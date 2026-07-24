@@ -100,8 +100,10 @@ async function main(): Promise<void> {
     `[sampler] interval active=${config.sampleIntervalMin}min night=${config.sampleIntervalNightMin}min`,
   );
 
-  piOnline = await pingPi();
-  console.log(`[sampler] pi online=${piOnline}`);
+  const boot = await pingPi();
+  piOnline = boot.online;
+  applyCadence(boot.cadence);
+  console.log(`[sampler] pi online=${piOnline} cadence=${cadence}`);
 
   await startLocalServer({
     outbox,

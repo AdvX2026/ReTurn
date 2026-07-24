@@ -12,6 +12,7 @@ import {
   listTasks,
 } from "../db/repo.js";
 import { type Db, openMemoryDb } from "../db/schema.js";
+import { todayDate } from "../util/time.js";
 import { handleChat, parseTriageJson, triageHeuristic } from "./chat.js";
 import { MeetingTaskRunner } from "./meeting-tasks.js";
 import { handleResume } from "./resume.js";
@@ -140,7 +141,7 @@ describe("v0.6 chat / cards / tasks / resume / timeline range", () => {
       const done = listTasks(db).find((t) => t.id === r.task_id);
       assert.equal(done?.status, "done");
       assert.ok(done?.result_message_id);
-      const node = listNodesByDate(db, "2026-07-24").find(
+      const node = listNodesByDate(db, todayDate()).find(
         (item) => item.client_uuid === r.task_id,
       );
       assert.ok(node);
@@ -175,7 +176,7 @@ describe("v0.6 chat / cards / tasks / resume / timeline range", () => {
 
       const task = listTasks(db).find((item) => item.id === r.task_id);
       assert.equal(task?.status, "failed");
-      const node = listNodesByDate(db, "2026-07-24").find(
+      const node = listNodesByDate(db, todayDate()).find(
         (item) => item.client_uuid === r.task_id,
       );
       assert.equal(node?.content, notes);
@@ -235,6 +236,12 @@ describe("v0.6 chat / cards / tasks / resume / timeline range", () => {
   });
 
   it("save produces briefing card and night cadence", async () => {
+    // Pre-existing idea card must not inflate cards_created.
+    insertCard(db, {
+      type: "idea",
+      date: "2026-07-24",
+      content: { text: "old idea", provenance: "manual" },
+    });
     insertNode(db, {
       client_uuid: crypto.randomUUID(),
       kind: "text",
@@ -247,9 +254,17 @@ describe("v0.6 chat / cards / tasks / resume / timeline range", () => {
     });
     assert.equal(save.already_saved, false);
     assert.equal(save.cadence, "night");
-    assert.ok((save.cards_created ?? 0) >= 1);
+    // Degraded ferment: briefing + todo_suggestion from note; no health/ideas.
+    assert.equal(save.cards_created, 2);
     const before = listCards(db, { direction: "before" });
     assert.ok(before.cards.some((c) => c.type === "briefing"));
+
+    const replay = await saveToday(db, {
+      date: "2026-07-24",
+      note_text: "ignored on already_saved",
+    });
+    assert.equal(replay.already_saved, true);
+    assert.equal(replay.cards_created, 0);
   });
 
   it("timeline accepts from/to range", () => {

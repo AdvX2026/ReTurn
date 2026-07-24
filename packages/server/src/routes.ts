@@ -106,6 +106,7 @@ export async function registerRoutes(
       ok: true,
       server_time: nowIso(),
       version: config.version,
+      cadence: currentCadence(db),
     };
     return body;
   });
