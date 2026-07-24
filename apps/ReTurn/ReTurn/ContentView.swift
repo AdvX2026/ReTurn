@@ -141,7 +141,7 @@ struct ContentView: View {
                 .lineLimit(1...ReTurnDesign.Metrics.composerMaximumLineCount)
                 .focused($isComposerFocused)
 
-            Image(systemName: "waveform.mid")
+            Image(systemName: composerText.isEmpty ? "waveform.mid" : "arrow.up")
                 .foregroundStyle(ReTurnDesign.Colors.voiceButtonForeground)
                 .frame(
                     width: ReTurnDesign.Metrics.composerAccessorySize,
