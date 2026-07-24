@@ -118,15 +118,23 @@ struct ContentView: View {
     }
 
     private func composer(containerWidth: CGFloat) -> some View {
-        let composerContent = HStack(spacing: ReTurnDesign.Spacing.medium) {
+        let composerShape = RoundedRectangle(
+            cornerRadius: ReTurnDesign.Metrics.composerCornerRadius,
+            style: .continuous
+        )
+        let composerContent = HStack(
+            alignment: .bottom,
+            spacing: ReTurnDesign.Spacing.medium
+        ) {
             Image(systemName: "plus")
                 .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
                 .accessibilityHidden(true)
 
-            TextField("Ask Return Anything", text: $composerText)
+            TextField("Ask Return Anything", text: $composerText, axis: .vertical)
                 .font(ReTurnDesign.Typography.composer)
                 .textFieldStyle(.plain)
                 .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
+                .lineLimit(1...ReTurnDesign.Metrics.composerMaximumLineCount)
                 .focused($isComposerFocused)
 
             Image(systemName: "waveform.mid")
@@ -139,6 +147,7 @@ struct ContentView: View {
                 .accessibilityHidden(true)
         }
         .padding(.horizontal, ReTurnDesign.Metrics.composerHorizontalInset)
+        .padding(.vertical, ReTurnDesign.Spacing.small)
         .frame(
             width: ReTurnDesign.Layout.composerWidth(
                 in: containerWidth,
@@ -154,10 +163,10 @@ struct ContentView: View {
         return Group {
             if #available(iOS 26.0, macOS 26.0, *) {
                 composerContent
-                    .glassEffect(.regular.interactive(), in: Capsule())
+                    .glassEffect(.regular.interactive(), in: composerShape)
             } else {
                 composerContent
-                    .background(.ultraThinMaterial, in: Capsule())
+                    .background(.ultraThinMaterial, in: composerShape)
                     .shadow(
                         color: ReTurnDesign.Colors.composerFallbackShadow,
                         radius: ReTurnDesign.Metrics.composerFallbackShadowRadius,
@@ -165,7 +174,7 @@ struct ContentView: View {
                     )
             }
         }
-        .contentShape(Capsule())
+        .contentShape(composerShape)
         .onTapGesture {
             isComposerFocused = true
         }

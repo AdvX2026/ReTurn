@@ -35,6 +35,8 @@ enum ReTurnDesign {
         static let composerFocusedRegularMaxWidth: CGFloat = 680
         static let composerHeight: CGFloat = 50
         static let composerFocusedHeight: CGFloat = 56
+        static let composerCornerRadius: CGFloat = 28
+        static let composerMaximumLineCount = 5
         static let composerHorizontalInset: CGFloat = 17
         static let screenHorizontalInset: CGFloat = 20
         static let focusedScreenHorizontalInset: CGFloat = 12
