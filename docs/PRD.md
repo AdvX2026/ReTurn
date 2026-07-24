@@ -211,7 +211,7 @@ cards(id, type /* briefing|idea|todo_suggestion|health|weekly */, date,
 | 层 | 选型 | 备注 |
 |---|---|---|
 | 运行时 | Node 22 LTS + tsx（开发与 Pi 上均直接跑 TS，不做构建） | 少一个 build 环节少一类演示事故 |
-| Monorepo | pnpm workspaces：`shared` / `server` / `sampler`；`apps/ReturnApp` 为独立 Xcode 多平台工程（同仓、不进 pnpm workspace） | Swift 工程与后端契约改动在同一 diff 内可见 |
+| Monorepo | pnpm workspaces：`shared` / `server` / `sampler`；`apps/ReTurn` 为独立 Xcode 多平台工程（同仓、不进 pnpm workspace） | Swift 工程与后端契约改动在同一 diff 内可见 |
 | 合同 | `shared`：Zod schema（API 请求/响应 + 发酵 JSON + kind/intent/卡片枚举）是唯一事实来源；Swift 侧手写 Codable 镜像集中于 `Models.swift` | 改合同必须同步两份；REST 可 curl 调试 |
 | 服务端（Pi） | Fastify + fastify-type-provider-zod；`node:sqlite` + 手写 SQL + 编号迁移 | 表不多不上 ORM；systemd 常驻；LLM/转写/视觉 key 走 Pi 环境变量，**不下发客户端、不入 git** |
 | LLM 调用 | Vercel AI SDK + OpenAI-compatible provider，`generateObject` 绑 Zod schema | 发酵/提问用主模型；**分诊与 Resume 用廉价小模型**；语音走 Whisper 兼容转写；截图走视觉 API（可选）；全部由 Pi 发起 |

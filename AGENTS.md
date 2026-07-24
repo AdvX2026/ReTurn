@@ -15,8 +15,8 @@ ReTurn — a 48h-hackathon "daily save" second brain. Orange Pi 3B home server (
 - **@return/shared**: Zod schemas (API contract + ferment JSON) — the single contract authority, frozen per PRD T+6h. Built, stable.
 - **@return/server**: Pi backend complete (routes, SQLite repo, ferment pipeline, stats/sessions/streak); 34 unit tests + HTTP smoke. On main.
 - **@return/sampler**: independent macOS sampler (osascript app/tab sampling, Claude Code jsonl agent sessions, SQLite outbox, loopback control plane :8791). On main.
-- **packages/client**: DEPRECATED Tauri probe shell — do not extend; deleted when `apps/ReturnApp` lands.
-- **apps/ReturnApp** (upcoming): SwiftUI multiplatform app (macOS 14 / iOS 17 baseline) — all product views; Swift Codable mirror of the shared contract in `Models.swift`.
+- **packages/client**: DEPRECATED Tauri probe shell — do not extend; deleted when `apps/ReTurn` product views land.
+- **apps/ReTurn** (scaffolded, views pending): SwiftUI multiplatform Xcode project (macOS 14 / iOS 17 deployment targets; built with Xcode 26 — system components auto-adopt Liquid Glass on OS 26, auto-fallback on older OSes; demo is only verified on OS 26) — all product views; Swift Codable mirror of the shared contract in `Models.swift`.
 
 ## Development Rules
 
@@ -51,7 +51,7 @@ ReTurn — a 48h-hackathon "daily save" second brain. Orange Pi 3B home server (
 
 ### Coding Standards
 - **Source of truth & persistence**: Pi SQLite is the only authoritative datastore. Clients hold outboxes only (sampler: SQLite; UI: JSON file queue) and replay with the original `client_uuid` — the idempotency key. Never regenerate a `client_uuid` on retry.
-- **Contract**: `packages/shared` Zod schemas are the API authority. Any contract change must update the Swift `Models.swift` mirror (`apps/ReturnApp`) in the same commit.
+- **Contract**: `packages/shared` Zod schemas are the API authority. Any contract change must update the Swift `Models.swift` mirror (`apps/ReTurn`) in the same commit.
 - **Architecture & boundaries**: sampling lives only in the sampler process — the UI never samples, and talks to the sampler via localhost :8791 only. The sampler control plane binds `127.0.0.1`, hardcoded — never configurable, never LAN. LLM/transcription keys exist only in the Pi server env — never in clients, never in git.
 - **Language / framework conventions**: backend is TS strict + Biome (`pnpm lint`), Node ≥ 22.13 with `node:sqlite` — no native-module DB deps. Swift side is SwiftUI + URLSession async/await; HealthKit code is always guarded by `#if os(iOS)`.
 - **Security boundary**: trust model is a single user on a home LAN. `/api/health` requires the fixed token; other write endpoints are deliberately unauthenticated (hackathon scope) — therefore the server must never be exposed beyond the LAN.
