@@ -7,13 +7,14 @@
  * Failures are silent (return []); never block the sample tick.
  */
 import { existsSync } from "node:fs";
-import { copyFile, mkdtemp, rm, unlink } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { copySqliteWithWal, unlinkSqliteSnapshot } from "./sqlite-snapshot.js";
 
-/** SQLite side-car suffixes for WAL mode (must match main basename). */
-const SQLITE_WAL_SUFFIXES = ["-wal", "-shm"] as const;
+// Re-export for tests / callers that previously imported from this module.
+export { copySqliteWithWal } from "./sqlite-snapshot.js";
 
 /** Microseconds between Windows FILETIME epoch (1601-01-01) and Unix epoch. */
 const WEBKIT_EPOCH_OFFSET_MS = 11_644_473_600_000;
@@ -208,34 +209,6 @@ export async function collectChromeHistory(
     a.visitedAt < b.visitedAt ? 1 : a.visitedAt > b.visitedAt ? -1 : 0,
   );
   return all.slice(0, limit);
-}
-
-/**
- * Copy a SQLite DB into `tmpPath`, including WAL/SHM side-cars when present.
- * Without -wal, opening a bare main-file copy drops uncheckpointed pages
- * (today's Chrome visits often live only in History-wal while the browser runs).
- */
-export async function copySqliteWithWal(srcPath: string, tmpPath: string): Promise<void> {
-  await copyFile(srcPath, tmpPath);
-  for (const suffix of SQLITE_WAL_SUFFIXES) {
-    const side = `${srcPath}${suffix}`;
-    if (!existsSync(side)) continue;
-    try {
-      await copyFile(side, `${tmpPath}${suffix}`);
-    } catch {
-      // Side-car may be mid-write; main-only copy is still better than aborting.
-    }
-  }
-}
-
-async function unlinkSqliteSnapshot(tmpPath: string): Promise<void> {
-  for (const suffix of ["", ...SQLITE_WAL_SUFFIXES]) {
-    try {
-      await unlink(`${tmpPath}${suffix}`);
-    } catch {
-      /* ignore */
-    }
-  }
 }
 
 async function readHistoryDb(

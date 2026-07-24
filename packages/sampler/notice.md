@@ -58,7 +58,8 @@ UI closed must not stop sampling. Dev: `pnpm dev:sampler`. Prod later: launchd.
 
 ## VS Code recent projects
 - Source: `sources/vscode.ts` + `collect-vscode.ts`
-- Reads `state.vscdb` ItemTable key `history.recentlyOpenedPathsList` (copy-then-open via temp file; VS Code may lock live DB).
+- Reads `state.vscdb` ItemTable key `history.recentlyOpenedPathsList` (copy-then-open via temp file; VS Code may lock live DB). Copy includes `state.vscdb-wal` / `-shm` when present (`copySqliteWithWalSync` in `sqlite-snapshot.ts`) — open editor keeps recent ItemTable pages in the WAL; main-file-only copy silently drops them.
+- Shared helper: `sqlite-snapshot.ts` (`copySqliteWithWal` / `copySqliteWithWalSync`) used by both Chrome History and VS Code sources.
 - `VSCODE_STATE_DB` optional override (`~` expanded). Empty = auto-detect first existing Code / Code - Insiders / Cursor path for the OS.
 - `VSCODE_ENABLED=0|false|off|no` disables; default on when a db is found.
 - Cap 30 entries (VS Code order is recent-first). Editor label from which candidate matched (`code` / `code-insiders` / `cursor` / `custom`).
@@ -73,7 +74,7 @@ UI closed must not stop sampling. Dev: `pnpm dev:sampler`. Prod later: launchd.
 ## Chrome browse history (today's visits)
 - Source: `sources/chrome-history.ts` + `collect-chrome-history.ts`
 - Kind: `browse_history` (not in ACTIVE_FEED_KINDS — environment context, denser than open tabs)
-- **Must copy** History SQLite to temp before open (Chrome locks the live file); `node:sqlite` DatabaseSync only. Copy includes `History-wal` / `History-shm` when present (`copySqliteWithWal`) — Chrome keeps recent visits in the WAL until checkpoint; main-file-only copy silently drops today's rows.
+- **Must copy** History SQLite to temp before open (Chrome locks the live file); `node:sqlite` DatabaseSync only. Copy includes `History-wal` / `History-shm` when present (`copySqliteWithWal` from `sqlite-snapshot.ts`) — Chrome keeps recent visits in the WAL until checkpoint; main-file-only copy silently drops today's rows.
 - Timestamps: Chrome WebKit µs since 1601-01-01 UTC → ISO via `chromeTimeToIso`. Day filter uses local midnight range. µs exceed `Number.MAX_SAFE_INTEGER` — use `bigint` + `DatabaseSync({ readBigInts: true })` for visit_time / range bounds.
 - Auto-detect (first existing, max 4 DBs): Chrome / Chromium / Edge / Brave under OS-standard user-data dirs; profiles Default + Profile 1..3.
 - `CHROME_HISTORY_PATH` override (single file, skips auto-detect). `CHROME_HISTORY_ENABLED=0|false` disables. `CHROME_HISTORY_LIMIT` default 100 total/tick.

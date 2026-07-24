@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -13,6 +13,7 @@ import {
 } from "./collect-vscode.js";
 import { uuidFromSeed } from "./source.js";
 import { recentsToNodes, resetSeenVscodeKeys } from "./sources/vscode.js";
+import { copySqliteWithWalSync } from "./sqlite-snapshot.js";
 
 const FIXTURE = JSON.stringify({
   entries: [
@@ -173,5 +174,57 @@ describe("readRecentlyOpenedJson integration", () => {
 
   it("resolveVscodeStateDb missing override returns null", () => {
     assert.equal(resolveVscodeStateDb(join(dir, "nope.vscdb")), null);
+  });
+
+  it("WAL-mode state.vscdb: includes uncheckpointed ItemTable keys via -wal copy", () => {
+    // Simulate open VS Code: live connection holds recent keys only in -wal.
+    // Main-file-only copy would miss them; copySqliteWithWalSync must not.
+    const walPath = join(dir, "state-wal.vscdb");
+    const live = new DatabaseSync(walPath);
+    live.exec(`
+      PRAGMA journal_mode = WAL;
+      CREATE TABLE ItemTable (key TEXT PRIMARY KEY NOT NULL, value BLOB);
+    `);
+    live
+      .prepare(`INSERT INTO ItemTable (key, value) VALUES (?, ?)`)
+      .run("history.recentlyOpenedPathsList", FIXTURE);
+    // Keep `live` open so the row stays in the WAL (no checkpoint on close).
+
+    try {
+      const json = readRecentlyOpenedJson(walPath);
+      assert.ok(json);
+      assert.equal(json, FIXTURE);
+      const recents = parseRecentlyOpened(json!, "code");
+      assert.equal(recents.length, 3);
+    } finally {
+      live.close();
+    }
+  });
+});
+
+describe("copySqliteWithWalSync (vscode path)", () => {
+  it("copies -wal and -shm side-cars when present", () => {
+    const root = mkdtempSync(join(tmpdir(), "return-vscode-wal-copy-"));
+    try {
+      const src = join(root, "state.vscdb");
+      const db = new DatabaseSync(src);
+      db.exec(`PRAGMA journal_mode = WAL; CREATE TABLE t(x); INSERT INTO t VALUES (1);`);
+      db.close();
+      if (!existsSync(`${src}-wal`)) writeFileSync(`${src}-wal`, Buffer.from("wal-stub"));
+      if (!existsSync(`${src}-shm`)) writeFileSync(`${src}-shm`, Buffer.alloc(32 * 1024));
+
+      const dstRoot = mkdtempSync(join(tmpdir(), "return-vscode-wal-dst-"));
+      const dst = join(dstRoot, "state.vscdb");
+      try {
+        copySqliteWithWalSync(src, dst);
+        assert.equal(existsSync(dst), true);
+        assert.equal(existsSync(`${dst}-wal`), true);
+        assert.equal(existsSync(`${dst}-shm`), true);
+      } finally {
+        rmSync(dstRoot, { recursive: true, force: true });
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

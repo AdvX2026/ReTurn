@@ -2,13 +2,16 @@ import { randomUUID } from "node:crypto";
 /**
  * Read VS Code / Cursor recently opened projects from state.vscdb.
  *
- * Copy-then-open (VS Code may lock the live DB). Failures silent.
+ * Copy-then-open (VS Code may lock the live DB). state.vscdb uses WAL while
+ * the editor is open — copy includes -wal/-shm via copySqliteWithWalSync so
+ * recent ItemTable keys are not silently dropped. Failures silent.
  */
-import { copyFileSync, existsSync, unlinkSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
+import { copySqliteWithWalSync, unlinkSqliteSnapshotSync } from "./sqlite-snapshot.js";
 
 export interface VscodeRecent {
   /** Original uri string from VS Code. */
@@ -187,13 +190,13 @@ export function parseRecentlyOpened(json: string, editor: string): VscodeRecent[
 }
 
 /**
- * Copy state.vscdb to a temp file, read ItemTable keys, close + unlink.
- * Returns empty on any failure.
+ * Copy state.vscdb (+ WAL/SHM when present) to a temp file, read ItemTable
+ * keys, close + unlink. Returns empty on any failure.
  */
 export function readRecentlyOpenedJson(dbPath: string): string | null {
   const tmp = join(tmpdir(), `return-vscode-${randomUUID()}.vscdb`);
   try {
-    copyFileSync(dbPath, tmp);
+    copySqliteWithWalSync(dbPath, tmp);
   } catch {
     return null;
   }
@@ -230,11 +233,7 @@ export function readRecentlyOpenedJson(dbPath: string): string | null {
     } catch {
       /* ignore */
     }
-    try {
-      unlinkSync(tmp);
-    } catch {
-      /* ignore */
-    }
+    unlinkSqliteSnapshotSync(tmp);
   }
 }
 
