@@ -11,6 +11,18 @@ function num(name: string, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+/**
+ * Positive integer only (e.g. SQLite LIMIT binds). Fractions / ≤0 / NaN → fallback.
+ * Exported for unit tests.
+ */
+export function positiveInt(name: string, fallback: number): number {
+  const v = process.env[name];
+  if (v === undefined || v === "") return fallback;
+  const n = Number(v);
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) return fallback;
+  return n;
+}
+
 function str(name: string, fallback = ""): string {
   return process.env[name] ?? fallback;
 }
@@ -93,6 +105,6 @@ export const config = {
    * (Existence check happens at sample time; this flag only forces off.)
    */
   chromeHistoryEnabled: bool("CHROME_HISTORY_ENABLED", true),
-  /** Max visits per sample tick across all History DBs. */
-  chromeHistoryLimit: num("CHROME_HISTORY_LIMIT", 100),
+  /** Max visits per sample tick across all History DBs (positive int; bad env → 100). */
+  chromeHistoryLimit: positiveInt("CHROME_HISTORY_LIMIT", 100),
 } as const;
