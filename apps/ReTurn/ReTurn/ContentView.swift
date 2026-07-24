@@ -158,6 +158,9 @@ struct ContentView: View {
             addButtonLabel
         }
         .menuIndicator(.hidden)
+        .buttonBorderShape(.circle)
+        .contentShape(Circle())
+        .clipShape(Circle())
         let composerContent = HStack(
             alignment: .center,
             spacing: ReTurnDesign.Spacing.medium
