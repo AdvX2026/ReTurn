@@ -31,3 +31,12 @@ UI closed must not stop sampling. Dev: `pnpm dev:sampler`. Prod later: launchd.
 - single-event intervals report `duration_min: 0` (no 1min floor)
 - `source_meta`: `{ provider, project, start, end, duration_min, session_id, open: false }`
 - `client_uuid` = sha256 seed `agent:{provider}|{session_id}|{start}`
+
+## Git commits (today's local commits)
+- Source: `sources/git.ts` + `collect-git.ts`
+- `GIT_SCAN_DIRS` comma-separated roots (`~` expanded, resolved absolute). Empty default = feature off, no git spawn.
+- Discovers repos: each root + its direct children (skip hidden / `node_modules`); `.git` file or dir.
+- Discover cache TTL 1h. Per-repo: `git log --all --fixed-strings --author=<local user.email> --since=<todayLocal>T00:00:00 -n 100 --shortstat`.
+- `client_uuid` = sha256 seed `git:{repoPath}:{sha}` — restart/replay safe (repoPath is absolute).
+- `source_meta`: `{ repo, sha, committed_at, files_changed, insertions, deletions }`
+- Failures silent; never blocks sample main path or outbox flush.

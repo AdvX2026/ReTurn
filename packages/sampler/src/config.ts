@@ -15,6 +15,18 @@ function str(name: string, fallback = ""): string {
   return process.env[name] ?? fallback;
 }
 
+/** Comma-separated dirs → absolute paths; empty default disables git scan. */
+function dirs(name: string): string[] {
+  const raw = process.env[name] ?? "";
+  if (!raw.trim()) return [];
+  const home = homedir();
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((p) => (p === "~" ? home : p.startsWith("~/") ? join(home, p.slice(2)) : p));
+}
+
 const dataDir = str("SAMPLER_DATA_DIR", join(homedir(), ".return", "sampler"));
 
 export const config = {
@@ -29,4 +41,9 @@ export const config = {
   outboxPath: join(dataDir, "outbox.db"),
   /** Stable device id file so restarts reuse registration. */
   deviceIdPath: join(dataDir, "device_id"),
+  /**
+   * Code roots to scan for today's local git commits.
+   * Empty (default) = feature off — no git processes spawned.
+   */
+  gitScanDirs: dirs("GIT_SCAN_DIRS"),
 } as const;

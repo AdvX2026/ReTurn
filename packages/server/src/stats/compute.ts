@@ -24,10 +24,11 @@ export interface StatsInput {
  * Coefficients are initial; tunable before T+40h.
  */
 export function computeStats(input: StatsInput): Stats {
+  const commitCount = input.nodes.filter((n) => n.kind === "git_commit").length;
   return {
     intake: scoreIntake(input.nodes),
     focus: scoreFocus(input.sessions, input.nodes),
-    output: scoreOutput(input.todoRate, input.sessions),
+    output: scoreOutput(input.todoRate, input.sessions, commitCount),
     continuity: scoreContinuity(input.crossDayEdges),
     energy: scoreEnergy(input),
   };
@@ -83,15 +84,25 @@ export function scoreFocus(sessions: Session[], nodes: NodeRecord[]): number {
   return clamp(Math.round(hhiScore + longScore + tagBonus), 0, 100);
 }
 
-/** 产出: todo completion rate primary + agent session duration bonus. */
-export function scoreOutput(todoRate: number, sessions: Session[]): number {
-  const todoScore = clamp(todoRate * 70, 0, 70);
+/**
+ * 产出: todo completion + agent duration + git commit count.
+ * Coefficients are initial; tunable before T+40h.
+ */
+export function scoreOutput(
+  todoRate: number,
+  sessions: Session[],
+  commitCount = 0,
+): number {
+  // todo completion rate → max 60
+  const todoScore = clamp(todoRate * 60, 0, 60);
   const agentMin = sessions
     .filter((s) => s.kind === "agent")
     .reduce((s, x) => s + x.durationMin, 0);
-  // 2h agent work → +30
-  const agentBonus = clamp((agentMin / 120) * 30, 0, 30);
-  return clamp(Math.round(todoScore + agentBonus), 0, 100);
+  // 2h agent work → +20
+  const agentBonus = clamp((agentMin / 120) * 20, 0, 20);
+  // 5 commits → +20
+  const commitBonus = clamp((commitCount / 5) * 20, 0, 20);
+  return clamp(Math.round(todoScore + agentBonus + commitBonus), 0, 100);
 }
 
 /** 连贯: cross-day edges capped to 0..100. */

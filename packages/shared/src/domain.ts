@@ -9,6 +9,7 @@ export const NodeKind = z.enum([
   "app_sample",
   "tab_sample",
   "agent_session",
+  "git_commit",
   "health_daily",
   "snapshot",
   "todo_check",
