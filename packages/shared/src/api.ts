@@ -10,6 +10,7 @@ import {
   StatsSchema,
   TaskStatus,
   TaskType,
+  TodoStatus,
 } from "./domain.js";
 
 // ── devices ──────────────────────────────────────────────
@@ -127,8 +128,13 @@ export const TodoRecord = z.object({
   id: z.string().uuid(),
   day_id: z.string().uuid(),
   text: z.string(),
+  /** Compat: true when status=accepted (or legacy PATCH). Real checklist = Reminders. */
   done: z.boolean(),
+  status: TodoStatus,
   source_node_id: z.string().uuid().nullable(),
+  accepted_reminder_id: z.string().nullable(),
+  accepted_at: z.string().datetime().nullable(),
+  dismissed_at: z.string().datetime().nullable(),
 });
 export type TodoRecord = z.infer<typeof TodoRecord>;
 
@@ -252,6 +258,29 @@ export const PatchTodoResponse = z.object({
   check_node: NodeRecord.nullable(),
 });
 export type PatchTodoResponse = z.infer<typeof PatchTodoResponse>;
+
+/** UI wrote Reminder via EventKit, then reports accept (positive sample). */
+export const AcceptTodoRequest = z.object({
+  device_id: z.string().uuid().optional(),
+  /** Apple Reminders id when known; optional — text match can link later. */
+  reminder_id: z.string().min(1).max(500).optional(),
+});
+export type AcceptTodoRequest = z.infer<typeof AcceptTodoRequest>;
+
+export const AcceptTodoResponse = z.object({
+  todo: TodoRecord,
+});
+export type AcceptTodoResponse = z.infer<typeof AcceptTodoResponse>;
+
+export const DismissTodoRequest = z.object({
+  device_id: z.string().uuid().optional(),
+});
+export type DismissTodoRequest = z.infer<typeof DismissTodoRequest>;
+
+export const DismissTodoResponse = z.object({
+  todo: TodoRecord,
+});
+export type DismissTodoResponse = z.infer<typeof DismissTodoResponse>;
 
 // ── ping ─────────────────────────────────────────────────
 

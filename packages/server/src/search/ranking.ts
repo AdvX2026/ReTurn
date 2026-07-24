@@ -24,6 +24,7 @@ export const KIND_WEIGHTS: Readonly<Record<string, number>> = {
   git_commit: 0.7,
   agent_session: 0.7,
   todo_check: 0.5,
+  reminder: 0.6,
   tab_sample: 0.3,
   app_sample: 0.1,
   snapshot: 0.1,

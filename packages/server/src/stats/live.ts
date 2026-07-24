@@ -4,7 +4,7 @@ import {
   countCrossDayEdges,
   getDayByDate,
   listNodesByDate,
-  todoCompletionRate,
+  reminderCompletionRate,
 } from "../db/repo.js";
 import type { Db } from "../db/schema.js";
 import { resolveCharacterState } from "./character.js";
@@ -25,7 +25,8 @@ export function computeLiveStats(db: Db, date: string): LiveStats {
   const day = getDayByDate(db, date);
   const nodes = listNodesByDate(db, date);
   const sessions = allSessions(nodes, config.sampleIntervalMin);
-  const todos = day ? todoCompletionRate(db, day.id) : { total: 0, done: 0, rate: 0 };
+  // Output primary signal = Apple Reminders completion (real checklist).
+  const rem = reminderCompletionRate(db, date);
   const crossDayEdges = day ? countCrossDayEdges(db, day.id) : 0;
   const health = extractHealth(nodes);
 
@@ -51,7 +52,7 @@ export function computeLiveStats(db: Db, date: string): LiveStats {
   const stats = computeStats({
     nodes,
     sessions,
-    todoRate: todos.rate,
+    todoRate: rem.rate,
     crossDayEdges,
     sleepMinutes: health.sleepMinutes,
     steps: health.steps,

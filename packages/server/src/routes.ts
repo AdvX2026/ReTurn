@@ -1,6 +1,8 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  AcceptTodoRequest,
+  type AcceptTodoResponse,
   AskRequest,
   type AskResponse,
   type CharacterState,
@@ -10,6 +12,8 @@ import {
   CreateNodesRequest,
   type CreateNodesResponse,
   type DaysResponse,
+  DismissTodoRequest,
+  type DismissTodoResponse,
   HealthRequest,
   type HealthResponse,
   type ListCardsResponse,
@@ -39,10 +43,12 @@ import { TranscribeError, transcribeAudio } from "./ai/transcribe.js";
 import { config, isHealthTokenConfigured } from "./config.js";
 import {
   type DayRow,
+  acceptTodo,
   currentCadence,
   dayReviewPoints,
   dayStats,
   deleteNode,
+  dismissTodo,
   ensureDay,
   getDayByDate,
   getLatestSavedDay,
@@ -729,6 +735,34 @@ export async function registerRoutes(
     }
 
     const body: PatchTodoResponse = { todo, check_node };
+    return body;
+  });
+
+  /** UI wrote Reminder via EventKit → positive sample for preference loop. */
+  app.post("/api/todos/:id/accept", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const parsed = AcceptTodoRequest.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return reply.code(400).send(badRequest(parsed.error.message));
+    }
+    if (parsed.data.device_id) touchDevice(db, parsed.data.device_id);
+    const todo = acceptTodo(db, id, parsed.data.reminder_id ?? null);
+    if (!todo) return reply.code(404).send(notFound("todo not found"));
+    const body: AcceptTodoResponse = { todo };
+    return body;
+  });
+
+  /** Explicit ignore → negative sample. */
+  app.post("/api/todos/:id/dismiss", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const parsed = DismissTodoRequest.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return reply.code(400).send(badRequest(parsed.error.message));
+    }
+    if (parsed.data.device_id) touchDevice(db, parsed.data.device_id);
+    const todo = dismissTodo(db, id);
+    if (!todo) return reply.code(404).send(notFound("todo not found"));
+    const body: DismissTodoResponse = { todo };
     return body;
   });
 }

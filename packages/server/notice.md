@@ -22,3 +22,10 @@ See root `.env.example`. `LLM_API_KEY` / `HEALTH_TOKEN` never ship to clients.
 - Ferment without `LLM_API_KEY` always degrades (tests rely on this).
 - Global search / node layering: see `docs/architecture-nodes-search.md` (PR #8).
 - Swift `Models.swift` mirror for Search/Ask + `git_commit` waits on `apps/ReturnApp`.
+
+## Todo preference loop (AI suggestions ↔ Apple Reminders)
+- Real checklist = Mac Reminders. Server `todos` = AI suggestions only (`status`: suggested|accepted|dismissed).
+- Accept: `POST /api/todos/:id/accept` after UI EventKit write. Dismiss: `POST .../dismiss`.
+- Save: expire stale suggested → feed open reminders + accepted/dismissed texts into ferment prompt; server-side text dedupe on insert; `source_node_id` = save_note when present.
+- Output score primary signal = `reminderCompletionRate` (not `todos.done`).
+- No `user_profile` table — preference is live samples in prompt. Add table only if need cross-session summary beyond last N.

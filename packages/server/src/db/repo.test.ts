@@ -1,24 +1,34 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { beforeEach, describe, it } from "node:test";
 import type { Stats } from "@return/shared";
 import {
+  acceptTodo,
   countCrossDayEdges,
   deleteNode,
+  dismissTodo,
   ensureDay,
+  expireSuggestedTodos,
   getDayByDate,
   getNodeById,
+  getTodo,
   insertEdge,
   insertNode,
   insertNodes,
   insertTodo,
   listNodesByDate,
   listTodosByDay,
+  listTodosByStatus,
   markDaySaved,
+  reminderCompletionRate,
   setTodoDone,
   todoCompletionRate,
   upsertDevice,
 } from "./repo.js";
-import { type Db, openMemoryDb } from "./schema.js";
+import { type Db, openDb, openMemoryDb } from "./schema.js";
 
 describe("repo", () => {
   let db: Db;
@@ -99,6 +109,64 @@ describe("repo", () => {
     assert.equal(rate.done, 1);
     assert.equal(rate.rate, 0.5);
     assert.equal(listTodosByDay(db, day.id).filter((t) => t.done).length, 1);
+    assert.equal(t1.status, "suggested");
+    assert.equal(getTodo(db, t1.id)!.status, "accepted");
+  });
+
+  it("accept / dismiss preference samples", () => {
+    const day = ensureDay(db, "2026-07-24");
+    const t1 = insertTodo(db, { day_id: day.id, text: "Ship loop" });
+    const t2 = insertTodo(db, { day_id: day.id, text: "Buy milk" });
+    const accepted = acceptTodo(db, t1.id, "rem-1")!;
+    assert.equal(accepted.status, "accepted");
+    assert.equal(accepted.accepted_reminder_id, "rem-1");
+    assert.ok(accepted.accepted_at);
+    const dismissed = dismissTodo(db, t2.id)!;
+    assert.equal(dismissed.status, "dismissed");
+    assert.ok(dismissed.dismissed_at);
+    assert.equal(listTodosByStatus(db, "accepted").length, 1);
+    assert.equal(listTodosByStatus(db, "dismissed").length, 1);
+  });
+
+  it("expireSuggestedTodos auto-dismisses past suggested", () => {
+    const oldDay = ensureDay(db, "2026-07-20");
+    const today = ensureDay(db, "2026-07-24");
+    insertTodo(db, { day_id: oldDay.id, text: "stale" });
+    insertTodo(db, { day_id: today.id, text: "fresh" });
+    const n = expireSuggestedTodos(db, "2026-07-24");
+    assert.equal(n, 1);
+    assert.equal(listTodosByStatus(db, "dismissed")[0]!.text, "stale");
+    assert.equal(listTodosByDay(db, today.id)[0]!.status, "suggested");
+  });
+
+  it("reminderCompletionRate prefers completed snapshot", () => {
+    ensureDay(db, "2026-07-24");
+    insertNode(db, {
+      client_uuid: crypto.randomUUID(),
+      kind: "reminder",
+      title: "Ship",
+      date: "2026-07-24",
+      source_meta: { reminder_id: "r1", completed: false },
+    });
+    insertNode(db, {
+      client_uuid: crypto.randomUUID(),
+      kind: "reminder",
+      title: "Ship",
+      date: "2026-07-24",
+      source_meta: { reminder_id: "r1", completed: true },
+    });
+    insertNode(db, {
+      client_uuid: crypto.randomUUID(),
+      kind: "reminder",
+      title: "Open item",
+      date: "2026-07-24",
+      source_meta: { reminder_id: "r2", completed: false },
+    });
+    const rate = reminderCompletionRate(db, "2026-07-24");
+    assert.equal(rate.total, 2);
+    assert.equal(rate.done, 1);
+    assert.equal(rate.rate, 0.5);
+    assert.deepEqual(rate.openTitles, ["Open item"]);
   });
 
   it("cross-day edge count", () => {
@@ -173,6 +241,55 @@ describe("repo", () => {
     assert.equal(deleteNode(db, a.id), true);
     assert.equal(getNodeById(db, a.id), undefined);
     assert.ok(getNodeById(db, b.id));
+  });
+
+  it("openDb migrates legacy todos missing status column", () => {
+    // Pre-loop DBs have todos without status. SCHEMA must not create
+    // idx_todos_status before migrate ALTERs the column in (Codex P1).
+    const dir = mkdtempSync(join(tmpdir(), "return-mig-"));
+    try {
+      const raw = new DatabaseSync(join(dir, "return.db"));
+      raw.exec(`
+        PRAGMA foreign_keys = ON;
+        CREATE TABLE days (
+          id TEXT PRIMARY KEY, date TEXT NOT NULL UNIQUE,
+          saved_at TEXT, save_note_node_id TEXT, summary TEXT,
+          opening_line TEXT, review_points_json TEXT, stats_json TEXT,
+          character_state TEXT
+        );
+        CREATE TABLE devices (
+          id TEXT PRIMARY KEY, name TEXT NOT NULL,
+          platform TEXT NOT NULL DEFAULT 'unknown', last_seen_at TEXT NOT NULL
+        );
+        CREATE TABLE nodes (
+          id TEXT PRIMARY KEY, day_id TEXT NOT NULL REFERENCES days(id),
+          device_id TEXT, kind TEXT NOT NULL, title TEXT, content TEXT,
+          source_meta TEXT, client_uuid TEXT NOT NULL, created_at TEXT NOT NULL,
+          UNIQUE(client_uuid)
+        );
+        CREATE TABLE todos (
+          id TEXT PRIMARY KEY, day_id TEXT NOT NULL REFERENCES days(id),
+          text TEXT NOT NULL, done INTEGER NOT NULL DEFAULT 0,
+          source_node_id TEXT
+        );
+        CREATE INDEX idx_todos_day ON todos(day_id);
+      `);
+      raw.close();
+
+      const upgraded = openDb(dir);
+      const day = ensureDay(upgraded, "2026-07-24");
+      const t = insertTodo(upgraded, { day_id: day.id, text: "migrated" });
+      assert.equal(t.status, "suggested");
+      const idx = upgraded
+        .prepare(
+          `SELECT name FROM sqlite_master WHERE type='index' AND name='idx_todos_status'`,
+        )
+        .get() as { name: string } | undefined;
+      assert.equal(idx?.name, "idx_todos_status");
+      upgraded.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("device upsert reuses id", () => {
