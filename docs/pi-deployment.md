@@ -11,6 +11,15 @@ server is LAN-only; do not expose port 8787 to the public internet.
 - systemd, SQLite via Node built-in `node:sqlite`
 - Persistent data at `/var/lib/return`
 
+## Fresh-system prerequisites
+
+Install the runtime tools before running the repository scripts:
+
+```bash
+sudo apt update
+sudo apt install -y ca-certificates curl xz-utils git sqlite3 avahi-daemon libnss-mdns jq rsync
+```
+
 The Debian 13 repository currently provides Node 20, which is too old. Install
 an official Node.js 22 Linux ARM64 archive, verify its `SHASUMS256.txt`, and
 place the versioned distribution under `/usr/local/lib/nodejs`. Expose `node`,
@@ -27,18 +36,26 @@ node -e "require('node:sqlite'); console.log('node:sqlite ok')"
 
 ## First installation
 
-From a clean Git checkout on `feat/pi-deployment` or a merged descendant:
+From a clean Git checkout containing this deployment toolkit:
 
 ```bash
 sudo ./deploy/install.sh
 sudoedit /etc/return/return.env
 ./deploy/deploy.sh
+./deploy/smoke-test.sh
 ```
 
-`install.sh` never overwrites an existing environment file. Configure at
-least a strong `HEALTH_TOKEN` and the LLM/Whisper settings before final
-end-to-end validation. Until Issue #4 is complete, leave `API_TOKEN` empty and
-use only the controlled team hotspot.
+`install.sh` never overwrites an existing environment file. It configures the
+dedicated Pi hostname as `return`, enables Avahi, advertises HTTP port 8787,
+and verifies `return.local`. Use `--hostname NAME` only when the installation
+needs a different lowercase mDNS name; clients must then use `NAME.local`.
+
+Configure at least a strong `HEALTH_TOKEN` and the LLM/Whisper settings before
+final end-to-end validation. Until Issue #4 propagates `API_TOKEN` through the
+sampler and clients, an empty token is a temporary hackathon mode: use only the
+controlled private hotspot, keep the Pi disconnected from WAN-facing networks,
+and never forward TCP 8787. After Issue #4, configure a strong random token and
+complete a client/sampler authentication regression before using other LANs.
 
 Keep the `NODE_OPTIONS` value from `return.env.example`. On the validated
 hotspot, Node 22's network-family auto-selection timed out while an IPv4-only
@@ -85,7 +102,8 @@ getent hosts return.local
 ```
 
 `install.sh` also advertises `_http._tcp` on port 8787 via
-`deploy/return-http.service`.
+`deploy/return-http.service`. The installer sets the hostname explicitly;
+the DNS-SD XML alone does not create the `return.local` host record.
 
 Do not change the static network configuration from the only active remote
 session. Keep a local console or a second connection available for rollback.
@@ -156,6 +174,8 @@ Common causes:
   `--no-network-family-autoselection --dns-result-order=ipv4first` and restart
   `return-server`.
 - Sampler receives 401: `API_TOKEN` was enabled before Issue #4 was completed.
+- `return.local` does not resolve on a fresh Pi: confirm `hostname` prints
+  `return`, then check `systemctl status avahi-daemon` and rerun `install.sh`.
 - `.local` fails on iPhone: switch the client to the fixed IP immediately.
 - Disk below 1 GiB: stop creating local backups, copy archives to Mac, and
   remove obsolete releases/caches only after identifying exact paths.

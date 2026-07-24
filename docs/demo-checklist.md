@@ -3,7 +3,9 @@
 ## Day before
 
 - [ ] The hotspot device, SSID, subnet, and power source are fixed.
+- [ ] The Pi has no WAN-facing interface and TCP 8787 is not port-forwarded while `API_TOKEN` is empty.
 - [ ] Pi, Mac, and iPhone have all joined the hotspot after a cold restart.
+- [ ] `hostname` reports `return` and Avahi is active.
 - [ ] Fixed IP `/api/ping` works from both Mac and iPhone.
 - [ ] `return.local` works, or the client is already configured for fixed-IP fallback.
 - [ ] `return-server.service` is enabled and active after a full Pi reboot.
