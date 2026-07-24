@@ -62,6 +62,46 @@ CREATE TABLE IF NOT EXISTS todos (
 );
 
 CREATE INDEX IF NOT EXISTS idx_todos_day ON todos(day_id);
+
+CREATE TABLE IF NOT EXISTS messages (
+  id          TEXT PRIMARY KEY,
+  role        TEXT NOT NULL,
+  content     TEXT NOT NULL,
+  intent      TEXT,
+  task_id     TEXT,
+  created_at  TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at);
+
+CREATE TABLE IF NOT EXISTS tasks (
+  id                  TEXT PRIMARY KEY,
+  type                TEXT NOT NULL,
+  status              TEXT NOT NULL DEFAULT 'queued',
+  input_json          TEXT NOT NULL,
+  result_message_id   TEXT,
+  created_at          TEXT NOT NULL,
+  finished_at         TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+
+CREATE TABLE IF NOT EXISTS cards (
+  id            TEXT PRIMARY KEY,
+  type          TEXT NOT NULL,
+  date          TEXT NOT NULL,
+  content_json  TEXT NOT NULL,
+  created_at    TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_cards_date ON cards(date);
+CREATE INDEX IF NOT EXISTS idx_cards_type ON cards(type);
+
+-- Single-row runtime state (pace mode after Save).
+CREATE TABLE IF NOT EXISTS runtime_state (
+  key    TEXT PRIMARY KEY,
+  value  TEXT NOT NULL
+);
 `;
 
 /**
@@ -122,6 +162,47 @@ export class Db {
   }
 }
 
+/** Tables added after initial SCHEMA for existing DBs. */
+function migrate(db: Db): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS messages (
+      id          TEXT PRIMARY KEY,
+      role        TEXT NOT NULL,
+      content     TEXT NOT NULL,
+      intent      TEXT,
+      task_id     TEXT,
+      created_at  TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at);
+
+    CREATE TABLE IF NOT EXISTS tasks (
+      id                  TEXT PRIMARY KEY,
+      type                TEXT NOT NULL,
+      status              TEXT NOT NULL DEFAULT 'queued',
+      input_json          TEXT NOT NULL,
+      result_message_id   TEXT,
+      created_at          TEXT NOT NULL,
+      finished_at         TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+
+    CREATE TABLE IF NOT EXISTS cards (
+      id            TEXT PRIMARY KEY,
+      type          TEXT NOT NULL,
+      date          TEXT NOT NULL,
+      content_json  TEXT NOT NULL,
+      created_at    TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_cards_date ON cards(date);
+    CREATE INDEX IF NOT EXISTS idx_cards_type ON cards(type);
+
+    CREATE TABLE IF NOT EXISTS runtime_state (
+      key    TEXT PRIMARY KEY,
+      value  TEXT NOT NULL
+    );
+  `);
+}
+
 export function openDb(dataDir: string, filename = "return.db"): Db {
   mkdirSync(dataDir, { recursive: true });
   const path = join(dataDir, filename);
@@ -130,6 +211,7 @@ export function openDb(dataDir: string, filename = "return.db"): Db {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA);
+  migrate(db);
   return db;
 }
 
@@ -138,5 +220,6 @@ export function openMemoryDb(): Db {
   const db = new Db(raw);
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA);
+  migrate(db);
   return db;
 }

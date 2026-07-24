@@ -29,6 +29,7 @@ describe("FermentResultSchema", () => {
     });
     assert.deepEqual(r.review_points, []);
     assert.deepEqual(r.todos, []);
+    assert.deepEqual(r.ideas, []);
     assert.deepEqual(r.node_tags, {});
     assert.deepEqual(r.edges, []);
   });

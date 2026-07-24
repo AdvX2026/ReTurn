@@ -13,8 +13,37 @@ export const NodeKind = z.enum([
   "health_daily",
   "snapshot",
   "todo_check",
+  "idea",
+  "image",
+  "reminder",
 ]);
 export type NodeKind = z.infer<typeof NodeKind>;
+
+/** Chat triage intents (PRD F4). null = not a triage message. */
+export const MessageIntent = z.enum(["idea", "retrieval", "question", "task"]);
+export type MessageIntent = z.infer<typeof MessageIntent>;
+
+export const MessageRole = z.enum(["user", "agent"]);
+export type MessageRole = z.infer<typeof MessageRole>;
+
+export const TaskStatus = z.enum(["queued", "running", "done", "failed"]);
+export type TaskStatus = z.infer<typeof TaskStatus>;
+
+export const TaskType = z.enum(["notes", "image", "other"]);
+export type TaskType = z.infer<typeof TaskType>;
+
+export const CardType = z.enum([
+  "briefing",
+  "idea",
+  "todo_suggestion",
+  "health",
+  "weekly",
+]);
+export type CardType = z.infer<typeof CardType>;
+
+/** Sampler pace after Save (PRD F2). */
+export const PaceMode = z.enum(["day", "night"]);
+export type PaceMode = z.infer<typeof PaceMode>;
 
 /** Active feeds count toward 摄取. Samples do not. */
 export const ACTIVE_FEED_KINDS: readonly NodeKind[] = [
@@ -22,6 +51,7 @@ export const ACTIVE_FEED_KINDS: readonly NodeKind[] = [
   "url",
   "voice",
   "save_note",
+  "idea",
 ] as const;
 
 export const CharacterState = z.enum([

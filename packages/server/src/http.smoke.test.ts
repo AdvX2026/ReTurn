@@ -195,4 +195,48 @@ describe("http smoke", () => {
     const body = days.json() as { days: unknown[]; streak: number };
     assert.equal(body.days.length, 7);
   });
+
+  it("POST /api/chat idea + GET /api/messages + cards", async () => {
+    const chat = await app.inject({
+      method: "POST",
+      url: "/api/chat",
+      payload: { text: "灵感：做一个夜间模式开关", intent: "idea" },
+    });
+    assert.equal(chat.statusCode, 200);
+    const cbody = chat.json() as {
+      intent: string;
+      reply: string;
+      result?: { card_id?: string };
+    };
+    assert.equal(cbody.intent, "idea");
+    assert.ok(cbody.reply.length > 0);
+
+    const msgs = await app.inject({ method: "GET", url: "/api/messages" });
+    assert.equal(msgs.statusCode, 200);
+    const mbody = msgs.json() as { messages: unknown[] };
+    assert.ok(mbody.messages.length >= 2);
+
+    const cards = await app.inject({
+      method: "GET",
+      url: "/api/cards?direction=future",
+    });
+    assert.equal(cards.statusCode, 200);
+    const cardBody = cards.json() as { cards: Array<{ type: string }> };
+    assert.ok(cardBody.cards.some((c) => c.type === "idea"));
+  });
+
+  it("POST /api/resume + GET /api/tasks", async () => {
+    const resume = await app.inject({
+      method: "POST",
+      url: "/api/resume",
+      payload: {},
+    });
+    assert.equal(resume.statusCode, 200);
+    const r = resume.json() as { reply: string; message: { role: string } };
+    assert.ok(r.reply.length > 0);
+    assert.equal(r.message.role, "agent");
+
+    const tasks = await app.inject({ method: "GET", url: "/api/tasks" });
+    assert.equal(tasks.statusCode, 200);
+  });
 });

@@ -13,6 +13,7 @@ import {
   getLatestSavedDay,
   getNodeByClientUuid,
   getNodeById,
+  insertCard,
   insertEdge,
   insertNode,
   insertTodo,
@@ -21,6 +22,7 @@ import {
   listSavedDays,
   listTodosByDay,
   markDaySaved,
+  setPaceNight,
   todoCompletionRate,
 } from "../db/repo.js";
 import type { Db } from "../db/schema.js";
@@ -228,8 +230,10 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
     // Future todos attach to the *next* calendar day (shown on Continue).
     const nextDate = addDays(input.date, 1);
     const nextDay = ensureDay(db, nextDate);
+    const todoIds: string[] = [];
     for (const t of ferment.todos) {
-      insertTodo(db, { day_id: nextDay.id, text: t.text });
+      const todo = insertTodo(db, { day_id: nextDay.id, text: t.text });
+      todoIds.push(todo.id);
     }
 
     const freshNodes = listNodesByDate(db, input.date);
@@ -256,6 +260,69 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
       stats,
       character_state,
     });
+
+    // Cards for bidirectional stream (PRD F3/F5).
+    const briefingText =
+      ferment.briefing?.trim() ||
+      `${character_state}: ${ferment.opening_line || ferment.summary.slice(0, 120)}`;
+    insertCard(db, {
+      type: "briefing",
+      date: input.date,
+      content: {
+        summary: ferment.summary,
+        briefing: briefingText,
+        opening_line: ferment.opening_line,
+        review_points: ferment.review_points,
+        stats,
+        character_state,
+        save_note_node_id: saveNoteNodeId,
+      },
+    });
+    if (todoIds.length > 0) {
+      insertCard(db, {
+        type: "todo_suggestion",
+        date: nextDate,
+        content: {
+          todos: ferment.todos.map((t, i) => ({
+            id: todoIds[i],
+            text: t.text,
+          })),
+        },
+      });
+    }
+    if (ferment.health_advice?.trim()) {
+      insertCard(db, {
+        type: "health",
+        date: nextDate,
+        content: {
+          advice: ferment.health_advice.trim(),
+          sleep_minutes: health.sleepMinutes,
+          steps: health.steps,
+        },
+      });
+    }
+    for (const idea of ferment.ideas ?? []) {
+      if (!idea.text?.trim()) continue;
+      const { node } = insertNode(db, {
+        client_uuid: uuid(),
+        kind: "idea",
+        title: idea.text.slice(0, 80),
+        content: idea.text,
+        date: nextDate,
+        source_meta: { provenance: "auto" },
+      });
+      insertCard(db, {
+        type: "idea",
+        date: nextDate,
+        content: {
+          text: idea.text,
+          provenance: "auto",
+          node_id: node.id,
+        },
+      });
+    }
+
+    setPaceNight(db, input.date);
   })();
 
   return buildSaveResponse(db, day.id, input.date, false, degraded);
@@ -301,9 +368,12 @@ function degradeFerment(
 
   return {
     summary,
+    briefing: summary.slice(0, 200),
     opening_line,
     review_points,
     todos: saveNote ? [{ text: saveNote.slice(0, 200) }] : [],
+    health_advice: null,
+    ideas: [],
     node_tags: {},
     edges: [],
   };

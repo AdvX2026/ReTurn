@@ -6,6 +6,8 @@ import { z } from "zod";
  */
 export const FermentResultSchema = z.object({
   summary: z.string().min(1).max(2000),
+  /** One-line briefing lead (state + attribution). Falls back to summary. */
+  briefing: z.string().min(1).max(800).optional(),
   opening_line: z.string().min(1).max(280),
   review_points: z
     .array(
@@ -23,6 +25,13 @@ export const FermentResultSchema = z.object({
       }),
     )
     .max(20)
+    .default([]),
+  /** Short health advice for Future health card. */
+  health_advice: z.string().max(600).optional().nullable(),
+  /** Auto-extracted ideas (provenance=auto on idea cards). */
+  ideas: z
+    .array(z.object({ text: z.string().min(1).max(400) }))
+    .max(10)
     .default([]),
   /** node_id → tags. Keys are server node UUIDs the model was given. */
   node_tags: z.record(z.array(z.string().max(40)).max(8)).default({}),

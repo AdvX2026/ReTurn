@@ -1,9 +1,18 @@
 import type {
+  CardRecord,
+  CardType,
   CharacterState,
+  MessageIntent,
+  MessageRecord,
+  MessageRole,
   NodeKind,
   NodeRecord,
+  PaceMode,
   ReviewPoint,
   Stats,
+  TaskRecord,
+  TaskStatus,
+  TaskType,
   TodoRecord,
 } from "@return/shared";
 import { nowIso, todayDate, uuid } from "../util/time.js";
@@ -460,4 +469,343 @@ export function todoCompletionRate(
     .get(dayId) as { total: number; done: number };
   const rate = row.total === 0 ? 0 : row.done / row.total;
   return { total: row.total, done: row.done, rate };
+}
+
+// ── messages ─────────────────────────────────────────────
+
+interface MessageRow {
+  id: string;
+  role: string;
+  content: string;
+  intent: string | null;
+  task_id: string | null;
+  created_at: string;
+}
+
+function messageToRecord(row: MessageRow): MessageRecord {
+  return {
+    id: row.id,
+    role: row.role as MessageRole,
+    content: row.content,
+    intent: (row.intent as MessageIntent | null) ?? null,
+    task_id: row.task_id,
+    created_at: row.created_at,
+  };
+}
+
+export function insertMessage(
+  db: Db,
+  input: {
+    role: MessageRole;
+    content: string;
+    intent?: MessageIntent | null;
+    task_id?: string | null;
+    created_at?: string;
+  },
+): MessageRecord {
+  const id = uuid();
+  const created_at = input.created_at ?? nowIso();
+  db.prepare(
+    `INSERT INTO messages (id, role, content, intent, task_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(
+    id,
+    input.role,
+    input.content,
+    input.intent ?? null,
+    input.task_id ?? null,
+    created_at,
+  );
+  return {
+    id,
+    role: input.role,
+    content: input.content,
+    intent: input.intent ?? null,
+    task_id: input.task_id ?? null,
+    created_at,
+  };
+}
+
+export function getMessage(db: Db, id: string): MessageRecord | undefined {
+  const row = db.prepare(`SELECT * FROM messages WHERE id = ?`).get(id) as
+    | MessageRow
+    | undefined;
+  return row ? messageToRecord(row) : undefined;
+}
+
+export function setMessageIntent(
+  db: Db,
+  id: string,
+  intent: MessageIntent,
+): MessageRecord | undefined {
+  db.prepare(`UPDATE messages SET intent = ? WHERE id = ?`).run(intent, id);
+  return getMessage(db, id);
+}
+
+/** Cursor = created_at ISO of last item; returns older messages (desc). */
+export function listMessages(
+  db: Db,
+  opts: { cursor?: string | null; limit?: number } = {},
+): { messages: MessageRecord[]; next_cursor: string | null } {
+  const limit = Math.min(Math.max(opts.limit ?? 50, 1), 100);
+  const rows = opts.cursor
+    ? (db
+        .prepare(
+          `SELECT * FROM messages WHERE created_at < ? ORDER BY created_at DESC LIMIT ?`,
+        )
+        .all(opts.cursor, limit + 1) as MessageRow[])
+    : (db
+        .prepare(`SELECT * FROM messages ORDER BY created_at DESC LIMIT ?`)
+        .all(limit + 1) as MessageRow[]);
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+  const messages = page.map(messageToRecord);
+  const next_cursor =
+    hasMore && page.length > 0 ? page[page.length - 1]!.created_at : null;
+  return { messages, next_cursor };
+}
+
+// ── tasks ────────────────────────────────────────────────
+
+interface TaskRow {
+  id: string;
+  type: string;
+  status: string;
+  input_json: string;
+  result_message_id: string | null;
+  created_at: string;
+  finished_at: string | null;
+}
+
+function taskToRecord(row: TaskRow): TaskRecord {
+  return {
+    id: row.id,
+    type: row.type as TaskType,
+    status: row.status as TaskStatus,
+    input_json: parseJson<Record<string, unknown>>(row.input_json, {}),
+    result_message_id: row.result_message_id,
+    created_at: row.created_at,
+    finished_at: row.finished_at,
+  };
+}
+
+export function insertTask(
+  db: Db,
+  input: { type: TaskType; input_json: Record<string, unknown> },
+): TaskRecord {
+  const id = uuid();
+  const created_at = nowIso();
+  db.prepare(
+    `INSERT INTO tasks (id, type, status, input_json, result_message_id, created_at, finished_at)
+     VALUES (?, ?, 'queued', ?, NULL, ?, NULL)`,
+  ).run(id, input.type, JSON.stringify(input.input_json), created_at);
+  return {
+    id,
+    type: input.type,
+    status: "queued",
+    input_json: input.input_json,
+    result_message_id: null,
+    created_at,
+    finished_at: null,
+  };
+}
+
+export function updateTask(
+  db: Db,
+  id: string,
+  patch: {
+    status?: TaskStatus;
+    result_message_id?: string | null;
+    finished_at?: string | null;
+  },
+): TaskRecord | undefined {
+  const existing = getTask(db, id);
+  if (!existing) return undefined;
+  const status = patch.status ?? existing.status;
+  const result_message_id =
+    patch.result_message_id !== undefined
+      ? patch.result_message_id
+      : existing.result_message_id;
+  const finished_at =
+    patch.finished_at !== undefined ? patch.finished_at : existing.finished_at;
+  db.prepare(
+    `UPDATE tasks SET status = ?, result_message_id = ?, finished_at = ? WHERE id = ?`,
+  ).run(status, result_message_id, finished_at, id);
+  return getTask(db, id);
+}
+
+export function getTask(db: Db, id: string): TaskRecord | undefined {
+  const row = db.prepare(`SELECT * FROM tasks WHERE id = ?`).get(id) as
+    | TaskRow
+    | undefined;
+  return row ? taskToRecord(row) : undefined;
+}
+
+export function listTasks(db: Db, status?: TaskStatus | null): TaskRecord[] {
+  const rows = status
+    ? (db
+        .prepare(`SELECT * FROM tasks WHERE status = ? ORDER BY created_at DESC LIMIT 50`)
+        .all(status) as TaskRow[])
+    : (db
+        .prepare(`SELECT * FROM tasks ORDER BY created_at DESC LIMIT 50`)
+        .all() as TaskRow[]);
+  return rows.map(taskToRecord);
+}
+
+// ── cards ────────────────────────────────────────────────
+
+interface CardRow {
+  id: string;
+  type: string;
+  date: string;
+  content_json: string;
+  created_at: string;
+}
+
+function cardToRecord(row: CardRow): CardRecord {
+  return {
+    id: row.id,
+    type: row.type as CardType,
+    date: row.date,
+    content: parseJson<Record<string, unknown>>(row.content_json, {}),
+    created_at: row.created_at,
+  };
+}
+
+export function insertCard(
+  db: Db,
+  input: {
+    type: CardType;
+    date: string;
+    content: Record<string, unknown>;
+  },
+): CardRecord {
+  const id = uuid();
+  const created_at = nowIso();
+  db.prepare(
+    `INSERT INTO cards (id, type, date, content_json, created_at) VALUES (?, ?, ?, ?, ?)`,
+  ).run(id, input.type, input.date, JSON.stringify(input.content), created_at);
+  return {
+    id,
+    type: input.type,
+    date: input.date,
+    content: input.content,
+    created_at,
+  };
+}
+
+/**
+ * before = cards with date < today, newest first.
+ * future = cards with date >= today, oldest first (todo/health/idea for ahead).
+ * cursor = `${date}|${created_at}|${id}` of last item.
+ */
+export function listCards(
+  db: Db,
+  opts: {
+    direction: "before" | "future";
+    today: string;
+    cursor?: string | null;
+    limit?: number;
+  },
+): { cards: CardRecord[]; next_cursor: string | null } {
+  const limit = Math.min(Math.max(opts.limit ?? 20, 1), 50);
+  let rows: CardRow[];
+  if (opts.direction === "before") {
+    if (opts.cursor) {
+      const [cDate, cAt, cId] = opts.cursor.split("|");
+      rows = db
+        .prepare(
+          `SELECT * FROM cards
+           WHERE date < ?
+             AND (date < ? OR (date = ? AND created_at < ?)
+                  OR (date = ? AND created_at = ? AND id < ?))
+           ORDER BY date DESC, created_at DESC, id DESC
+           LIMIT ?`,
+        )
+        .all(opts.today, cDate, cDate, cAt, cDate, cAt, cId, limit + 1) as CardRow[];
+    } else {
+      rows = db
+        .prepare(
+          `SELECT * FROM cards WHERE date < ?
+           ORDER BY date DESC, created_at DESC, id DESC LIMIT ?`,
+        )
+        .all(opts.today, limit + 1) as CardRow[];
+    }
+  } else if (opts.cursor) {
+    const [cDate, cAt, cId] = opts.cursor.split("|");
+    rows = db
+      .prepare(
+        `SELECT * FROM cards
+         WHERE date >= ?
+           AND (date > ? OR (date = ? AND created_at > ?)
+                OR (date = ? AND created_at = ? AND id > ?))
+         ORDER BY date ASC, created_at ASC, id ASC
+         LIMIT ?`,
+      )
+      .all(opts.today, cDate, cDate, cAt, cDate, cAt, cId, limit + 1) as CardRow[];
+  } else {
+    rows = db
+      .prepare(
+        `SELECT * FROM cards WHERE date >= ?
+         ORDER BY date ASC, created_at ASC, id ASC LIMIT ?`,
+      )
+      .all(opts.today, limit + 1) as CardRow[];
+  }
+  const hasMore = rows.length > limit;
+  const page = hasMore ? rows.slice(0, limit) : rows;
+  const cards = page.map(cardToRecord);
+  const last = page[page.length - 1];
+  const next_cursor =
+    hasMore && last ? `${last.date}|${last.created_at}|${last.id}` : null;
+  return { cards, next_cursor };
+}
+
+// ── runtime / pace ───────────────────────────────────────
+
+/** Night mode after Save until local 06:00 next calendar day. */
+export function setPaceNight(db: Db, savedDate: string): void {
+  // Resume day mode after next local morning 06:00 of savedDate+1.
+  const until = `${addDaysLocal(savedDate, 1)}T06:00:00`;
+  db.prepare(
+    `INSERT INTO runtime_state (key, value) VALUES ('pace', ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+  ).run(JSON.stringify({ mode: "night", until }));
+}
+
+export function getPaceMode(db: Db, now = new Date()): PaceMode {
+  const row = db.prepare(`SELECT value FROM runtime_state WHERE key = 'pace'`).get() as
+    | { value: string }
+    | undefined;
+  if (!row) return "day";
+  try {
+    const v = JSON.parse(row.value) as { mode?: string; until?: string };
+    if (v.mode === "night" && v.until) {
+      // Compare as local wall-clock string vs now local.
+      const local = formatLocalDateTime(now);
+      if (local < v.until) return "night";
+    }
+  } catch {
+    /* day */
+  }
+  return "day";
+}
+
+function addDaysLocal(date: string, delta: number): string {
+  const [y, m, d] = date.split("-").map(Number);
+  const dt = new Date(y!, m! - 1, d!);
+  dt.setDate(dt.getDate() + delta);
+  const yy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
+}
+
+function formatLocalDateTime(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const h = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  const s = String(d.getSeconds()).padStart(2, "0");
+  return `${y}-${m}-${day}T${h}:${min}:${s}`;
 }

@@ -25,10 +25,27 @@ function categorize(app: string): string {
 }
 
 /**
- * Build 24h timeline from existing nodes (PRD F12).
- * No new tables — pure aggregation.
+ * Build timeline from existing nodes (PRD F7).
+ * No new tables — pure aggregation. Single day or from–to range.
  */
 export function buildTimeline(db: Db, date: string): TimelineResponse {
+  return { date, segments: segmentsForDate(db, date) };
+}
+
+export function buildTimelineRange(db: Db, from: string, to: string): TimelineResponse {
+  const segments: TimelineSegment[] = [];
+  // Inclusive day walk; cap 31 days.
+  let d = from;
+  for (let i = 0; i < 31; i++) {
+    segments.push(...segmentsForDate(db, d));
+    if (d >= to) break;
+    d = nextDay(d);
+  }
+  segments.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+  return { from, to, segments };
+}
+
+function segmentsForDate(db: Db, date: string): TimelineSegment[] {
   const nodes = listNodesByDate(db, date);
   const sessions = allSessions(nodes, config.sampleIntervalMin);
   const segments: TimelineSegment[] = [];
@@ -44,9 +61,8 @@ export function buildTimeline(db: Db, date: string): TimelineResponse {
     });
   }
 
-  // Feed dots (active nodes) — use client event time when present (offline buffer).
   for (const n of nodes) {
-    if (!["text", "url", "voice", "save_note"].includes(n.kind)) continue;
+    if (!["text", "url", "voice", "save_note", "idea"].includes(n.kind)) continue;
     const at = nodeEventTime(n);
     segments.push({
       kind: "feed",
@@ -59,13 +75,18 @@ export function buildTimeline(db: Db, date: string): TimelineResponse {
     });
   }
 
-  // Sleep segment from health_daily
   const sleep = sleepSegment(nodes, date);
   if (sleep) segments.push(sleep);
+  return segments;
+}
 
-  segments.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
-
-  return { date, segments };
+function nextDay(date: string): string {
+  const d = parseDate(date);
+  d.setDate(d.getDate() + 1);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 function sleepSegment(nodes: NodeRecord[], date: string): TimelineSegment | null {

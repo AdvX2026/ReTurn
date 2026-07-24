@@ -3,22 +3,30 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   type CharacterState,
+  ChatRequest,
   type ContinueResponse,
   CreateNodesRequest,
   type CreateNodesResponse,
   type DaysResponse,
   HealthRequest,
   type HealthResponse,
+  type ListCardsResponse,
+  type ListMessagesResponse,
   type ListNodesResponse,
+  type ListTasksResponse,
+  PatchMessageIntentRequest,
+  type PatchMessageIntentResponse,
   PatchTodoRequest,
   type PatchTodoResponse,
   type PingResponse,
   RegisterDeviceRequest,
   type RegisterDeviceResponse,
+  ResumeRequest,
   type ReviewPoint,
   SaveRequest,
   type Stats,
   type StatsTodayResponse,
+  TaskStatus,
   type TimelineResponse,
   type VoiceResponse,
 } from "@return/shared";
@@ -34,20 +42,26 @@ import {
   getDayByDate,
   getLatestSavedDay,
   getNodeById,
+  getPaceMode,
   getTodo,
   insertNode,
   insertNodes,
+  listCards,
   listDaysInRange,
+  listMessages,
   listNodesByDate,
   listSavedDays,
+  listTasks,
   listTodosByDay,
   setTodoDone,
   touchDevice,
   upsertDevice,
 } from "./db/repo.js";
 import type { Db } from "./db/schema.js";
+import { ChatError, handleChat, rehandleWithIntent } from "./services/chat.js";
+import { handleResume } from "./services/resume.js";
 import { saveToday } from "./services/save.js";
-import { buildTimeline } from "./services/timeline.js";
+import { buildTimeline, buildTimelineRange } from "./services/timeline.js";
 import { computeLiveStats } from "./stats/live.js";
 import { computeStreak, savedDatesFromDays } from "./stats/streak.js";
 import {
@@ -78,6 +92,7 @@ export async function registerRoutes(app: FastifyInstance, db: Db): Promise<void
       ok: true,
       server_time: nowIso(),
       version: config.version,
+      pace_mode: getPaceMode(db),
     };
     return body;
   });
@@ -123,7 +138,10 @@ export async function registerRoutes(app: FastifyInstance, db: Db): Promise<void
       }),
     );
 
-    const body: CreateNodesResponse = result;
+    const body: CreateNodesResponse = {
+      ...result,
+      pace_mode: getPaceMode(db),
+    };
     return body;
   });
 
@@ -227,9 +245,31 @@ export async function registerRoutes(app: FastifyInstance, db: Db): Promise<void
       },
     });
 
+    let chat: VoiceResponse["chat"];
+    if (transcript && !pending) {
+      try {
+        const chatRes = await handleChat(db, {
+          text: transcript,
+          device_id: deviceId,
+        });
+        chat = {
+          message_id: chatRes.message_id,
+          intent: chatRes.intent,
+          reply: chatRes.reply,
+          result: chatRes.result,
+        };
+      } catch (err) {
+        console.error(
+          "[voice] chat triage failed:",
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+
     const body: VoiceResponse = {
       node,
       transcript: transcript ?? "",
+      chat,
     };
     return body;
   });
@@ -384,12 +424,126 @@ export async function registerRoutes(app: FastifyInstance, db: Db): Promise<void
 
   // ── timeline ──────────────────────────────────────────
   app.get("/api/timeline", async (req, reply) => {
-    const q = req.query as { date?: string };
+    const q = req.query as { date?: string; from?: string; to?: string };
+    const dayRe = /^\d{4}-\d{2}-\d{2}$/;
+    if (q.from || q.to) {
+      const from = q.from ?? q.to!;
+      const to = q.to ?? q.from!;
+      if (!dayRe.test(from) || !dayRe.test(to)) {
+        return reply.code(400).send(badRequest("from/to must be YYYY-MM-DD"));
+      }
+      if (from > to) {
+        return reply.code(400).send(badRequest("from must be <= to"));
+      }
+      const body: TimelineResponse = buildTimelineRange(db, from, to);
+      return body;
+    }
     const date = q.date ?? todayDate();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    if (!dayRe.test(date)) {
       return reply.code(400).send(badRequest("date must be YYYY-MM-DD"));
     }
     const body: TimelineResponse = buildTimeline(db, date);
+    return body;
+  });
+
+  // ── chat / messages / resume / tasks / cards ──────────
+  app.post("/api/chat", async (req, reply) => {
+    const parsed = ChatRequest.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send(badRequest(parsed.error.message));
+    }
+    if (parsed.data.device_id) touchDevice(db, parsed.data.device_id);
+    try {
+      return await handleChat(db, {
+        text: parsed.data.text,
+        image: parsed.data.image,
+        device_id: parsed.data.device_id,
+        intent: parsed.data.intent,
+      });
+    } catch (err) {
+      if (err instanceof ChatError) {
+        return reply.code(err.status).send(badRequest(err.message));
+      }
+      throw err;
+    }
+  });
+
+  app.get("/api/messages", async (req) => {
+    const q = req.query as { cursor?: string; limit?: string };
+    const limit = q.limit ? Number(q.limit) : undefined;
+    const { messages, next_cursor } = listMessages(db, {
+      cursor: q.cursor,
+      limit: Number.isFinite(limit) ? limit : undefined,
+    });
+    const body: ListMessagesResponse = { messages, next_cursor };
+    return body;
+  });
+
+  app.patch("/api/messages/:id/intent", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const parsed = PatchMessageIntentRequest.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send(badRequest(parsed.error.message));
+    }
+    try {
+      const out = await rehandleWithIntent(db, id, parsed.data.intent);
+      const body: PatchMessageIntentResponse = {
+        message: out.message,
+        reply: out.reply,
+        result: out.result,
+      };
+      return body;
+    } catch (err) {
+      if (err instanceof ChatError) {
+        return reply
+          .code(err.status)
+          .send(err.status === 404 ? notFound(err.message) : badRequest(err.message));
+      }
+      throw err;
+    }
+  });
+
+  app.post("/api/resume", async (req, reply) => {
+    const parsed = ResumeRequest.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return reply.code(400).send(badRequest(parsed.error.message));
+    }
+    if (parsed.data.device_id) touchDevice(db, parsed.data.device_id);
+    return handleResume(db, { hours: parsed.data.hours });
+  });
+
+  app.get("/api/tasks", async (req) => {
+    const q = req.query as { status?: string };
+    let status: (typeof TaskStatus)["_type"] | undefined;
+    if (q.status) {
+      const p = TaskStatus.safeParse(q.status);
+      if (p.success) status = p.data;
+    }
+    const body: ListTasksResponse = { tasks: listTasks(db, status) };
+    return body;
+  });
+
+  app.get("/api/cards", async (req, reply) => {
+    const q = req.query as {
+      direction?: string;
+      cursor?: string;
+      limit?: string;
+    };
+    if (q.direction !== "before" && q.direction !== "future") {
+      return reply.code(400).send(badRequest("direction must be before|future"));
+    }
+    const limit = q.limit ? Number(q.limit) : undefined;
+    const { cards, next_cursor } = listCards(db, {
+      direction: q.direction,
+      today: todayDate(),
+      cursor: q.cursor,
+      limit: Number.isFinite(limit) ? limit : undefined,
+    });
+    const body: ListCardsResponse = {
+      direction: q.direction,
+      cards,
+      next_cursor,
+    };
     return body;
   });
 

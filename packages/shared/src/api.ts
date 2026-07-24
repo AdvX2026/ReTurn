@@ -1,5 +1,16 @@
 import { z } from "zod";
-import { CharacterState, NodeKind, Platform, StatsSchema } from "./domain.js";
+import {
+  CardType,
+  CharacterState,
+  MessageIntent,
+  MessageRole,
+  NodeKind,
+  PaceMode,
+  Platform,
+  StatsSchema,
+  TaskStatus,
+  TaskType,
+} from "./domain.js";
 
 // ── devices ──────────────────────────────────────────────
 
@@ -58,6 +69,8 @@ export const CreateNodesResponse = z.object({
   created: z.array(NodeRecord),
   /** client_uuids that already existed (idempotent replay). */
   duplicates: z.array(z.string().uuid()),
+  /** Sampler pace hint (PRD F2). */
+  pace_mode: PaceMode.optional(),
 });
 export type CreateNodesResponse = z.infer<typeof CreateNodesResponse>;
 
@@ -72,6 +85,15 @@ export type ListNodesResponse = z.infer<typeof ListNodesResponse>;
 export const VoiceResponse = z.object({
   node: NodeRecord,
   transcript: z.string(),
+  /** Present when transcript was also run through chat triage (PRD §6.2). */
+  chat: z
+    .object({
+      message_id: z.string().uuid(),
+      intent: MessageIntent.nullable(),
+      reply: z.string(),
+      result: z.record(z.unknown()).optional(),
+    })
+    .optional(),
 });
 export type VoiceResponse = z.infer<typeof VoiceResponse>;
 
@@ -194,7 +216,11 @@ export const TimelineSegment = z.object({
 export type TimelineSegment = z.infer<typeof TimelineSegment>;
 
 export const TimelineResponse = z.object({
-  date: z.string(),
+  /** Single-day mode (legacy). */
+  date: z.string().optional(),
+  /** Range mode (PRD §6.2 from&to). */
+  from: z.string().optional(),
+  to: z.string().optional(),
   segments: z.array(TimelineSegment),
 });
 export type TimelineResponse = z.infer<typeof TimelineResponse>;
@@ -229,11 +255,115 @@ export const PatchTodoResponse = z.object({
 });
 export type PatchTodoResponse = z.infer<typeof PatchTodoResponse>;
 
+// ── messages / chat (PRD F4) ──────────────────────────────
+
+export const MessageRecord = z.object({
+  id: z.string().uuid(),
+  role: MessageRole,
+  content: z.string(),
+  intent: MessageIntent.nullable(),
+  task_id: z.string().uuid().nullable(),
+  created_at: z.string().datetime(),
+});
+export type MessageRecord = z.infer<typeof MessageRecord>;
+
+export const ChatRequest = z.object({
+  text: z.string().min(1).max(8000).optional(),
+  /** Reserved: client may pass image node id or base64 later. */
+  image: z.string().max(200_000).optional(),
+  device_id: z.string().uuid().optional(),
+  /** Force intent when triage was uncertain (user picked). */
+  intent: MessageIntent.optional(),
+});
+export type ChatRequest = z.infer<typeof ChatRequest>;
+
+export const ChatResponse = z.object({
+  message_id: z.string().uuid(),
+  intent: MessageIntent.nullable(),
+  confidence: z.number().min(0).max(1),
+  reply: z.string(),
+  /** Workflow payload: retrieval hits, idea node, task, etc. */
+  result: z.record(z.unknown()).optional(),
+  agent_message: MessageRecord,
+});
+export type ChatResponse = z.infer<typeof ChatResponse>;
+
+export const ListMessagesResponse = z.object({
+  messages: z.array(MessageRecord),
+  next_cursor: z.string().nullable(),
+});
+export type ListMessagesResponse = z.infer<typeof ListMessagesResponse>;
+
+export const PatchMessageIntentRequest = z.object({
+  intent: MessageIntent,
+});
+export type PatchMessageIntentRequest = z.infer<typeof PatchMessageIntentRequest>;
+
+export const PatchMessageIntentResponse = z.object({
+  message: MessageRecord,
+  /** Re-run workflow reply after user correction. */
+  reply: z.string().optional(),
+  result: z.record(z.unknown()).optional(),
+});
+export type PatchMessageIntentResponse = z.infer<typeof PatchMessageIntentResponse>;
+
+// ── resume (PRD F6) ──────────────────────────────────────
+
+export const ResumeRequest = z.object({
+  device_id: z.string().uuid().optional(),
+  /** Hours of sessions to summarize. Default 3. */
+  hours: z.number().min(0.5).max(12).optional(),
+});
+export type ResumeRequest = z.infer<typeof ResumeRequest>;
+
+export const ResumeResponse = z.object({
+  message: MessageRecord,
+  reply: z.string(),
+});
+export type ResumeResponse = z.infer<typeof ResumeResponse>;
+
+// ── tasks (PRD F11) ──────────────────────────────────────
+
+export const TaskRecord = z.object({
+  id: z.string().uuid(),
+  type: TaskType,
+  status: TaskStatus,
+  input_json: z.record(z.unknown()),
+  result_message_id: z.string().uuid().nullable(),
+  created_at: z.string().datetime(),
+  finished_at: z.string().datetime().nullable(),
+});
+export type TaskRecord = z.infer<typeof TaskRecord>;
+
+export const ListTasksResponse = z.object({
+  tasks: z.array(TaskRecord),
+});
+export type ListTasksResponse = z.infer<typeof ListTasksResponse>;
+
+// ── cards (PRD F3/F5) ────────────────────────────────────
+
+export const CardRecord = z.object({
+  id: z.string().uuid(),
+  type: CardType,
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  content: z.record(z.unknown()),
+  created_at: z.string().datetime(),
+});
+export type CardRecord = z.infer<typeof CardRecord>;
+
+export const ListCardsResponse = z.object({
+  direction: z.enum(["before", "future"]),
+  cards: z.array(CardRecord),
+  next_cursor: z.string().nullable(),
+});
+export type ListCardsResponse = z.infer<typeof ListCardsResponse>;
+
 // ── ping ─────────────────────────────────────────────────
 
 export const PingResponse = z.object({
   ok: z.literal(true),
   server_time: z.string().datetime(),
   version: z.string(),
+  pace_mode: PaceMode.optional(),
 });
 export type PingResponse = z.infer<typeof PingResponse>;
