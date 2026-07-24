@@ -5,7 +5,7 @@
 
 ## Models.swift (shared-contract mirror)
 
-- Mirror basis: `origin/feat/global-search` @ `809ec73` (PR #8 — the designated v0.6 API authority; PR #16 was abandoned in its favor). PR #8 is NOT yet merged to main; when it merges, diff `packages/shared/src/{api,domain}.ts` against this basis and sync here in the same commit (AGENTS.md contract rule).
+- Mirror basis: `origin/feat/global-search` @ `809ec73` (PR #8 — the designated v0.6 API authority; PR #16 was abandoned in its favor). PR #8 is merged to main; keep future `packages/shared` contract changes synchronized here in the same commit (AGENTS.md contract rule).
 - Decode/encode ONLY via `ReTurnAPI.makeDecoder()/makeEncoder()` — snake_case conversion lives in the coder strategy; models deliberately have no per-field CodingKeys.
 - Enum policy: all mirrored string enums are tolerant (`TolerantEnum`) — unknown raw values decode to a fallback, never throw. Backend keeps growing `NodeKind` (open PRs add `email`, `vscode_recent`, `browse_history`), so strict enums would crash old builds on new server data.
 - Card `content` is loose JSON in the contract; the mirror decodes it into typed per-`type` structs (shapes taken from what `services/save.ts` / `services/chat.ts` actually write on the mirror basis) with a `.raw` fallback on unknown type or shape drift. If backend tightens/changes card content, update `BriefingCardContent` & co. and `ModelsTests`.
@@ -16,3 +16,9 @@
 - Transport only: typed async methods over URLSession for every Pi endpoint (port 8787). No caching, no outbox, no retries — those belong in the stores (PRD §5.2). LLM-backed calls (save/chat/ask/resume/voice/intent) use a 180 s per-request timeout; plain reads use the URLSession default.
 - Health upload sends the fixed token as `x-return-token`. Fastify error bodies (`{statusCode, error, message}`) surface as `APIError.http`.
 - Networking config lives in `apps/ReTurn/Info.plist` (deliberately OUTSIDE the synchronized `ReTurn/` folder — inside it, the sync group copies it into Copy Bundle Resources and Xcode warns). It merges with `GENERATE_INFOPLIST_FILE=YES` via `INFOPLIST_FILE=Info.plist` and carries `NSAppTransportSecurity.NSAllowsLocalNetworking` (scoped, NOT arbitrary loads) plus iOS `NSLocalNetworkUsageDescription`. Add future plist keys here, not as INFOPLIST_KEY_ build settings for dict-valued keys.
+
+## Main timeline UI
+
+- `ContentView` is a horizontal Before / Now / After pager, defaulting to Now. Its segmented `Picker` and swipe position share one `TimelinePage` selection.
+- The initial Now visual follows Figma file `ilZuF3hqB1HH7f1usiMmPM`, node `7:1182`. Shared HIG colors, spacing, typography, and fixed design measurements live in `DesignTokens.swift`; do not scatter replacement literals through views.
+- `Kongkong.imageset` is the exact vector exported by Figma. Keep the asset rather than redrawing the mascot in SwiftUI.
