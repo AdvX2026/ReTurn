@@ -123,11 +123,7 @@ export function resolveHistoryPaths(
     // linux + others
     pushProfiles(candidates, join(home, ".config/google-chrome"), "chrome");
     pushProfiles(candidates, join(home, ".config/chromium"), "chromium");
-    pushProfiles(
-      candidates,
-      join(home, ".config/BraveSoftware/Brave-Browser"),
-      "brave",
-    );
+    pushProfiles(candidates, join(home, ".config/BraveSoftware/Brave-Browser"), "brave");
     pushProfiles(candidates, join(home, ".config/microsoft-edge"), "edge");
   }
 
@@ -162,11 +158,7 @@ function profileFromPath(p: string): string {
  * Push Default + common Profile * History files under a browser user-data root.
  * Also accepts a root that itself is already a profile dir containing History.
  */
-function pushProfiles(
-  out: HistoryDbPath[],
-  userDataRoot: string,
-  browser: string,
-): void {
+function pushProfiles(out: HistoryDbPath[], userDataRoot: string, browser: string): void {
   if (!existsSync(userDataRoot)) return;
 
   // Direct History under root (override / unusual layout)

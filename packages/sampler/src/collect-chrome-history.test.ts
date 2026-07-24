@@ -18,10 +18,7 @@ describe("chrome time conversion", () => {
   it("chromeTimeToIso known epoch pairs", () => {
     // Unix epoch 0 → Chrome WebKit µs = 11644473600000 * 1000
     // Use bigint: µs values exceed Number.MAX_SAFE_INTEGER for modern dates.
-    assert.equal(
-      chromeTimeToIso(11_644_473_600_000_000n),
-      "1970-01-01T00:00:00.000Z",
-    );
+    assert.equal(chromeTimeToIso(11_644_473_600_000_000n), "1970-01-01T00:00:00.000Z");
 
     // 2020-01-01T00:00:00.000Z
     const ms2020 = Date.UTC(2020, 0, 1);
@@ -83,10 +80,7 @@ describe("visitsToNodes", () => {
     assert.equal(n.kind, "browse_history");
     assert.equal(n.title, "Example A");
     assert.equal(n.content, "https://example.com/a");
-    assert.equal(
-      n.client_uuid,
-      uuidFromSeed("browse:chrome:Default:42"),
-    );
+    assert.equal(n.client_uuid, uuidFromSeed("browse:chrome:Default:42"));
     assert.equal(n.client_created_at, visitedAt);
     assert.deepEqual(n.source_meta, {
       url: "https://example.com/a",
@@ -203,9 +197,7 @@ describe("collectChromeHistory against temp sqlite", () => {
 
     const { start } = localDayChromeRange();
     // Three visits today, one "yesterday"
-    const insertUrl = db.prepare(
-      `INSERT INTO urls(id, url, title) VALUES (?, ?, ?)`,
-    );
+    const insertUrl = db.prepare(`INSERT INTO urls(id, url, title) VALUES (?, ?, ?)`);
     const insertVisit = db.prepare(
       `INSERT INTO visits(id, url, visit_time) VALUES (?, ?, ?)`,
     );

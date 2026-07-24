@@ -84,10 +84,9 @@ export const chromeHistorySource: SampleSource = {
       };
     }
 
-    const visits = await collectChromeHistory(
-      paths,
-      config.chromeHistoryLimit,
-    ).catch(() => [] as BrowseVisit[]);
+    const visits = await collectChromeHistory(paths, config.chromeHistoryLimit).catch(
+      () => [] as BrowseVisit[],
+    );
     const nodes = visitsToNodes(visits);
     return {
       nodes,

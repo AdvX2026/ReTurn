@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 /**
  * Read VS Code / Cursor recently opened projects from state.vscdb.
  *
@@ -8,7 +9,6 @@ import { homedir, tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
-import { randomUUID } from "node:crypto";
 
 export interface VscodeRecent {
   /** Original uri string from VS Code. */
@@ -201,9 +201,7 @@ export function readRecentlyOpenedJson(dbPath: string): string | null {
   let db: DatabaseSync | null = null;
   try {
     db = new DatabaseSync(tmp, { readOnly: true });
-    const stmt = db.prepare(
-      `SELECT key, value FROM ItemTable WHERE key IN (?, ?)`,
-    );
+    const stmt = db.prepare(`SELECT key, value FROM ItemTable WHERE key IN (?, ?)`);
     const rows = stmt.all(PRIMARY_KEY, SECONDARY_KEY) as Array<{
       key: string;
       value: unknown;

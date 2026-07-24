@@ -101,10 +101,7 @@ describe("vscode source emission", () => {
     const n = nodes[0]!;
     assert.equal(n.kind, "vscode_recent");
     assert.equal(n.title, "proj");
-    assert.equal(
-      n.client_uuid,
-      uuidFromSeed("vscode:code:folder:file:///Users/me/proj"),
-    );
+    assert.equal(n.client_uuid, uuidFromSeed("vscode:code:folder:file:///Users/me/proj"));
     assert.equal(n.client_created_at, at);
     assert.deepEqual(n.source_meta, {
       uri: "file:///Users/me/proj",
@@ -137,12 +134,8 @@ describe("readRecentlyOpenedJson integration", () => {
     dir = mkdtempSync(join(tmpdir(), "return-vscode-"));
     dbPath = join(dir, "state.vscdb");
     const db = new DatabaseSync(dbPath);
-    db.exec(
-      `CREATE TABLE ItemTable (key TEXT PRIMARY KEY NOT NULL, value BLOB)`,
-    );
-    const insert = db.prepare(
-      `INSERT INTO ItemTable (key, value) VALUES (?, ?)`,
-    );
+    db.exec(`CREATE TABLE ItemTable (key TEXT PRIMARY KEY NOT NULL, value BLOB)`);
+    const insert = db.prepare(`INSERT INTO ItemTable (key, value) VALUES (?, ?)`);
     insert.run("history.recentlyOpenedPathsList", FIXTURE);
     insert.run("unrelated.key", "ignore me");
     db.close();
@@ -168,10 +161,7 @@ describe("readRecentlyOpenedJson integration", () => {
 
   it("null / missing path returns empty", async () => {
     assert.deepEqual(await collectVscodeRecents(null), []);
-    assert.deepEqual(
-      await collectVscodeRecents(join(dir, "missing.vscdb"), "code"),
-      [],
-    );
+    assert.deepEqual(await collectVscodeRecents(join(dir, "missing.vscdb"), "code"), []);
   });
 
   it("resolveVscodeStateDb override uses custom editor", () => {
