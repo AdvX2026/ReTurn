@@ -11,6 +11,7 @@ export const NodeKind = z.enum([
   "agent_session",
   "git_commit",
   "reminder",
+  "vscode_recent",
   "health_daily",
   "snapshot",
   "todo_check",

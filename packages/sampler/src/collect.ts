@@ -16,17 +16,25 @@ import { agentsSource } from "./sources/agents.js";
 import { envSource, getLastEnv } from "./sources/env.js";
 import { gitSource } from "./sources/git.js";
 import { remindersSource } from "./sources/reminders.js";
+import { vscodeSource } from "./sources/vscode.js";
 
 export { todayLocal, uuidFromSeed } from "./source.js";
 export { resetSeenAgentKeys } from "./sources/agents.js";
 export { resetSeenCommitShas } from "./sources/git.js";
 export { resetSeenReminderKeys } from "./sources/reminders.js";
+export { resetSeenVscodeKeys } from "./sources/vscode.js";
 
 /**
  * Registered sources, in emit order.
- * env first (app/tabs), then feature sources. Git / reminders / future sources append here.
+ * env first (app/tabs), then feature sources. T1 sources append here.
  */
-const SOURCES: SampleSource[] = [envSource, agentsSource, gitSource, remindersSource];
+const SOURCES: SampleSource[] = [
+  envSource,
+  agentsSource,
+  gitSource,
+  remindersSource,
+  vscodeSource,
+];
 
 /**
  * Snapshot of the last tick — status / control-plane surface.

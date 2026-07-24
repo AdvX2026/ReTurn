@@ -55,3 +55,13 @@ UI closed must not stop sampling. Dev: `pnpm dev:sampler`. Prod later: launchd.
 - `date`: `todayLocal()` of the sample tick (current-state snapshot).
 - Failures silent (auth prompt denied, app missing, timeout) — never blocks the tick.
 - First run may trigger macOS Automation permission for Reminders / osascript.
+
+## VS Code recent projects
+- Source: `sources/vscode.ts` + `collect-vscode.ts`
+- Reads `state.vscdb` ItemTable key `history.recentlyOpenedPathsList` (copy-then-open via temp file; VS Code may lock live DB).
+- `VSCODE_STATE_DB` optional override (`~` expanded). Empty = auto-detect first existing Code / Code - Insiders / Cursor path for the OS.
+- `VSCODE_ENABLED=0|false|off|no` disables; default on when a db is found.
+- Cap 30 entries (VS Code order is recent-first). Editor label from which candidate matched (`code` / `code-insiders` / `cursor` / `custom`).
+- `client_uuid` = sha256 seed `vscode:{editor}:{kind}:{uri}`
+- `source_meta`: `{ uri, path, entry_kind, editor }` (`entry_kind`: folder | file | workspace)
+- Kind `vscode_recent` — not an active feed. Failures silent.

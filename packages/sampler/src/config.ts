@@ -69,4 +69,14 @@ export const config = {
    * Source also self-gates on darwin — non-mac always returns empty.
    */
   remindersEnabled: bool("REMINDERS_ENABLED", true),
+  /**
+   * Optional override path to VS Code / Cursor `state.vscdb`.
+   * Empty (default) = auto-detect common Code / Insiders / Cursor locations.
+   */
+  vscodeStateDb: str("VSCODE_STATE_DB", ""),
+  /**
+   * VS Code recent-projects source. Default on when a db path is found;
+   * set `VSCODE_ENABLED=0` / `false` to disable.
+   */
+  vscodeEnabled: bool("VSCODE_ENABLED", true),
 } as const;
