@@ -27,7 +27,7 @@ macOS 常驻 sampler 进程每 5 分钟扫描用户配置的代码目录，把**
 ## 3. 总体数据流（与现有管线同构，server 入库路径零改动）
 
 ```
-git log --author=<local user.email>（配置目录下各仓库，每 tick）
+git log --fixed-strings --author=<local user.email>（配置目录下各仓库，每 tick）
   → sources/git.ts SampleSource            collect → map → SHA dedupe → NodeInput[]
   → collect.ts SOURCES 注册表 fan-out       纯编排，无 feature 逻辑
   → Outbox SQLite（不变）→ FIFO flush → POST /api/nodes（不变）
@@ -64,7 +64,7 @@ git log --author=<local user.email>（配置目录下各仓库，每 tick）
 ### 6.1 配置（`config.ts` 追加 + `.env.example` 同步）
 
 - `GIT_SCAN_DIRS`：逗号分隔的代码根目录，支持 `~` 展开。**默认空 = 功能关闭**（不 spawn 任何 git 进程，行为与现状完全一致）。
-- 解析为 `gitScanDirs: string[]`（trim、去空、展开 `~`）。
+- 解析为 `gitScanDirs: string[]`（trim、去空、展开 `~`、**一律 `path.resolve` 成绝对路径**——`client_uuid` 种子含 `repoPath`，相对路径与绝对路径混用会双记同一 commit）。
 
 ### 6.2 新文件 `packages/sampler/src/collect-git.ts`
 
@@ -92,14 +92,15 @@ export function parseGitLog(stdout: string, repo: string, repoPath: string): Git
 **扫描 `scanTodayCommits`**：对每个仓库先读 `git config --get user.email`（无 email → 跳过该仓，避免无 author 过滤）；再执行（`execFile`，timeout 10s，maxBuffer 1MB）：
 
 ```
-git -C <repoPath> log --all --author=<user.email> --since="<todayLocal()>T00:00:00" --pretty=format:%x1e%H%x1f%aI%x1f%s --shortstat
+git -C <repoPath> log --all --fixed-strings --author=<user.email> --since="<todayLocal()>T00:00:00" --max-count=100 --pretty=format:%x1e%H%x1f%aI%x1f%s --shortstat
 ```
 
-- `--author` 限定本机配置邮箱，共享仓库不记同事提交。
+- `--fixed-strings --author` 按字面邮箱过滤（`--author` 默认是正则，`john.doe@x` 会误匹配 `johnXdoe@x`）。
 - `--all` 覆盖所有本地分支；git 自身按 SHA 去重。
 - `--since` 用本地零点（`todayLocal()` 拼 `T00:00:00`，git 按本地时区解释）。
+- `--max-count=100` 在 git 侧封顶，避免超大 shortstat 输出撑爆 `maxBuffer` 后整仓变空。
 - 任何非零退出 / 超时 / 解析异常 → 该仓库返回 `[]`（空仓库、无提交均属正常）。
-- 每仓库封顶取前 100 条（对齐 `tabs.slice(0, 40)` 的防御风格）。
+- 解析后不再二次 `slice`（cap 已在 argv）。
 
 **解析 `parseGitLog`**（纯函数）：
 

@@ -113,17 +113,18 @@ async function scanRepo(repoPath: string, since: string): Promise<GitCommit[]> {
         repoPath,
         "log",
         "--all",
+        // --author is a regex by default; fixed-strings so john.doe@x does not match johnXdoe@x
+        "--fixed-strings",
         `--author=${author}`,
         `--since=${since}`,
+        // Cap at the source — maxBuffer would drop the whole repo if we buffered then sliced
+        `--max-count=${MAX_COMMITS_PER_REPO}`,
         "--pretty=format:%x1e%H%x1f%aI%x1f%s",
         "--shortstat",
       ],
       { timeout: GIT_TIMEOUT_MS, maxBuffer: GIT_MAX_BUFFER },
     );
-    return parseGitLog(String(stdout), basename(repoPath), repoPath).slice(
-      0,
-      MAX_COMMITS_PER_REPO,
-    );
+    return parseGitLog(String(stdout), basename(repoPath), repoPath);
   } catch {
     return [];
   }

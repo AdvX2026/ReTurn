@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { config as loadEnv } from "dotenv";
 
 loadEnv();
@@ -15,7 +15,11 @@ function str(name: string, fallback = ""): string {
   return process.env[name] ?? fallback;
 }
 
-/** Comma-separated dirs → absolute paths; empty default disables git scan. */
+/**
+ * Comma-separated dirs → absolute paths; empty default disables git scan.
+ * Always resolve to absolute so client_uuid seed `git:{repoPath}:{sha}` is
+ * stable across relative vs ~/ vs absolute config spellings (Codex P2).
+ */
 function dirs(name: string): string[] {
   const raw = process.env[name] ?? "";
   if (!raw.trim()) return [];
@@ -24,7 +28,11 @@ function dirs(name: string): string[] {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean)
-    .map((p) => (p === "~" ? home : p.startsWith("~/") ? join(home, p.slice(2)) : p));
+    .map((p) => {
+      if (p === "~") return home;
+      if (p.startsWith("~/")) return join(home, p.slice(2));
+      return resolve(p);
+    });
 }
 
 const dataDir = str("SAMPLER_DATA_DIR", join(homedir(), ".return", "sampler"));
