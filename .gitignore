@@ -17,3 +17,9 @@ coverage/
 *.tsbuildinfo
 target/
 src-tauri/target/
+
+# Xcode / Swift app (apps/ReturnApp)
+xcuserdata/
+*.xcuserstate
+DerivedData/
+build/
