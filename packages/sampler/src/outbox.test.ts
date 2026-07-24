@@ -4,11 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "node:test";
 import type { NodeInput } from "@return/shared";
-import {
-  MAX_NODES_PER_BATCH,
-  Outbox,
-  chunkNodes,
-} from "./outbox.js";
+import { MAX_NODES_PER_BATCH, Outbox, chunkNodes } from "./outbox.js";
 
 function fakeNode(i: number): NodeInput {
   // Deterministic uuid from index (version-4 shaped).
