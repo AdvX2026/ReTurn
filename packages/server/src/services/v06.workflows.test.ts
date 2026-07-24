@@ -2,16 +2,28 @@ import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
 import { insertNode, listCards, listMessages, listTasks } from "../db/repo.js";
 import { type Db, openMemoryDb } from "../db/schema.js";
-import { handleChat, triageHeuristic } from "./chat.js";
+import { handleChat, parseTriageJson, triageHeuristic } from "./chat.js";
 import { handleResume } from "./resume.js";
 import { saveToday } from "./save.js";
 import { buildTimeline } from "./timeline.js";
 
-describe("triageHeuristic", () => {
-  it("classifies idea / retrieval / question", () => {
+describe("triage", () => {
+  it("offline heuristic classifies idea / retrieval / question", () => {
     assert.equal(triageHeuristic("灵感: 做一个时间轴").intent, "idea");
     assert.equal(triageHeuristic("搜一下 timeline").intent, "retrieval");
     assert.equal(triageHeuristic("我昨天下午在干什么？").intent, "question");
+  });
+
+  it("parseTriageJson accepts LLM payload and floors low confidence", () => {
+    assert.equal(
+      parseTriageJson('{"intent":"retrieval","confidence":0.9}').intent,
+      "retrieval",
+    );
+    assert.equal(
+      parseTriageJson('{"intent":"question","confidence":0.4}').intent,
+      "unknown",
+    );
+    assert.equal(parseTriageJson('{"intent":"nope","confidence":1}').intent, "unknown");
   });
 });
 

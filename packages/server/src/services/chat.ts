@@ -1,12 +1,12 @@
 /**
  * Chat triage + workflows (PRD v0.6 F4 / §6.3).
- * Cheap heuristic triage by default; optional small LLM when configured.
+ * Intent triage uses the same LLM as ferment/ask (LLM_MODEL).
+ * Heuristic is only used when LLM is not configured (tests / offline).
  */
 
 import type { ChatIntent, ChatResponse } from "@return/shared";
 import { config, isLlmConfigured } from "../config.js";
 import {
-  currentCadence,
   insertCard,
   insertMessage,
   insertNode,
@@ -26,40 +26,148 @@ export interface ChatInput {
   intent?: ChatIntent;
 }
 
-const RETRIEVAL_HINT =
-  /搜|找|定位|跳转|在哪|哪里|搜索|lookup|find|search|locate|搜一下|找一下|跳到/i;
-const QUESTION_HINT =
-  /谁|什么|怎么|如何|为何|为什么|是否|有没有|吗|？|\?|干什么|做了什么/i;
-const IDEA_HINT = /灵感|想法|点子|idea|灵感来了|记一下想法/i;
+const INTENTS = new Set<ChatIntent>(["idea", "retrieval", "question", "unknown"]);
 
-/** Deterministic triage — primary path when no LLM or low confidence. */
+/** Offline / test fallback when LLM_API_KEY is unset. Not used when LLM is configured. */
 export function triageHeuristic(text: string): {
   intent: ChatIntent;
   confidence: number;
 } {
   const t = text.trim();
   if (!t) return { intent: "unknown", confidence: 0 };
-
-  if (IDEA_HINT.test(t) || t.startsWith("灵感:") || t.startsWith("idea:")) {
+  if (
+    /灵感|想法|点子|idea|灵感来了|记一下想法/i.test(t) ||
+    t.startsWith("灵感:") ||
+    t.startsWith("idea:")
+  ) {
     return { intent: "idea", confidence: 0.85 };
   }
-  // Retrieval before question — "搜索 X" must not fall into short-idea bucket.
-  if (RETRIEVAL_HINT.test(t)) {
+  if (
+    /搜|找|定位|跳转|在哪|哪里|搜索|lookup|find|search|locate|搜一下|找一下|跳到/i.test(t)
+  ) {
     return { intent: "retrieval", confidence: 0.8 };
   }
-  // Meeting notes dump → task path via long text + keywords
-  if (t.length > 200 || /会议纪要|会议记录|纪要|meeting notes|transcript/i.test(t)) {
-    // Prefer task when clearly notes; still a "question" style chat entry
-    // Handled as task submission below when length/keywords match.
-  }
-  if (QUESTION_HINT.test(t) || t.includes("？") || t.includes("?")) {
+  if (
+    /谁|什么|怎么|如何|为何|为什么|是否|有没有|吗|？|\?|干什么|做了什么/i.test(t) ||
+    t.includes("？") ||
+    t.includes("?")
+  ) {
     return { intent: "question", confidence: 0.75 };
   }
-  // Short free text without question mark → idea
-  if (t.length <= 80) {
-    return { intent: "idea", confidence: 0.55 };
-  }
+  if (t.length <= 80) return { intent: "idea", confidence: 0.55 };
   return { intent: "question", confidence: 0.5 };
+}
+
+/**
+ * LLM triage with the same provider/model as ferment (config.llm).
+ * Returns unknown on parse failure so the user can pick.
+ */
+export async function triageWithLlm(text: string): Promise<{
+  intent: ChatIntent;
+  confidence: number;
+}> {
+  if (!isLlmConfigured()) {
+    throw new Error("LLM not configured");
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(
+    () => controller.abort(),
+    Math.min(config.llm.timeoutMs, 20_000),
+  );
+  try {
+    const res = await fetch(`${config.llm.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.llm.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: config.llm.model,
+        temperature: 0,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content: `You are the intent classifier for ReTurn (a personal second-brain agent).
+Classify the user message into exactly one intent.
+
+intents:
+- "idea": user wants to record an inspiration, note, thought, or idea (not asking for search/answer)
+- "retrieval": user wants to find/locate past records and jump to them (search, where is X, find that meeting)
+- "question": user wants an answer about their past activity/records (what did I do, summarize yesterday)
+- "unknown": ambiguous; do not guess
+
+Rules:
+- Prefer retrieval when the user wants to locate/jump to something.
+- Prefer question when they want an explanation/summary/answer.
+- Prefer idea for short free-form notes without a clear question/search.
+- Output ONLY compact JSON: {"intent":"idea"|"retrieval"|"question"|"unknown","confidence":0..1}
+- confidence < 0.55 should use "unknown".`,
+          },
+          { role: "user", content: text },
+        ],
+      }),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`LLM HTTP ${res.status}: ${body.slice(0, 200)}`);
+    }
+    const data = (await res.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+    };
+    const raw = data.choices?.[0]?.message?.content;
+    if (!raw) throw new Error("empty triage response");
+    return parseTriageJson(raw);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export function parseTriageJson(raw: string): {
+  intent: ChatIntent;
+  confidence: number;
+} {
+  let text = raw.trim();
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenced) text = fenced[1]!.trim();
+  const parsed = JSON.parse(text) as {
+    intent?: string;
+    confidence?: number;
+  };
+  const intent = (parsed.intent ?? "unknown") as ChatIntent;
+  if (!INTENTS.has(intent)) {
+    return { intent: "unknown", confidence: 0 };
+  }
+  let confidence = Number(parsed.confidence);
+  if (!Number.isFinite(confidence)) confidence = 0.5;
+  confidence = Math.max(0, Math.min(1, confidence));
+  if (confidence < 0.55 && intent !== "unknown") {
+    return { intent: "unknown", confidence };
+  }
+  return { intent, confidence };
+}
+
+async function resolveIntent(text: string): Promise<{
+  intent: ChatIntent;
+  confidence: number;
+}> {
+  if (!isLlmConfigured()) {
+    const h = triageHeuristic(text);
+    if (h.confidence < 0.55) return { intent: "unknown", confidence: h.confidence };
+    return h;
+  }
+  try {
+    return await triageWithLlm(text);
+  } catch (err) {
+    console.warn(
+      "[chat] LLM triage failed → unknown:",
+      err instanceof Error ? err.message : err,
+    );
+    // Do not fall back to rules when LLM is configured — ask the user.
+    return { intent: "unknown", confidence: 0 };
+  }
 }
 
 export async function handleChat(db: Db, input: ChatInput): Promise<ChatResponse> {
@@ -70,12 +178,11 @@ export async function handleChat(db: Db, input: ChatInput): Promise<ChatResponse
     throw new ChatError("text or image required");
   }
 
-  // Image without text → task image_extract
   if (hasImage && !text) {
     return runImageTask(db, input.image!, input.device_id);
   }
 
-  // Long meeting notes → task
+  // Structural task path (not F4 intent classes): long meeting notes dump.
   if (text.length > 400 || /会议纪要|会议记录|meeting notes/i.test(text)) {
     return runMeetingTask(db, text, input.device_id);
   }
@@ -83,12 +190,9 @@ export async function handleChat(db: Db, input: ChatInput): Promise<ChatResponse
   let intent: ChatIntent = input.intent ?? "unknown";
   let confidence = input.intent ? 1 : 0;
   if (!input.intent) {
-    const h = triageHeuristic(text);
+    const h = await resolveIntent(text);
     intent = h.intent;
     confidence = h.confidence;
-    if (confidence < 0.55) {
-      intent = "unknown";
-    }
   }
 
   const userMsg = insertMessage(db, {
@@ -211,7 +315,6 @@ async function runQuestion(
   let degraded = false;
   try {
     if (!isLlmConfigured()) {
-      // Fall back to keyword hits as a short digest
       const result = await search(db, { q: text, limit: 5, semantic: false });
       if (result.results.length === 0) {
         reply = "没在你的记录里找到相关内容。（未配置 LLM，无法生成回答）";
@@ -256,7 +359,6 @@ function runMeetingTask(
     status: "running",
     input: { text: text.slice(0, 20_000) },
   });
-  // Sync process for hackathon: extract → high-weight node → done message
   const title = text.slice(0, 40).replace(/\s+/g, " ");
   const { node } = insertNode(db, {
     client_uuid: uuid(),
@@ -372,5 +474,3 @@ export class ChatError extends Error {
     this.name = "ChatError";
   }
 }
-
-export { currentCadence };

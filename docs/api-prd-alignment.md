@@ -36,7 +36,7 @@
 
 ## Intentional simplifications (hackathon)
 
-- Triage is **heuristic first** (no mandatory small-model call); LLM used for question/ask and optional tiny suggest/resume
+- Intent triage uses the **same `LLM_*` model** as ferment/ask (`response_format: json_object`). Heuristic only when `LLM_API_KEY` is unset (tests/offline). LLM triage failure → `unknown` (user pick), not rule fallback.
 - Image task fails with “paste text” (no vision API yet)
 - Meeting-notes task runs **sync** to `done` (no background worker)
 - `PATCH .../intent` can re-run chat with forced intent
