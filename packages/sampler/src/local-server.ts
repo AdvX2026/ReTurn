@@ -85,7 +85,8 @@ export function startLocalServer(rt: SamplerRuntime): Promise<void> {
           pi_online: rt.isPiOnline(),
           app: snap?.app ?? null,
           tab_count: snap?.tabs.length ?? 0,
-          agent_count: snap?.agents.length ?? 0,
+          agent_count: snap?.stats.agents?.intervals ?? 0,
+          stats: snap?.stats ?? {},
           error: rt.getLastError(),
         });
         return;

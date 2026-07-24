@@ -82,20 +82,64 @@ describe("scoreFocus", () => {
 });
 
 describe("scoreOutput", () => {
-  it("todo rate primary + agent bonus", () => {
-    const base = scoreOutput(1, []);
-    const withAgent = scoreOutput(1, [
-      {
-        app: "claude",
-        kind: "agent",
-        start: "2026-07-24T10:00:00.000Z",
-        end: "2026-07-24T12:00:00.000Z",
-        durationMin: 120,
-      },
-    ]);
-    assert.ok(base >= 70);
+  it("todo rate primary + agent bonus + commit bonus", () => {
+    // todo full → 60 (was 70 before git bonus rebalance)
+    const base = scoreOutput(1, [], 0);
+    assert.equal(base, 60);
+
+    const withAgent = scoreOutput(
+      1,
+      [
+        {
+          app: "claude",
+          kind: "agent",
+          start: "2026-07-24T10:00:00.000Z",
+          end: "2026-07-24T12:00:00.000Z",
+          durationMin: 120,
+        },
+      ],
+      0,
+    );
+    // 60 todo + 20 agent = 80
+    assert.equal(withAgent, 80);
     assert.ok(withAgent > base);
-    assert.ok(withAgent <= 100);
+  });
+
+  it("commit bonus: 0 / 5 / 10 commits", () => {
+    assert.equal(scoreOutput(0, [], 0), 0);
+    // 5 commits → full +20
+    assert.equal(scoreOutput(0, [], 5), 20);
+    // 10 commits still capped at 20
+    assert.equal(scoreOutput(0, [], 10), 20);
+    // partial: 1 commit → 4
+    assert.equal(scoreOutput(0, [], 1), 4);
+  });
+
+  it("computeStats raises output when git_commit nodes present", () => {
+    const base = computeStats({
+      nodes: [],
+      sessions: [],
+      todoRate: 0,
+      crossDayEdges: 0,
+      sleepMinutes: null,
+      steps: null,
+    });
+    const withCommits = computeStats({
+      nodes: [
+        node({ kind: "git_commit", title: "a" }),
+        node({ kind: "git_commit", title: "b" }),
+        node({ kind: "git_commit", title: "c" }),
+        node({ kind: "git_commit", title: "d" }),
+        node({ kind: "git_commit", title: "e" }),
+      ],
+      sessions: [],
+      todoRate: 0,
+      crossDayEdges: 0,
+      sleepMinutes: null,
+      steps: null,
+    });
+    assert.equal(base.output, 0);
+    assert.equal(withCommits.output, 20);
   });
 });
 
