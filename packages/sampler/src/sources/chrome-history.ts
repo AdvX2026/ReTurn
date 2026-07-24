@@ -34,6 +34,7 @@ function seedKey(v: BrowseVisit): string {
 
 export function visitsToNodes(
   visits: BrowseVisit[],
+  day?: string,
   dedupe: KeyDedupe = seen,
 ): NodeInput[] {
   const nodes: NodeInput[] = [];
@@ -56,8 +57,7 @@ export function visitsToNodes(
         profile: v.profile,
       },
       client_created_at: v.visitedAt,
-      // Bucket by visit local day so late-night visits land correctly.
-      date: todayLocal(new Date(v.visitedAt)),
+      date: day ?? todayLocal(new Date(v.visitedAt)),
     });
   }
   return nodes;
@@ -65,7 +65,7 @@ export function visitsToNodes(
 
 export const chromeHistorySource: SampleSource = {
   id: "chrome_history",
-  async sample(_ctx: SampleContext): Promise<SourceResult> {
+  async sample(ctx: SampleContext): Promise<SourceResult> {
     if (!config.chromeHistoryEnabled) {
       return {
         nodes: [],
@@ -84,10 +84,11 @@ export const chromeHistorySource: SampleSource = {
       };
     }
 
-    const visits = await collectChromeHistory(paths, config.chromeHistoryLimit).catch(
-      () => [] as BrowseVisit[],
-    );
-    const nodes = visitsToNodes(visits);
+    const visits = await collectChromeHistory(paths, config.chromeHistoryLimit, {
+      start: ctx.dayStart,
+      end: ctx.dayEnd,
+    }).catch(() => [] as BrowseVisit[]);
+    const nodes = visitsToNodes(visits, ctx.day);
     return {
       nodes,
       stats: {

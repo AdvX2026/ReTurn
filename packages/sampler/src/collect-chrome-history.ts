@@ -194,10 +194,16 @@ function pushProfiles(out: HistoryDbPath[], userDataRoot: string, browser: strin
 export async function collectChromeHistory(
   paths: HistoryDbPath[],
   limit = 100,
+  range?: { start: string; end: string },
 ): Promise<BrowseVisit[]> {
   if (paths.length === 0 || limit <= 0) return [];
 
-  const { start, end } = localDayChromeRange();
+  const { start, end } = range
+    ? {
+        start: isoToChromeTime(range.start),
+        end: isoToChromeTime(range.end),
+      }
+    : localDayChromeRange();
   const perDb = await Promise.all(
     paths.map((p) =>
       readHistoryDb(p, start, end, limit).catch(() => [] as BrowseVisit[]),

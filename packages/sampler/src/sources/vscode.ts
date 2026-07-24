@@ -17,7 +17,6 @@ import {
   type SampleSource,
   type SourceResult,
   createKeyDedupe,
-  todayLocal,
   uuidFromSeed,
 } from "../source.js";
 
@@ -34,7 +33,7 @@ function seedKey(r: VscodeRecent): string {
 
 export function recentsToNodes(
   recents: VscodeRecent[],
-  ctx: Pick<SampleContext, "at">,
+  ctx: Pick<SampleContext, "at" | "day">,
   dedupe: KeyDedupe = seen,
 ): NodeInput[] {
   const nodes: NodeInput[] = [];
@@ -53,7 +52,7 @@ export function recentsToNodes(
         editor: r.editor,
       },
       client_created_at: ctx.at,
-      date: todayLocal(),
+      date: ctx.day,
     });
   }
   return nodes;

@@ -5,12 +5,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import type { NodeInput } from "@return/shared";
-import {
-  type SampleContext,
-  type SampleSource,
-  type SourceResult,
-  todayLocal,
-} from "../source.js";
+import type { SampleContext, SampleSource, SourceResult } from "../source.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -41,7 +36,7 @@ export const envSource: SampleSource = {
     lastEnv = { app, tabs };
 
     const nodes: NodeInput[] = [];
-    const date = todayLocal();
+    const date = ctx.day;
     const ts = ctx.at;
 
     if (app?.name) {

@@ -27,6 +27,23 @@ function str(name: string, fallback = ""): string {
   return process.env[name] ?? fallback;
 }
 
+export function timeZone(value?: string): string {
+  const fallback = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  const candidate = value?.trim() || fallback;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: candidate }).format();
+    return candidate;
+  } catch {
+    return fallback;
+  }
+}
+
+export function fixedNow(value?: string): Date | null {
+  if (!value?.trim()) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 /** Explicit "0"/"false"/"off"/"no" disables; "1"/"true"/"on"/"yes" enables; unset/empty → fallback. */
 function bool(name: string, fallback: boolean): boolean {
   const v = process.env[name];
@@ -68,6 +85,10 @@ export const config = {
   serverUrl: str("RETURN_SERVER_URL", "http://127.0.0.1:8787").replace(/\/$/, ""),
   deviceName: str("SAMPLER_DEVICE_NAME", "Mac Sampler"),
   sampleIntervalMin: num("SAMPLE_INTERVAL_MIN", 5),
+  /** One timezone authority shared by every source. */
+  timezone: timeZone(process.env.SAMPLER_TIMEZONE),
+  /** Explicit replay/test clock. Unset in normal long-running operation. */
+  fixedNow: fixedNow(process.env.SAMPLER_NOW),
   /** Control plane for UI — loopback only, not configurable (PRD F2: never LAN). */
   localHost: "127.0.0.1",
   localPort: num("SAMPLER_PORT", 8791),
@@ -107,4 +128,7 @@ export const config = {
   chromeHistoryEnabled: bool("CHROME_HISTORY_ENABLED", true),
   /** Max visits per sample tick across all History DBs (positive int; bad env → 100). */
   chromeHistoryLimit: positiveInt("CHROME_HISTORY_LIMIT", 100),
+  safariHistoryPath: str("SAFARI_HISTORY_PATH", ""),
+  safariHistoryEnabled: bool("SAFARI_HISTORY_ENABLED", true),
+  safariHistoryLimit: positiveInt("SAFARI_HISTORY_LIMIT", 100),
 } as const;

@@ -97,7 +97,7 @@ describe("vscode source emission", () => {
   it("maps recents to vscode_recent nodes with correct fields", () => {
     const at = "2026-07-24T02:00:00.000Z";
     const recents = parseRecentlyOpened(FIXTURE, "code");
-    const nodes = recentsToNodes(recents, { at });
+    const nodes = recentsToNodes(recents, { at, day: "2026-07-24" });
     assert.equal(nodes.length, 3);
     const n = nodes[0]!;
     assert.equal(n.kind, "vscode_recent");
@@ -116,12 +116,12 @@ describe("vscode source emission", () => {
   it("dedupes recents in-process; reset re-emits", () => {
     const at = "2026-07-24T02:00:00.000Z";
     const recents = parseRecentlyOpened(FIXTURE, "code");
-    const first = recentsToNodes(recents, { at });
+    const first = recentsToNodes(recents, { at, day: "2026-07-24" });
     assert.equal(first.length, 3);
-    const second = recentsToNodes(recents, { at });
+    const second = recentsToNodes(recents, { at, day: "2026-07-24" });
     assert.equal(second.length, 0);
     resetSeenVscodeKeys();
-    const third = recentsToNodes(recents, { at });
+    const third = recentsToNodes(recents, { at, day: "2026-07-24" });
     assert.equal(third.length, 3);
     assert.equal(third[0]!.client_uuid, first[0]!.client_uuid);
   });

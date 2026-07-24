@@ -13,10 +13,13 @@ UI closed must not stop sampling. Dev: `pnpm dev:sampler`. Prod later: launchd.
 - Device id file same dir; registers with Pi on flush
 
 ## Architecture — pluggable sources
-- `source.ts`: `SampleSource` contract + shared helpers (`todayLocal`, `uuidFromSeed`, `createKeyDedupe`)
+- `source.ts`: `SampleSource` contract + one `SampleContext` clock shared by every source.
 - `collect.ts`: orchestrator only — registry of sources, fan-out sample, assemble snapshot
 - `sources/<id>.ts`: one file per feature; owns collect → map → dedupe → `NodeInput[]`
 - Add a source: implement `SampleSource`, append to `SOURCES` in `collect.ts`. Never put feature logic in collect.
+- `SAMPLER_TIMEZONE` is the IANA day authority (defaults to the system timezone).
+- `SAMPLER_NOW` freezes the global clock for explicit replay/tests only; leave unset in production.
+- Every tick supplies `at`, `timezone`, `day`, `dayStart`, and `dayEnd`; sources must not derive their own day window.
 
 ## macOS vs Windows
 - App/tabs (`sources/env.ts`, osascript): **darwin only**
@@ -48,7 +51,7 @@ UI closed must not stop sampling. Dev: `pnpm dev:sampler`. Prod later: launchd.
 - **darwin only**; non-mac always empty. Opt-out: `REMINDERS_ENABLED=0` / `false` (default on when unset).
 - Read-only JXA (`osascript -l JavaScript`) over every Reminders list. Never writes.
 - Emits `kind: "reminder"` for each item (incomplete + completed). Not an ACTIVE_FEED kind.
-- `client_uuid` = sha256 seed `reminder:{id}:{0|1}` — completed flag included so incomplete→complete emits a **new** node (server insert-only on uuid). In-process dedupe uses the same seed.
+- `client_uuid` = sha256 seed `reminder:{date}:{id}:{0|1}` — daily snapshot + completed flip produce new nodes.
 - On restart, re-posts are fine (server UNIQUE on client_uuid). Same-process completion flip after first emit is re-emitted because seed changes.
 - `source_meta`: `{ list, completed, due, reminder_id, creation_date, modification_date }`
 - `client_created_at`: modificationDate || creationDate || sample tick (ISO). Dates from JXA best-effort; null on failure.
@@ -81,3 +84,10 @@ UI closed must not stop sampling. Dev: `pnpm dev:sampler`. Prod later: launchd.
 - `client_uuid` = sha256 seed `browse:{browser}:{profile}:{visitId}` — visit id stable within a profile DB.
 - `source_meta`: `{ url, title, visited_at, visit_id, browser, profile }`; `content` = url; `date` = local day of visitedAt.
 - Failures silent; never blocks sample main path or outbox flush.
+
+## Safari browse history
+- Source: `sources/safari-history.ts` + `collect-safari-history.ts`
+- macOS only; reads `~/Library/Safari/History.db` by default using SQLite copy-then-open with WAL.
+- The sampler process needs Full Disk Access; otherwise the source returns no visits without breaking the tick.
+- Uses the shared `[dayStart, dayEnd)` range and emits the same `browse_history` node structure as Chrome.
+- `SAFARI_HISTORY_PATH` overrides the database; `SAFARI_HISTORY_ENABLED=0` disables it; default limit is 100.
