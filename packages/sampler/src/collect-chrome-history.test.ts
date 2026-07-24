@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 import {
   chromeTimeToIso,
   collectChromeHistory,
+  copySqliteWithWal,
   isoToChromeTime,
   localDayChromeRange,
   resolveHistoryPaths,
@@ -253,6 +254,70 @@ describe("collectChromeHistory against temp sqlite", () => {
       100,
     );
     assert.deepEqual(visits, []);
+  });
+
+  it("WAL-mode History: includes uncheckpointed visits via -wal copy", async () => {
+    // Simulate Chrome: live connection holds recent rows only in History-wal.
+    // Main-file-only copy would miss them; copySqliteWithWal must not.
+    const profileDir = join(root, "WalProfile");
+    mkdirSync(profileDir, { recursive: true });
+    const hist = join(profileDir, "History");
+
+    const live = new DatabaseSync(hist);
+    live.exec(`
+      PRAGMA journal_mode = WAL;
+      CREATE TABLE urls(id INTEGER PRIMARY KEY, url TEXT, title TEXT);
+      CREATE TABLE visits(id INTEGER PRIMARY KEY, url INTEGER, visit_time INTEGER);
+    `);
+    const { start } = localDayChromeRange();
+    live
+      .prepare(`INSERT INTO urls(id, url, title) VALUES (?, ?, ?)`)
+      .run(1, "https://wal-only.test", "WAL only");
+    live
+      .prepare(`INSERT INTO visits(id, url, visit_time) VALUES (?, ?, ?)`)
+      .run(200, 1, start + 1_800_000_000n);
+    // Keep `live` open so rows stay in the WAL (no checkpoint on close).
+
+    try {
+      const visits = await collectChromeHistory(
+        [{ path: hist, browser: "chrome", profile: "WalProfile" }],
+        100,
+      );
+      assert.equal(visits.length, 1);
+      assert.equal(visits[0]!.url, "https://wal-only.test");
+      assert.equal(visits[0]!.visitId, 200);
+    } finally {
+      live.close();
+    }
+  });
+});
+
+describe("copySqliteWithWal", () => {
+  it("copies -wal and -shm side-cars when present", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "return-sqlite-wal-copy-"));
+    try {
+      const src = join(dir, "History");
+      const db = new DatabaseSync(src);
+      db.exec(`PRAGMA journal_mode = WAL; CREATE TABLE t(x); INSERT INTO t VALUES (1);`);
+      db.close();
+      // After close SQLite may leave -wal/-shm; force side-cars for the assertion.
+      const { writeFileSync, existsSync } = await import("node:fs");
+      if (!existsSync(`${src}-wal`)) writeFileSync(`${src}-wal`, Buffer.from("wal-stub"));
+      if (!existsSync(`${src}-shm`)) writeFileSync(`${src}-shm`, Buffer.alloc(32 * 1024));
+
+      const tmpRoot = mkdtempSync(join(tmpdir(), "return-sqlite-wal-dst-"));
+      const dst = join(tmpRoot, "History");
+      try {
+        await copySqliteWithWal(src, dst);
+        assert.equal(existsSync(dst), true);
+        assert.equal(existsSync(`${dst}-wal`), true);
+        assert.equal(existsSync(`${dst}-shm`), true);
+      } finally {
+        rmSync(tmpRoot, { recursive: true, force: true });
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

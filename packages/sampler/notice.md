@@ -66,10 +66,14 @@ UI closed must not stop sampling. Dev: `pnpm dev:sampler`. Prod later: launchd.
 - `source_meta`: `{ uri, path, entry_kind, editor }` (`entry_kind`: folder | file | workspace)
 - Kind `vscode_recent` — not an active feed. Failures silent.
 
+## Outbox batching
+- `CreateNodesRequest.nodes` max is **500** (`@return/shared`). `Outbox.enqueue` chunks via `chunkNodes` / `MAX_NODES_PER_BATCH` so a fat sample (e.g. many reminders + history) never POSTs a single body the server Zod-rejects — that used to stick the FIFO head and block all later flushes.
+- `postNodes` also re-chunks as defense in depth for legacy/out-of-band rows.
+
 ## Chrome browse history (today's visits)
 - Source: `sources/chrome-history.ts` + `collect-chrome-history.ts`
 - Kind: `browse_history` (not in ACTIVE_FEED_KINDS — environment context, denser than open tabs)
-- **Must copy** History SQLite to temp before open (Chrome locks the live file); `node:sqlite` DatabaseSync only.
+- **Must copy** History SQLite to temp before open (Chrome locks the live file); `node:sqlite` DatabaseSync only. Copy includes `History-wal` / `History-shm` when present (`copySqliteWithWal`) — Chrome keeps recent visits in the WAL until checkpoint; main-file-only copy silently drops today's rows.
 - Timestamps: Chrome WebKit µs since 1601-01-01 UTC → ISO via `chromeTimeToIso`. Day filter uses local midnight range. µs exceed `Number.MAX_SAFE_INTEGER` — use `bigint` + `DatabaseSync({ readBigInts: true })` for visit_time / range bounds.
 - Auto-detect (first existing, max 4 DBs): Chrome / Chromium / Edge / Brave under OS-standard user-data dirs; profiles Default + Profile 1..3.
 - `CHROME_HISTORY_PATH` override (single file, skips auto-detect). `CHROME_HISTORY_ENABLED=0|false` disables. `CHROME_HISTORY_LIMIT` default 100 total/tick.

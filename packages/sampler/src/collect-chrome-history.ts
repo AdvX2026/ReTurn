@@ -2,6 +2,8 @@
  * Chrome / Chromium / Edge / Brave History SQLite reader.
  *
  * Chrome locks the live History DB — always copy to a temp file before open.
+ * History uses WAL: recent visits often live only in History-wal until
+ * checkpoint, so the snapshot must include -wal/-shm when present.
  * Failures are silent (return []); never block the sample tick.
  */
 import { existsSync } from "node:fs";
@@ -9,6 +11,9 @@ import { copyFile, mkdtemp, rm, unlink } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+
+/** SQLite side-car suffixes for WAL mode (must match main basename). */
+const SQLITE_WAL_SUFFIXES = ["-wal", "-shm"] as const;
 
 /** Microseconds between Windows FILETIME epoch (1601-01-01) and Unix epoch. */
 const WEBKIT_EPOCH_OFFSET_MS = 11_644_473_600_000;
@@ -205,6 +210,34 @@ export async function collectChromeHistory(
   return all.slice(0, limit);
 }
 
+/**
+ * Copy a SQLite DB into `tmpPath`, including WAL/SHM side-cars when present.
+ * Without -wal, opening a bare main-file copy drops uncheckpointed pages
+ * (today's Chrome visits often live only in History-wal while the browser runs).
+ */
+export async function copySqliteWithWal(srcPath: string, tmpPath: string): Promise<void> {
+  await copyFile(srcPath, tmpPath);
+  for (const suffix of SQLITE_WAL_SUFFIXES) {
+    const side = `${srcPath}${suffix}`;
+    if (!existsSync(side)) continue;
+    try {
+      await copyFile(side, `${tmpPath}${suffix}`);
+    } catch {
+      // Side-car may be mid-write; main-only copy is still better than aborting.
+    }
+  }
+}
+
+async function unlinkSqliteSnapshot(tmpPath: string): Promise<void> {
+  for (const suffix of ["", ...SQLITE_WAL_SUFFIXES]) {
+    try {
+      await unlink(`${tmpPath}${suffix}`);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 async function readHistoryDb(
   db: HistoryDbPath,
   start: bigint,
@@ -214,7 +247,7 @@ async function readHistoryDb(
   const tmpRoot = await mkdtemp(join(tmpdir(), "return-chrome-hist-"));
   const tmpPath = join(tmpRoot, "History");
   try {
-    await copyFile(db.path, tmpPath);
+    await copySqliteWithWal(db.path, tmpPath);
   } catch {
     // Chrome may hold a short lock — silent fail
     await rm(tmpRoot, { recursive: true, force: true }).catch(() => undefined);
@@ -258,11 +291,7 @@ async function readHistoryDb(
     } catch {
       /* ignore */
     }
-    try {
-      await unlink(tmpPath);
-    } catch {
-      /* ignore */
-    }
+    await unlinkSqliteSnapshot(tmpPath);
     await rm(tmpRoot, { recursive: true, force: true }).catch(() => undefined);
   }
 }
