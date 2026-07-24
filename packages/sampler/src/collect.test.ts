@@ -102,8 +102,38 @@ describe("agents source emission policy", () => {
     assert.equal((flushed[0]!.source_meta as Record<string, unknown>).open, true);
     assert.equal((flushed[0]!.source_meta as Record<string, unknown>).provider, "codex");
 
-    // second Save does not re-emit
+    // second Save does not re-emit same open
     assert.equal(intervalsToNodes([open], { asSnapshot: true }).length, 0);
+  });
+
+  it("closed terminal still emits after open was flushed (Save Today refine)", () => {
+    resetSeenAgentKeys();
+    const start = "2026-07-24T03:00:00.000Z";
+    const open = agent({
+      session_id: "live",
+      start,
+      end: "2026-07-24T03:05:00.000Z",
+      open: true,
+      duration_min: 5,
+    });
+    const closed = agent({
+      session_id: "live",
+      start,
+      end: "2026-07-24T04:00:00.000Z",
+      open: false,
+      duration_min: 60,
+    });
+
+    const flushed = intervalsToNodes([open], { asSnapshot: true });
+    assert.equal(flushed.length, 1);
+    assert.equal((flushed[0]!.source_meta as Record<string, unknown>).open, true);
+
+    // later regular tick with closed must still emit (different seed/key)
+    const terminal = intervalsToNodes([closed], { asSnapshot: false });
+    assert.equal(terminal.length, 1);
+    assert.equal((terminal[0]!.source_meta as Record<string, unknown>).open, false);
+    assert.notEqual(terminal[0]!.client_uuid, flushed[0]!.client_uuid);
+    assert.equal((terminal[0]!.source_meta as Record<string, unknown>).end, closed.end);
   });
 });
 

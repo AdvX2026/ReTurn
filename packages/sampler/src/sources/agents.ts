@@ -24,13 +24,26 @@ export function resetSeenAgentKeys(): void {
   seen.clear();
 }
 
+/**
+ * Dedupe key includes open/closed so a Save Today open flush cannot block
+ * the later closed terminal interval (same start, refined end).
+ */
 function agentKey(a: AgentInterval): string {
-  return `${a.provider}|${a.session_id}|${a.start}`;
+  return `${a.provider}|${a.session_id}|${a.start}|${a.open ? "open" : "closed"}`;
+}
+
+/**
+ * client_uuid seeds also differ by open/closed. Server insertNode is insert-only
+ * for a given client_uuid — open and closed must not share a seed, or the
+ * closed refinement is permanently dropped after Save Today.
+ */
+function agentSeed(a: AgentInterval): string {
+  return `agent:${a.provider}|${a.session_id}|${a.start}|${a.open ? "open" : "closed"}`;
 }
 
 function agentNode(a: AgentInterval): NodeInput {
   return {
-    client_uuid: uuidFromSeed(`agent:${agentKey(a)}`),
+    client_uuid: uuidFromSeed(agentSeed(a)),
     kind: "agent_session",
     title: a.project,
     content: `${a.provider} ${a.project} ${Math.round(a.duration_min)}min`,
@@ -52,7 +65,7 @@ function agentNode(a: AgentInterval): NodeInput {
  * Map intervals → nodes with emission policy:
  * - regular tick: closed only
  * - asSnapshot (Save Today): closed + open
- * - in-process dedupe by provider|session_id|start
+ * - in-process dedupe by provider|session_id|start|open|closed
  */
 export function intervalsToNodes(
   intervals: AgentInterval[],

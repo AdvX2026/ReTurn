@@ -13,6 +13,7 @@ import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, sep } from "node:path";
 import { createInterface } from "node:readline";
+import { todayLocal } from "./source.js";
 
 export type AgentProviderId = "claude" | "codex";
 
@@ -87,12 +88,7 @@ const PROVIDERS: ProviderSpec[] = [
   },
 ];
 
-export function todayLocal(d = new Date()): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
+export { todayLocal };
 
 /**
  * Collect today's agent activity intervals across all known providers.
@@ -129,7 +125,8 @@ export async function collectAgentIntervals(
               project,
               start: new Date(iv.start).toISOString(),
               end: new Date(iv.end).toISOString(),
-              duration_min: Math.max(1, (iv.end - iv.start) / 60_000),
+              // Honest duration — single-event sessions stay 0, not floored to 1min.
+              duration_min: Math.max(0, (iv.end - iv.start) / 60_000),
               session_id,
               open: iv.open,
             });
