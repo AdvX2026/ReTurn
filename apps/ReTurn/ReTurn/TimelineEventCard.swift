@@ -5,44 +5,47 @@ struct TimelineEventCard: View {
     let item: TimelineDisplayItem
 
     var body: some View {
+        let tint = TimelineDesign.Colors.accent(for: item)
+
         VStack(alignment: .leading, spacing: TimelineDesign.Layout.eventCardSpacing) {
             HStack(spacing: 10) {
-                Label(item.categoryLabel, systemImage: item.symbolName)
-                    .labelStyle(.titleAndIcon)
+                HStack(spacing: 8) {
+                    Image(systemName: item.symbolName)
+                        .font(.caption.weight(.semibold))
+                        .frame(width: 26, height: 26)
+                        .background(tint.opacity(0.14), in: .circle)
+
+                    Text(item.categoryLabel)
+                }
+                .font(TimelineDesign.Typography.eventCategory)
+                .foregroundStyle(tint)
 
                 Spacer(minLength: 8)
 
                 Text(item.timeDisplay)
+                    .font(TimelineDesign.Typography.eventMetadata)
+                    .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
-            .font(TimelineDesign.Typography.eventMetadata)
-            .foregroundStyle(.secondary)
 
             Text(item.label)
                 .font(TimelineDesign.Typography.eventCardTitle)
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            HStack {
-                Text("DURATION")
-
-                Spacer(minLength: 8)
-
-                Text(item.durationDisplay)
-                    .monospacedDigit()
-            }
+            Label(item.durationDisplay, systemImage: "clock")
             .font(TimelineDesign.Typography.eventMetadata)
             .foregroundStyle(.secondary)
+            .monospacedDigit()
         }
         .padding(TimelineDesign.Layout.eventCardPadding)
         .background(
             TimelineDesign.Colors.eventCardBackground,
-            in: .rect(cornerRadius: TimelineDesign.Layout.eventCardCornerRadius)
+            in: RoundedRectangle(
+                cornerRadius: TimelineDesign.Layout.eventCardCornerRadius,
+                style: .continuous
+            )
         )
-        .overlay {
-            RoundedRectangle(cornerRadius: TimelineDesign.Layout.eventCardCornerRadius)
-                .stroke(TimelineDesign.Colors.eventCardBorder, lineWidth: 0.5)
-        }
     }
 }
 #endif

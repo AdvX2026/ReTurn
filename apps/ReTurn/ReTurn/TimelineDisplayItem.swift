@@ -52,7 +52,7 @@ struct TimelineDisplayItem: Identifiable, Equatable {
     var categoryLabel: String {
         (category ?? kind.rawValue)
             .replacing("_", with: " ")
-            .uppercased()
+            .localizedCapitalized
     }
 
     var timeDisplay: String {

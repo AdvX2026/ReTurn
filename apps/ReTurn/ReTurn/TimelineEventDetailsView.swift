@@ -5,28 +5,35 @@ struct TimelineEventDetailsView: View {
     let item: TimelineDisplayItem
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Text(item.timeDisplay)
-                    .monospacedDigit()
+        let tint = TimelineDesign.Colors.accent(for: item)
 
-                Text("[\(item.categoryLabel)]")
-                    .foregroundStyle(.tertiary)
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Label(item.categoryLabel, systemImage: item.symbolName)
+                    .font(TimelineDesign.Typography.eventCategory)
+                    .foregroundStyle(tint)
+
+                Spacer(minLength: 8)
+
+                Text(item.timeDisplay)
+                    .font(TimelineDesign.Typography.eventMetadata)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
             }
-            .font(TimelineDesign.Typography.eventMetadata)
-            .foregroundStyle(.secondary)
 
             Text(item.label)
                 .font(TimelineDesign.Typography.eventTitle)
                 .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
 
             if item.presentation == .span {
-                Label(item.durationDisplay, systemImage: item.symbolName)
+                Text(item.durationDisplay)
                     .font(TimelineDesign.Typography.eventMetadata)
                     .foregroundStyle(.secondary)
+                    .monospacedDigit()
             }
         }
-        .padding(.top, 2)
+        .padding(.top, 1)
         .padding(.trailing, 4)
     }
 }

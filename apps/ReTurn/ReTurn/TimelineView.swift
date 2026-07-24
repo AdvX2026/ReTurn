@@ -16,12 +16,11 @@ struct TimelineView: View {
                     Text(day.date, format: .dateTime.month(.abbreviated).day())
                         .font(TimelineDesign.Typography.day)
                         .foregroundStyle(.primary)
-                        .textCase(.uppercase)
 
                     Spacer()
 
-                    Text("[\(day.items.count) EVENTS]")
-                        .font(TimelineDesign.Typography.dayMetadata)
+                    Text("\(day.items.count) \(day.items.count == 1 ? "Event" : "Events")")
+                        .font(TimelineDesign.Typography.eventCount)
                         .foregroundStyle(.tertiary)
                 }
             }

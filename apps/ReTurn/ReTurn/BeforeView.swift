@@ -6,7 +6,7 @@ struct BeforeView: View {
 
     var body: some View {
         ZStack {
-            ReTurnDesign.Colors.screenBackground
+            TimelineDesign.Colors.pageBackground
                 .ignoresSafeArea()
 
             if days.isEmpty {

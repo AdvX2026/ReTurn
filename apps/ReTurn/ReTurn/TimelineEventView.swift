@@ -7,6 +7,8 @@ struct TimelineEventView: View {
     let isLast: Bool
 
     var body: some View {
+        let tint = TimelineDesign.Colors.accent(for: item)
+
         Group {
             if item.presentation == .major {
                 TimelineEventCard(item: item)
@@ -24,6 +26,7 @@ struct TimelineEventView: View {
         .background(alignment: .leading) {
             TimelineRail(
                 presentation: item.presentation,
+                tint: tint,
                 isFirst: isFirst,
                 isLast: isLast
             )
