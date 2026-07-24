@@ -237,3 +237,52 @@ export const PingResponse = z.object({
   version: z.string(),
 });
 export type PingResponse = z.infer<typeof PingResponse>;
+
+// ── search / ask (global search PRD) ──────────────────────
+
+export const SearchHit = z.object({
+  doc_id: z.string().min(1),
+  kind: z.string(),
+  score: z.number(),
+  snippet: z.string(),
+  node: NodeRecord.nullable(),
+  day: DaySummary.nullable(),
+});
+export type SearchHit = z.infer<typeof SearchHit>;
+
+export const SearchResponse = z.object({
+  query: z.string(),
+  took_ms: z.number().int().nonnegative(),
+  results: z.array(SearchHit),
+});
+export type SearchResponse = z.infer<typeof SearchResponse>;
+
+export const AskRequest = z.object({
+  question: z.string().min(1).max(500),
+  from: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+  to: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
+});
+export type AskRequest = z.infer<typeof AskRequest>;
+
+export const AskCitation = z.object({
+  node_id: z.string().uuid().nullable(),
+  date: z.string(),
+  kind: z.string(),
+  title: z.string().nullable(),
+  snippet: z.string(),
+});
+export type AskCitation = z.infer<typeof AskCitation>;
+
+export const AskResponse = z.object({
+  answer: z.string(),
+  citations: z.array(AskCitation),
+  retrieved: z.number().int().nonnegative(),
+  degraded: z.boolean(),
+});
+export type AskResponse = z.infer<typeof AskResponse>;
