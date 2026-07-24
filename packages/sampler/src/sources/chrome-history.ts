@@ -2,7 +2,7 @@
  * Chrome browse-history SampleSource.
  *
  * Copy-then-read today's History SQLite visits; emit browse_history nodes
- * with stable visit-based client_uuid. Failures silent.
+ * with stable visit-based client_uuid.
  */
 import type { NodeInput } from "@return/shared";
 import {
@@ -17,7 +17,6 @@ import {
   type SampleSource,
   type SourceResult,
   createKeyDedupe,
-  todayLocal,
   uuidFromSeed,
 } from "../source.js";
 
@@ -34,19 +33,18 @@ function seedKey(v: BrowseVisit): string {
 
 export function visitsToNodes(
   visits: BrowseVisit[],
-  day?: string,
+  day: string,
   dedupe: KeyDedupe = seen,
 ): NodeInput[] {
   const nodes: NodeInput[] = [];
   for (const v of visits) {
     const key = seedKey(v);
     if (!dedupe.tryAdd(key)) continue;
-    const rawTitle = (v.title || v.url).trim() || v.url;
-    const title = rawTitle.length > 500 ? rawTitle.slice(0, 500) : rawTitle;
+    const title = v.title.trim();
     nodes.push({
       client_uuid: uuidFromSeed(key),
       kind: "browse_history",
-      title,
+      title: title ? title.slice(0, 500) : null,
       content: v.url,
       source_meta: {
         url: v.url,
@@ -57,7 +55,7 @@ export function visitsToNodes(
         profile: v.profile,
       },
       client_created_at: v.visitedAt,
-      date: day ?? todayLocal(new Date(v.visitedAt)),
+      date: day,
     });
   }
   return nodes;
@@ -87,7 +85,7 @@ export const chromeHistorySource: SampleSource = {
     const visits = await collectChromeHistory(paths, config.chromeHistoryLimit, {
       start: ctx.dayStart,
       end: ctx.dayEnd,
-    }).catch(() => [] as BrowseVisit[]);
+    });
     const nodes = visitsToNodes(visits, ctx.day);
     return {
       nodes,

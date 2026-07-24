@@ -2,7 +2,7 @@
  * VS Code / Cursor recent-projects SampleSource.
  *
  * Reads state.vscdb (copy-then-open), maps to vscode_recent nodes with
- * deterministic client_uuid. Failures silent — never blocks the tick.
+ * deterministic client_uuid.
  */
 import type { NodeInput } from "@return/shared";
 import {
@@ -44,7 +44,7 @@ export function recentsToNodes(
       client_uuid: uuidFromSeed(key),
       kind: "vscode_recent",
       title: r.label,
-      content: r.path || r.uri,
+      content: r.path,
       source_meta: {
         uri: r.uri,
         path: r.path,
@@ -68,9 +68,7 @@ export const vscodeSource: SampleSource = {
     if (!resolved) {
       return { nodes: [], stats: { recents: 0, emitted: 0, db: 0 } };
     }
-    const recents = await collectVscodeRecents(resolved.path, resolved.editor).catch(
-      () => [] as VscodeRecent[],
-    );
+    const recents = await collectVscodeRecents(resolved.path, resolved.editor);
     const nodes = recentsToNodes(recents, ctx);
     return {
       nodes,

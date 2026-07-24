@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import { parseGitLog, resetRepoCache, scanTodayCommits } from "./collect-git.js";
+import { parseGitLog, resetRepoCache, scanCommits } from "./collect-git.js";
 import { uuidFromSeed } from "./source.js";
 import { commitsToNodes, resetSeenCommitShas } from "./sources/git.js";
 
@@ -108,18 +108,21 @@ describe("git source emission", () => {
   });
 
   it("maps commits to git_commit nodes with correct fields", () => {
-    const nodes = commitsToNodes([
-      {
-        repo: "demo",
-        repoPath: "/tmp/demo",
-        sha: "abc123",
-        committedAt: "2026-07-24T02:00:00.000Z",
-        subject: "fix: something",
-        filesChanged: 3,
-        insertions: 10,
-        deletions: 2,
-      },
-    ]);
+    const nodes = commitsToNodes(
+      [
+        {
+          repo: "demo",
+          repoPath: "/tmp/demo",
+          sha: "abc123",
+          committedAt: "2026-07-24T02:00:00.000Z",
+          subject: "fix: something",
+          filesChanged: 3,
+          insertions: 10,
+          deletions: 2,
+        },
+      ],
+      "2026-07-24",
+    );
     assert.equal(nodes.length, 1);
     const n = nodes[0]!;
     assert.equal(n.kind, "git_commit");
@@ -139,60 +142,53 @@ describe("git source emission", () => {
 
   it("truncates subject to 500 chars for title", () => {
     const long = "x".repeat(600);
-    const n = commitsToNodes([
-      {
-        repo: "demo",
-        repoPath: "/tmp/demo",
-        sha: "long1",
-        committedAt: "2026-07-24T02:00:00.000Z",
-        subject: long,
-        filesChanged: null,
-        insertions: null,
-        deletions: null,
-      },
-    ])[0]!;
+    const n = commitsToNodes(
+      [
+        {
+          repo: "demo",
+          repoPath: "/tmp/demo",
+          sha: "long1",
+          committedAt: "2026-07-24T02:00:00.000Z",
+          subject: long,
+          filesChanged: null,
+          insertions: null,
+          deletions: null,
+        },
+      ],
+      "2026-07-24",
+    )[0]!;
     assert.equal(n.title!.length, 500);
   });
 
-  it("dates commits by author local day (cross-midnight)", () => {
-    const d1 = new Date();
-    d1.setHours(12, 0, 0, 0);
-    const d2 = new Date(d1);
-    d2.setDate(d2.getDate() + 1);
-
-    const ymd = (d: Date) => {
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, "0");
-      const day = String(d.getDate()).padStart(2, "0");
-      return `${y}-${m}-${day}`;
-    };
-
-    const nodes = commitsToNodes([
-      {
-        repo: "demo",
-        repoPath: "/tmp/demo",
-        sha: "day1",
-        committedAt: d1.toISOString(),
-        subject: "day1",
-        filesChanged: 1,
-        insertions: 1,
-        deletions: null,
-      },
-      {
-        repo: "demo",
-        repoPath: "/tmp/demo",
-        sha: "day2",
-        committedAt: d2.toISOString(),
-        subject: "day2",
-        filesChanged: 1,
-        insertions: 1,
-        deletions: null,
-      },
-    ]);
+  it("uses the shared context day", () => {
+    const nodes = commitsToNodes(
+      [
+        {
+          repo: "demo",
+          repoPath: "/tmp/demo",
+          sha: "day1",
+          committedAt: "2026-07-24T01:00:00.000Z",
+          subject: "day1",
+          filesChanged: 1,
+          insertions: 1,
+          deletions: null,
+        },
+        {
+          repo: "demo",
+          repoPath: "/tmp/demo",
+          sha: "day2",
+          committedAt: "2026-07-24T15:00:00.000Z",
+          subject: "day2",
+          filesChanged: 1,
+          insertions: 1,
+          deletions: null,
+        },
+      ],
+      "2026-07-24",
+    );
     assert.equal(nodes.length, 2);
-    assert.equal(nodes[0]!.date, ymd(d1));
-    assert.equal(nodes[1]!.date, ymd(d2));
-    assert.notEqual(nodes[0]!.date, nodes[1]!.date);
+    assert.equal(nodes[0]!.date, "2026-07-24");
+    assert.equal(nodes[1]!.date, "2026-07-24");
   });
 
   it("dedupes commits in-process; reset re-emits", () => {
@@ -208,18 +204,18 @@ describe("git source emission", () => {
         deletions: null,
       },
     ];
-    const first = commitsToNodes(commits);
+    const first = commitsToNodes(commits, "2026-07-24");
     assert.equal(first.length, 1);
-    const second = commitsToNodes(commits);
+    const second = commitsToNodes(commits, "2026-07-24");
     assert.equal(second.length, 0);
     resetSeenCommitShas();
-    const third = commitsToNodes(commits);
+    const third = commitsToNodes(commits, "2026-07-24");
     assert.equal(third.length, 1);
     assert.equal(third[0]!.client_uuid, first[0]!.client_uuid);
   });
 });
 
-describe("scanTodayCommits integration", () => {
+describe("scanCommits integration", () => {
   let root: string;
   let repoPath: string;
 
@@ -251,7 +247,11 @@ describe("scanTodayCommits integration", () => {
   });
 
   it("discovers repo under root and returns today's commit", async () => {
-    const commits = await scanTodayCommits([root]);
+    const now = new Date();
+    const commits = await scanCommits([root], {
+      start: new Date(now.getTime() - 60_000).toISOString(),
+      end: new Date(now.getTime() + 60_000).toISOString(),
+    });
     assert.ok(commits.length >= 1, `expected >=1 commit, got ${commits.length}`);
     const hit = commits.find((c) => c.subject === "init: hello");
     assert.ok(hit, "expected subject 'init: hello'");
@@ -261,7 +261,10 @@ describe("scanTodayCommits integration", () => {
   });
 
   it("empty roots -> no spawn, empty result", async () => {
-    const commits = await scanTodayCommits([]);
+    const commits = await scanCommits([], {
+      start: "2026-07-24T00:00:00.000Z",
+      end: "2026-07-25T00:00:00.000Z",
+    });
     assert.deepEqual(commits, []);
   });
 });

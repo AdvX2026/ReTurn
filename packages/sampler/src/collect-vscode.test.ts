@@ -160,9 +160,8 @@ describe("readRecentlyOpenedJson integration", () => {
     assert.equal(recents[2]!.kind, "workspace");
   });
 
-  it("null / missing path returns empty", async () => {
-    assert.deepEqual(await collectVscodeRecents(null), []);
-    assert.deepEqual(await collectVscodeRecents(join(dir, "missing.vscdb"), "code"), []);
+  it("missing path rejects instead of reporting an empty sample", async () => {
+    await assert.rejects(collectVscodeRecents(join(dir, "missing.vscdb"), "code"));
   });
 
   it("resolveVscodeStateDb override uses custom editor", () => {
@@ -172,8 +171,8 @@ describe("readRecentlyOpenedJson integration", () => {
     assert.equal(resolved!.editor, "custom");
   });
 
-  it("resolveVscodeStateDb missing override returns null", () => {
-    assert.equal(resolveVscodeStateDb(join(dir, "nope.vscdb")), null);
+  it("resolveVscodeStateDb rejects a missing override", () => {
+    assert.throws(() => resolveVscodeStateDb(join(dir, "nope.vscdb")), /does not exist/);
   });
 
   it("WAL-mode state.vscdb: includes uncheckpointed ItemTable keys via -wal copy", () => {

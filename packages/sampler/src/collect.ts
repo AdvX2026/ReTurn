@@ -12,7 +12,6 @@ import {
   type SampleSource,
   type SourceResult,
   createSampleContext,
-  todayLocal,
 } from "./source.js";
 import { agentsSource } from "./sources/agents.js";
 import { chromeHistorySource } from "./sources/chrome-history.js";
@@ -21,14 +20,6 @@ import { gitSource } from "./sources/git.js";
 import { remindersSource } from "./sources/reminders.js";
 import { safariHistorySource } from "./sources/safari-history.js";
 import { vscodeSource } from "./sources/vscode.js";
-
-export { todayLocal, uuidFromSeed } from "./source.js";
-export { resetSeenAgentKeys } from "./sources/agents.js";
-export { resetSeenVisits } from "./sources/chrome-history.js";
-export { resetSeenCommitShas } from "./sources/git.js";
-export { resetSeenReminderKeys } from "./sources/reminders.js";
-export { resetSeenSafariVisits } from "./sources/safari-history.js";
-export { resetSeenVscodeKeys } from "./sources/vscode.js";
 
 /**
  * Registered sources, in emit order.
@@ -63,8 +54,8 @@ export interface SampleResult {
 }
 
 /**
- * Run every registered source once. Per-source failures become empty results
- * so a broken feature never blocks the tick or the outbox flush.
+ * Run every registered source once. The orchestrator is the sole source-error
+ * boundary: failures are visible in stats while independent sources continue.
  */
 export async function collectSample(opts?: {
   asSnapshot?: boolean;

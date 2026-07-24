@@ -58,14 +58,6 @@ export function dateInTimeZone(d: Date, timezone: string): string {
   return `${value("year")}-${value("month")}-${value("day")}`;
 }
 
-/** Backward-compatible helper; new source code should use SampleContext.day. */
-export function todayLocal(
-  d = new Date(),
-  timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-): string {
-  return dateInTimeZone(d, timezone);
-}
-
 function addCalendarDay(day: string): string {
   const [year, month, date] = day.split("-").map(Number);
   const next = new Date(Date.UTC(year!, month! - 1, date! + 1));

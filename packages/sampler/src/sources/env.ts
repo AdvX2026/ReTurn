@@ -29,10 +29,7 @@ export const envSource: SampleSource = {
       return { nodes: [], stats: { app: 0, tabs: 0 } };
     }
 
-    const [app, tabs] = await Promise.all([
-      frontmostApp().catch(() => null),
-      browserTabs().catch(() => [] as EnvState["tabs"]),
-    ]);
+    const [app, tabs] = await Promise.all([frontmostApp(), browserTabs()]);
     lastEnv = { app, tabs };
 
     const nodes: NodeInput[] = [];
@@ -59,7 +56,7 @@ export const envSource: SampleSource = {
       nodes.push({
         client_uuid: crypto.randomUUID(),
         kind: "tab_sample",
-        title: t.title || t.url,
+        title: t.title || null,
         content: t.url,
         source_meta: {
           browser: t.browser,
@@ -111,60 +108,52 @@ async function frontmostApp(): Promise<{ name: string; bundleId?: string } | nul
 async function browserTabs(): Promise<EnvState["tabs"]> {
   const tabs: EnvState["tabs"] = [];
 
-  try {
-    const raw = await osascript(`
-      tell application "System Events"
-        set chromeRunning to (name of processes) contains "Google Chrome"
-      end tell
-      if chromeRunning then
-        tell application "Google Chrome"
-          set out to ""
-          repeat with w in windows
-            repeat with t in tabs of w
-              set out to out & (title of t) & tab & (URL of t) & linefeed
-            end repeat
+  const chrome = await osascript(`
+    tell application "System Events"
+      set chromeRunning to (name of processes) contains "Google Chrome"
+    end tell
+    if chromeRunning then
+      tell application "Google Chrome"
+        set out to ""
+        repeat with w in windows
+          repeat with t in tabs of w
+            set out to out & (title of t) & tab & (URL of t) & linefeed
           end repeat
-          return out
-        end tell
-      else
-        return ""
-      end if
-    `);
-    for (const line of raw.split("\n")) {
-      if (!line.trim()) continue;
-      const [title, url] = line.split("\t");
-      if (url) tabs.push({ browser: "Chrome", title: title || "", url });
-    }
-  } catch {
-    /* not running / not authorized */
+        end repeat
+        return out
+      end tell
+    else
+      return ""
+    end if
+  `);
+  for (const line of chrome.split("\n")) {
+    if (!line.trim()) continue;
+    const [title, url] = line.split("\t");
+    if (url) tabs.push({ browser: "Chrome", title: title || "", url });
   }
 
-  try {
-    const raw = await osascript(`
-      tell application "System Events"
-        set safariRunning to (name of processes) contains "Safari"
-      end tell
-      if safariRunning then
-        tell application "Safari"
-          set out to ""
-          repeat with w in windows
-            repeat with t in tabs of w
-              set out to out & (name of t) & tab & (URL of t) & linefeed
-            end repeat
+  const safari = await osascript(`
+    tell application "System Events"
+      set safariRunning to (name of processes) contains "Safari"
+    end tell
+    if safariRunning then
+      tell application "Safari"
+        set out to ""
+        repeat with w in windows
+          repeat with t in tabs of w
+            set out to out & (name of t) & tab & (URL of t) & linefeed
           end repeat
-          return out
-        end tell
-      else
-        return ""
-      end if
-    `);
-    for (const line of raw.split("\n")) {
-      if (!line.trim()) continue;
-      const [title, url] = line.split("\t");
-      if (url) tabs.push({ browser: "Safari", title: title || "", url });
-    }
-  } catch {
-    /* not running / not authorized */
+        end repeat
+        return out
+      end tell
+    else
+      return ""
+    end if
+  `);
+  for (const line of safari.split("\n")) {
+    if (!line.trim()) continue;
+    const [title, url] = line.split("\t");
+    if (url) tabs.push({ browser: "Safari", title: title || "", url });
   }
 
   return tabs;
