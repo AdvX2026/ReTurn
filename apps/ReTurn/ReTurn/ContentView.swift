@@ -15,29 +15,51 @@ enum TimelinePage: String, CaseIterable, Identifiable {
     var id: Self { self }
 }
 
+/// What the navigation's dim timer reacts to: it wakes on either a page change
+/// or the pager starting to move, and only counts down once both have settled.
+private struct NavigationActivity: Equatable {
+    let page: TimelinePage?
+    let isScrolling: Bool
+}
+
 struct ContentView: View {
     @State private var selectedPage: TimelinePage? = .now
     @State private var isNavigationDimmed = false
+    @State private var isScrolling = false
     @FocusState private var isComposerFocused: Bool
 
     var body: some View {
+        let pager = ScrollView(.horizontal) {
+            LazyHStack(spacing: 0) {
+                ForEach(TimelinePage.allCases) { page in
+                    pageContent(for: page)
+                        .containerRelativeFrame([.horizontal, .vertical])
+                        .id(page)
+                }
+            }
+            .scrollTargetLayout()
+        }
+        .scrollIndicators(.hidden)
+        .scrollTargetBehavior(.paging)
+        .scrollPosition(id: $selectedPage)
+
         let timelineContent = ZStack {
             ReTurnDesign.Colors.screenBackground
                 .ignoresSafeArea()
 
-            ScrollView(.horizontal) {
-                LazyHStack(spacing: 0) {
-                    ForEach(TimelinePage.allCases) { page in
-                        pageContent(for: page)
-                            .containerRelativeFrame([.horizontal, .vertical])
-                            .id(page)
+            // Scroll phases let the navigation wake the moment a drag starts and
+            // start its countdown only once the pager truly stops -- `scrollPosition`
+            // updates when the settle animation begins, which is too early for both.
+            // On older systems `isScrolling` stays false and the navigation falls
+            // back to waking on the page change itself.
+            if #available(iOS 18.0, macOS 15.0, *) {
+                pager
+                    .onScrollPhaseChange { _, phase in
+                        isScrolling = phase != .idle
                     }
-                }
-                .scrollTargetLayout()
+            } else {
+                pager
             }
-            .scrollIndicators(.hidden)
-            .scrollTargetBehavior(.paging)
-            .scrollPosition(id: $selectedPage)
         }
         .safeAreaInset(edge: .top, spacing: 0) {
             pageNavigation
@@ -84,16 +106,24 @@ struct ContentView: View {
                 Button {
                     pageSelection.wrappedValue = page
                 } label: {
+                    // Every label reserves its selected width, so changing
+                    // weights cannot shove the row's other labels around.
                     Text(page.rawValue)
-                        .font(ReTurnDesign.Typography.navigationItem)
-                        .fontWeight(isSelected ? .semibold : .regular)
-                        .foregroundStyle(
-                            isSelected
-                                ? ReTurnDesign.Colors.primaryLabel
-                                : ReTurnDesign.Colors.secondaryLabel
-                        )
+                        .fontWeight(.semibold)
+                        .hidden()
+                        .overlay {
+                            Text(page.rawValue)
+                                .fontWeight(isSelected ? .semibold : .regular)
+                                .foregroundStyle(
+                                    isSelected
+                                        ? ReTurnDesign.Colors.primaryLabel
+                                        : ReTurnDesign.Colors.secondaryLabel
+                                )
+                        }
                 }
+                .font(ReTurnDesign.Typography.navigationItem)
                 .buttonStyle(.plain)
+                .accessibilityLabel(page.rawValue)
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
@@ -109,11 +139,16 @@ struct ContentView: View {
             .easeInOut(duration: ReTurnDesign.Motion.navigationDimDuration),
             value: isNavigationDimmed
         )
-        // Restarts on every page change, so the navigation comes back to full
-        // strength while switching and recedes once the page settles. Opacity
-        // does not affect hit testing, so the labels stay tappable while dimmed.
-        .task(id: selectedPage) {
+        // Restarts whenever the page changes or the pager starts and stops, so
+        // the navigation is at full strength for the whole gesture and only
+        // recedes once everything settles. Opacity does not affect hit testing,
+        // so the labels stay tappable while dimmed.
+        .task(id: NavigationActivity(page: selectedPage, isScrolling: isScrolling)) {
             isNavigationDimmed = false
+            // Hold while the pager is still moving; the countdown belongs to
+            // the restart that follows it stopping.
+            guard !isScrolling else { return }
+
             try? await Task.sleep(for: .seconds(ReTurnDesign.Motion.navigationDimDelay))
             // `try?` swallows the cancellation error, so a superseded timer
             // would otherwise still dim -- immediately after the task that
