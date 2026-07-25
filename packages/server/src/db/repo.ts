@@ -648,9 +648,9 @@ function profileToRecord(db: Db, row: ProfileRow): UserProfile {
 }
 
 function readProfileRow(db: Db): ProfileRow {
-  const row = db
-    .prepare(`SELECT * FROM user_profile WHERE id = 1`)
-    .get() as ProfileRow | undefined;
+  const row = db.prepare(`SELECT * FROM user_profile WHERE id = 1`).get() as
+    | ProfileRow
+    | undefined;
   if (row) return row;
   const at = nowIso();
   db.prepare(
@@ -682,8 +682,7 @@ export function getUserProfile(db: Db): UserProfile {
 export function applyInferredProfession(db: Db, inferred: Profession): UserProfile {
   const row = readProfileRow(db);
   const at = nowIso();
-  const nextProfession =
-    row.profession_mode === "manual" ? row.profession : inferred;
+  const nextProfession = row.profession_mode === "manual" ? row.profession : inferred;
   db.prepare(
     `UPDATE user_profile SET
        profession = ?,

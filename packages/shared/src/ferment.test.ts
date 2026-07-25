@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { FermentResultSchema } from "./ferment.js";
+import { FermentResultSchema, WeeklyFermentResultSchema } from "./ferment.js";
 
 describe("FermentResultSchema", () => {
   it("accepts minimal valid payload", () => {
@@ -31,5 +31,24 @@ describe("FermentResultSchema", () => {
     assert.deepEqual(r.todos, []);
     assert.deepEqual(r.node_tags, {});
     assert.deepEqual(r.edges, []);
+  });
+});
+
+describe("WeeklyFermentResultSchema", () => {
+  it("accepts narrative weekly payload", () => {
+    const r = WeeklyFermentResultSchema.safeParse({
+      summary: "A week of building ReTurn.",
+      opening_line: "这一周主线向前。",
+      highlights: [{ text: "Weekly card shipped", kind: "win" }],
+    });
+    assert.equal(r.success, true);
+  });
+
+  it("defaults highlights to []", () => {
+    const r = WeeklyFermentResultSchema.parse({
+      summary: "x",
+      opening_line: "y",
+    });
+    assert.deepEqual(r.highlights, []);
   });
 });

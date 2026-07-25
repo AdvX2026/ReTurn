@@ -1,12 +1,14 @@
 import {
   ACTIVE_FEED_KINDS,
   type BriefingCardContent,
+  type Profession,
   type ReviewPoint,
   type SaveResponse,
 } from "@return/shared";
 import { buildFermentContext, runFerment } from "../ai/ferment.js";
 import { config } from "../config.js";
 import {
+  applyInferredProfession,
   countCrossDayEdges,
   currentCadence,
   ensureDay,
@@ -14,6 +16,7 @@ import {
   getDayByDate,
   getNodeByClientUuid,
   getNodeById,
+  getUserProfile,
   insertCard,
   insertEdge,
   insertNode,
@@ -21,8 +24,6 @@ import {
   listEdgesByDay,
   listNodesByDate,
   listSavedDays,
-  applyInferredProfession,
-  getUserProfile,
   listTodosByDay,
   listTodosByStatus,
   markDaySaved,
@@ -38,6 +39,7 @@ import { resolveProfession } from "../stats/profession.js";
 import { allSessions } from "../stats/sessions.js";
 import { computeStreak, savedDatesFromDays } from "../stats/streak.js";
 import { addDays, nowIso, uuid } from "../util/time.js";
+import { maybeInsertWeeklyCard } from "./weekly.js";
 
 export interface SaveInput {
   date: string;
@@ -172,6 +174,8 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
   ]);
 
   let cardsCreated = 0;
+  /** Day-inferred profession; set inside the seal transaction, used for weekly. */
+  let dayProfession: Profession = "generalist";
   db.transaction(() => {
     if (saveNoteText !== null && saveNoteNodeId === null) {
       const { node } = insertNode(db, {
@@ -257,7 +261,7 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
       sleepMinutes: health.sleepMinutes,
       steps: health.steps,
     });
-    const dayProfession = resolveProfession({
+    dayProfession = resolveProfession({
       sessions: freshSessions,
       gitCommitCount: breakdown.git_commit_count,
       agentDurationMin: breakdown.agent_duration_min,
@@ -350,6 +354,12 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
       cardsCreated++;
     }
   })();
+
+  // P1 weekly recap: every 7th saved day or Sunday Save. Soft-fail does not unseal.
+  cardsCreated += await maybeInsertWeeklyCard(db, input.date, {
+    profession: dayProfession,
+    profileProfession: getUserProfile(db).profession,
+  });
 
   return buildSaveResponse(db, day.id, input.date, false, cardsCreated);
 }

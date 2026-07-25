@@ -228,12 +228,45 @@ struct ModelsTests {
         #expect(tl.segments[1].children?.first?.label == "note 0")
     }
 
+    @Test func weeklyCardContentDecodes() throws {
+        let json = """
+        {
+          "id": "9c5c9e59-0000-4000-8000-000000000001",
+          "type": "weekly",
+          "date": "2026-07-26",
+          "created_at": "2026-07-26T14:00:00.000Z",
+          "content": {
+            "week_start": "2026-07-20",
+            "week_end": "2026-07-26",
+            "summary": "本周写了很多代码",
+            "opening_line": "主线向前。",
+            "highlights": [{"text": "Shipped weekly", "kind": "win"}],
+            "day_dates": ["2026-07-26"],
+            "stats_avg": {
+              "intake": 40, "focus": 50, "output": 60, "continuity": 10, "energy": 80
+            },
+            "profession": "coder"
+          }
+        }
+        """
+        let card = try decode(CardRecord.self, json)
+        #expect(card.type == .weekly)
+        guard case .weekly(let content) = card.content else {
+            Issue.record("expected weekly content")
+            return
+        }
+        #expect(content.weekStart == "2026-07-20")
+        #expect(content.weekEnd == "2026-07-26")
+        #expect(content.profession == .coder)
+        #expect(content.highlights.count == 1)
+    }
+
     @Test func malformedCardContentFallsBackToRaw() throws {
         // Unknown card type / shape drift must degrade to .raw, not fail the list.
         let json = """
         {
           "id": "9c5c9e59-0000-4000-8000-000000000001",
-          "type": "weekly",
+          "type": "totally_new_card",
           "date": "2026-07-25",
           "created_at": "2026-07-25T07:00:00.000Z",
           "content": { "narrative": "本周写了很多代码" }
