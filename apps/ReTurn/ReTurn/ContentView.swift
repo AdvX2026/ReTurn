@@ -74,7 +74,14 @@ struct ContentView: View {
                     }
             )
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                ComposerBar(isFocused: $isComposerFocused)
+                VStack(spacing: 0) {
+                    if isComposerFocused {
+                        ComposerWalker()
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                    ComposerBar(isFocused: $isComposerFocused)
+                }
+                .animation(.spring(response: 0.4, dampingFraction: 0.8), value: isComposerFocused)
             }
     }
 
@@ -166,23 +173,93 @@ struct ContentView: View {
 }
 
 private struct NowPage: View {
+    /// Demo driver until the Now store wires `/api/stats/today` and the
+    /// contract's pending profession field in: every few seconds the next
+    /// profession takes the stage, and one stat at a time is pushed to the
+    /// max so each wearable (sparkles, eye glints, gear, orbit dots, aura)
+    /// gets its turn in the spotlight.
+    private static let demoLineup: [(profession: MascotProfession, stat: String, stats: Stats)] = [
+        (.coder, "intake", Stats(intake: 95, focus: 40, output: 40, continuity: 40, energy: 40)),
+        (.writer, "focus", Stats(intake: 40, focus: 95, output: 40, continuity: 40, energy: 40)),
+        (.designer, "output", Stats(intake: 40, focus: 40, output: 95, continuity: 40, energy: 40)),
+        (.researcher, "continuity", Stats(intake: 40, focus: 40, output: 40, continuity: 95, energy: 40)),
+        (.manager, "energy", Stats(intake: 40, focus: 40, output: 40, continuity: 40, energy: 95)),
+    ]
+
+    @State private var demoIndex = 0
+
     var body: some View {
+        let demo = Self.demoLineup[demoIndex]
         VStack(spacing: ReTurnDesign.Spacing.medium) {
             // Sized from the scroll viewport, which only changes on rotation --
-            // the mascot is a preserved vector and re-rasterizes on every new
-            // width, so it must not track the composer or keyboard animation.
-            MascotImage()
+            // the mascot redraws every frame, so it must not track the
+            // composer or keyboard animation.
+            MascotView(stats: demo.stats, profession: demo.profession)
                 .containerRelativeFrame(.horizontal) { width, _ in
-                    ReTurnDesign.Layout.mascotWidth(in: width)
+                    MascotView.frameWidth(
+                        forMascotWidth: ReTurnDesign.Layout.mascotWidth(in: width)
+                    )
                 }
 
             Text("Teethe is back!")
                 .font(ReTurnDesign.Typography.heroTitle)
                 .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
                 .multilineTextAlignment(.center)
+
+            Text("\(demo.profession.displayName) · \(demo.stat)")
+                .font(ReTurnDesign.Typography.cardTag)
+                .foregroundStyle(ReTurnDesign.Colors.secondaryLabel)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.bottom, ReTurnDesign.Metrics.heroOpticalLift * 2)
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(3))
+                guard !Task.isCancelled else { return }
+                demoIndex = (demoIndex + 1) % Self.demoLineup.count
+            }
+        }
+    }
+}
+
+/// Mini Kongkong pacing back and forth above the composer while it is
+/// focused. The stride (stepping legs, swinging arms, bobbing body, forward
+/// lean) lives in `MascotView(walking:)`; this wrapper only translates the
+/// frame at a constant speed and flips the facing at each end. The
+/// profession stays fixed until a real Now store owns one.
+private struct ComposerWalker: View {
+    private let mascotWidth: CGFloat = 56
+    private let pointsPerSecond: CGFloat = 110
+
+    var body: some View {
+        // `SwiftUI.` prefix is required: the app has its own TimelineView.
+        SwiftUI.TimelineView(.animation) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            GeometryReader { proxy in
+                let frameWidth = MascotView.frameWidth(forMascotWidth: mascotWidth)
+                let travel = max(proxy.size.width - frameWidth, 1)
+                // Triangle wave: constant speed, instant cartoon turnaround.
+                let cycle = (t * pointsPerSecond)
+                    .truncatingRemainder(dividingBy: travel * 2)
+                let outbound = cycle < travel
+                MascotView(profession: .coder, walking: true)
+                    .frame(width: frameWidth)
+                    .scaleEffect(x: outbound ? 1 : -1, y: 1)
+                    .position(
+                        x: (outbound ? cycle : travel * 2 - cycle) + frameWidth / 2,
+                        y: proxy.size.height / 2
+                    )
+            }
+        }
+        .frame(height: mascotHeight)
+        .accessibilityElement()
+        .accessibilityLabel("Kongkong pacing")
+        .accessibilityIdentifier("ComposerWalker")
+    }
+
+    private var mascotHeight: CGFloat {
+        MascotView.frameWidth(forMascotWidth: mascotWidth)
+            * MascotView.Design.height / MascotView.Design.width
     }
 }
 #else
