@@ -31,10 +31,48 @@ struct AfterCardView: View {
             HealthAdviceCard(content: content)
         case .idea(let content):
             IdeaCard(content: content)
+        case .weekly(let content):
+            WeeklyCardView(content: content)
         case .raw:
             // Unknown/drifted card shapes are filtered by the page via
             // `CardContent.isRenderable`; reaching here renders nothing.
             EmptyView()
+        }
+    }
+}
+
+/// A seven-day recap: narrative first, followed by up to three highlights.
+struct WeeklyCardView: View {
+    let content: WeeklyCardContent
+
+    var body: some View {
+        CardSurface {
+            CardHeader(
+                icon: "calendar",
+                title: "Weekly Recap",
+                tint: .accentColor,
+                detail: "\(content.weekStart) – \(content.weekEnd)"
+            )
+
+            CardHeadline(text: content.openingLine)
+
+            if !content.summary.isEmpty {
+                Text(content.summary)
+                    .font(ReTurnDesign.Typography.cardBody)
+                    .foregroundStyle(ReTurnDesign.Colors.secondaryLabel)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if !content.highlights.isEmpty {
+                CardDivider()
+
+                CardRows(items: Array(content.highlights.prefix(3))) { highlight in
+                    Text(highlight.text)
+                        .font(ReTurnDesign.Typography.cardBody)
+                        .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
     }
 }

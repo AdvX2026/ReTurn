@@ -24,6 +24,7 @@
 - Decode/encode ONLY via `ReTurnAPI.makeDecoder()/makeEncoder()` — snake_case conversion lives in the coder strategy; models deliberately have no per-field CodingKeys.
 - Enum policy: all mirrored string enums are tolerant (`TolerantEnum`) — unknown raw values decode to a fallback, never throw. `NodeKind` currently mirrors `email`, `vscode_recent`, and `browse_history`; future server values still must not crash older app builds.
 - Card `content` is loose JSON in the contract; the mirror decodes it into typed per-`type` structs (shapes taken from what `services/save.ts` / `services/chat.ts` actually write on the mirror basis) with a `.raw` fallback on unknown type or shape drift. If backend tightens/changes card content, update `BriefingCardContent` & co. and `ModelsTests`.
+- Weekly cards decode as `WeeklyCardContent` and render in After as a seven-day recap with the opening line, summary, and up to three highlights.
 - IDs and timestamps are plain `String` (server stamps `created_at`; parse display dates via `ReTurnAPI.parseDate`). `client_uuid` is the idempotency key — never regenerate on retry.
 
 ## APIClient.swift

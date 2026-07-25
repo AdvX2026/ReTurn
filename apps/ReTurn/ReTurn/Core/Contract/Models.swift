@@ -126,7 +126,7 @@ enum TaskStatus: String, TolerantEnum {
 }
 
 enum CardType: String, TolerantEnum {
-    case briefing, idea, todoSuggestion = "todo_suggestion", health, unknown
+    case briefing, idea, todoSuggestion = "todo_suggestion", health, weekly, unknown
     static let fallback = CardType.unknown
 }
 
@@ -711,11 +711,24 @@ struct IdeaCardContent: Codable {
     var provenance: IdeaProvenance
 }
 
+/// Typed content of a `weekly` CardRecord (PRD P1 week recap).
+struct WeeklyCardContent: Codable {
+    var weekStart: String
+    var weekEnd: String
+    var summary: String
+    var openingLine: String
+    var highlights: [ReviewPoint]
+    var dayDates: [String]
+    var statsAvg: Stats?
+    var profession: Profession
+}
+
 enum CardContent {
     case briefing(BriefingCardContent)
     case todoSuggestion(TodoSuggestionCardContent)
     case health(HealthCardContent)
     case idea(IdeaCardContent)
+    case weekly(WeeklyCardContent)
     case raw([String: JSONValue])
 }
 
@@ -748,6 +761,8 @@ struct CardRecord: Codable, Identifiable {
             typed = (try? c.decode(HealthCardContent.self, forKey: .content)).map(CardContent.health)
         case .idea:
             typed = (try? c.decode(IdeaCardContent.self, forKey: .content)).map(CardContent.idea)
+        case .weekly:
+            typed = (try? c.decode(WeeklyCardContent.self, forKey: .content)).map(CardContent.weekly)
         case .unknown:
             typed = nil
         }
@@ -765,6 +780,7 @@ struct CardRecord: Codable, Identifiable {
         case .todoSuggestion(let v): try c.encode(v, forKey: .content)
         case .health(let v): try c.encode(v, forKey: .content)
         case .idea(let v): try c.encode(v, forKey: .content)
+        case .weekly(let v): try c.encode(v, forKey: .content)
         case .raw(let v): try c.encode(v, forKey: .content)
         }
     }

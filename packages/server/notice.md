@@ -47,6 +47,13 @@ See root `.env.example`. `LLM_API_KEY` / `HEALTH_TOKEN` never ship to clients. H
 - `GET /api/stats/today` includes effective `profession` + `profession_mode` for Now UI.
 - No multi-tenant accounts; one home-LAN user.
 
+## Weekly card (PRD P1)
+- `CardType.weekly` + `WeeklyCardContent` in shared. Produced after successful Save when
+  local day is Sunday **or** total sealed days (including today) is a positive multiple of 7.
+- One card per `week_end` (= Save date); window is 7 calendar days ending that day.
+- Separate narrative LLM call (`operation: weekly_ferment`); soft-fail does not unseal the day.
+- Surfaces on `GET /api/cards?direction=before` (not future).
+
 ## Todo preference loop (AI suggestions ↔ Apple Reminders)
 - Real checklist = Mac Reminders. Server `todos` = AI suggestions only (`status`: suggested|accepted|dismissed).
 - Accept: `POST /api/todos/:id/accept` after UI EventKit write. Dismiss: `POST .../dismiss`.

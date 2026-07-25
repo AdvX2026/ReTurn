@@ -55,3 +55,22 @@ export const FermentResultSchema = z.object({
     .default([]),
 });
 export type FermentResult = z.infer<typeof FermentResultSchema>;
+
+/**
+ * Structured JSON for the optional weekly recap LLM call (PRD P1).
+ * Separate from daily ferment — no todos/edges; narrative only.
+ */
+export const WeeklyFermentResultSchema = z.object({
+  summary: z.string().min(1).max(4000),
+  opening_line: z.string().min(1).max(280),
+  highlights: z
+    .array(
+      z.object({
+        text: z.string().min(1).max(400),
+        kind: z.enum(["win", "miss", "insight", "other"]).default("other"),
+      }),
+    )
+    .max(12)
+    .default([]),
+});
+export type WeeklyFermentResult = z.infer<typeof WeeklyFermentResultSchema>;
