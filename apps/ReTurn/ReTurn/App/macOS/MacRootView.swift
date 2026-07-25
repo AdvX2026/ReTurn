@@ -43,6 +43,7 @@ struct MacRootView: View {
             .scrollTargetBehavior(.paging)
             .scrollPosition(id: $selection)
         }
+        .ignoresSafeArea(.container, edges: .top)
         .background(ReTurnDesign.Colors.screenBackground)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 0) {
