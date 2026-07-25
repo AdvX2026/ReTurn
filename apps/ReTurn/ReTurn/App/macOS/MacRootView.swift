@@ -10,6 +10,7 @@ import SwiftUI
 struct MacRootView: View {
     @State private var selection: TimelinePage? = .now
     @FocusState private var isComposerFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(ChatStore.self) private var chat: ChatStore
     @Environment(TimelineStore.self) private var timeline: TimelineStore
     @Environment(StatsStore.self) private var stats: StatsStore
@@ -83,13 +84,6 @@ struct MacRootView: View {
 
     private var currentPage: TimelinePage { selection ?? .now }
 
-    private var pagePickerSelection: Binding<TimelinePage> {
-        Binding(
-            get: { currentPage },
-            set: { select($0) }
-        )
-    }
-
     /// Manual refresh (⌘R): no server push exists, so each page pulls
     /// its own stores again — stats on Now, the viewed day + overview on
     /// Before, the card stream on After.
@@ -122,7 +116,9 @@ struct MacRootView: View {
     /// a swipe updates the selection back. One binding, no direction math.
     private func select(_ page: TimelinePage) {
         withAnimation(
-            .easeInOut(duration: ReTurnDesign.Motion.navigationSelectionDuration)
+            reduceMotion
+                ? nil
+                : .easeInOut(duration: ReTurnDesign.Motion.navigationSelectionDuration)
         ) {
             selection = page
         }
@@ -140,32 +136,23 @@ struct MacRootView: View {
         return TimelinePage.allCases[index]
     }
 
-    /// Desktop navigation uses the native segmented picker so macOS 26 owns
-    /// the Liquid Glass appearance, pointer feedback and selected state.
+    /// Desktop navigation uses a macOS-only custom control because the native
+    /// segmented picker does not expose iPad's glass-lens selection treatment.
     private var pageIndicator: some View {
-        Picker("Timeline page", selection: pagePickerSelection) {
-            ForEach(TimelinePage.allCases) { page in
-                Text(page.rawValue)
-                    .tag(page)
+        MacTimelineGlassPicker(selection: currentPage, onSelect: select)
+            .padding(.top, ReTurnDesign.Spacing.small)
+            // The single definition of the gap between the indicator row and the
+            // pages below it.
+            .padding(.bottom, ReTurnDesign.Spacing.medium)
+            .frame(maxWidth: .infinity)
+            .background {
+                if #available(macOS 15.0, *) {
+                    Color.clear
+                        .contentShape(.rect)
+                        .gesture(WindowDragGesture())
+                        .allowsWindowActivationEvents(true)
+                }
             }
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .controlSize(.large)
-        .fixedSize(horizontal: true, vertical: false)
-        .padding(.top, ReTurnDesign.Spacing.small)
-        // The single definition of the gap between the indicator row and the
-        // pages below it.
-        .padding(.bottom, ReTurnDesign.Spacing.medium)
-        .frame(maxWidth: .infinity)
-        .background {
-            if #available(macOS 15.0, *) {
-                Color.clear
-                    .contentShape(.rect)
-                    .gesture(WindowDragGesture())
-                    .allowsWindowActivationEvents(true)
-            }
-        }
     }
 
     /// Keyboard navigation. ←/→ step through the flow and Escape returns to
