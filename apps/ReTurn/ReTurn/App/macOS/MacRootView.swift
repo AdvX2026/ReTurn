@@ -1,4 +1,5 @@
 #if os(macOS)
+import AppKit
 import SwiftUI
 
 /// macOS root: the same paging `ScrollView` the iOS pager runs on, so a
@@ -11,6 +12,7 @@ struct MacRootView: View {
     @State private var selection: TimelinePage? = .now
     @FocusState private var isComposerFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(ChatStore.self) private var chat: ChatStore
     @Environment(TimelineStore.self) private var timeline: TimelineStore
     @Environment(StatsStore.self) private var stats: StatsStore
@@ -93,7 +95,15 @@ struct MacRootView: View {
     private var currentPage: TimelinePage { selection ?? .now }
 
     private var windowBackgroundColor: Color {
-        currentPage == .after ? .black : ReTurnDesign.Colors.screenBackground
+        guard currentPage == .after else {
+            return ReTurnDesign.Colors.screenBackground
+        }
+        guard colorScheme == .light else { return .black }
+
+        let groupedBackground =
+            NSColor.alternatingContentBackgroundColors.dropFirst().first
+            ?? NSColor.windowBackgroundColor
+        return Color(nsColor: groupedBackground)
     }
 
     private var pagePickerSelection: Binding<TimelinePage> {
