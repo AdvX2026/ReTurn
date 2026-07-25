@@ -177,14 +177,15 @@ struct ContentView: View {
 private struct NowPage: View {
     /// Demo driver until the Now store wires `/api/stats/today` and the
     /// contract's pending profession field in: every few seconds the next
-    /// profession takes the stage with a stats set that shows off its
-    /// signature wearable.
-    private static let demoLineup: [(profession: MascotProfession, stats: Stats)] = [
-        (.coder, Stats(intake: 60, focus: 90, output: 70, continuity: 50, energy: 75)),
-        (.writer, Stats(intake: 85, focus: 70, output: 55, continuity: 65, energy: 60)),
-        (.designer, Stats(intake: 75, focus: 65, output: 80, continuity: 45, energy: 85)),
-        (.researcher, Stats(intake: 90, focus: 80, output: 50, continuity: 60, energy: 55)),
-        (.manager, Stats(intake: 55, focus: 60, output: 75, continuity: 90, energy: 70)),
+    /// profession takes the stage, and one stat at a time is pushed to the
+    /// max so each wearable (sparkles, eye glints, gear, orbit dots, aura)
+    /// gets its turn in the spotlight.
+    private static let demoLineup: [(profession: MascotProfession, stat: String, stats: Stats)] = [
+        (.coder, "intake", Stats(intake: 95, focus: 40, output: 40, continuity: 40, energy: 40)),
+        (.writer, "focus", Stats(intake: 40, focus: 95, output: 40, continuity: 40, energy: 40)),
+        (.designer, "output", Stats(intake: 40, focus: 40, output: 95, continuity: 40, energy: 40)),
+        (.researcher, "continuity", Stats(intake: 40, focus: 40, output: 40, continuity: 95, energy: 40)),
+        (.manager, "energy", Stats(intake: 40, focus: 40, output: 40, continuity: 40, energy: 95)),
     ]
 
     @State private var demoIndex = 0
@@ -207,7 +208,7 @@ private struct NowPage: View {
                 .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
                 .multilineTextAlignment(.center)
 
-            Text(demo.profession.displayName)
+            Text("\(demo.profession.displayName) · \(demo.stat)")
                 .font(ReTurnDesign.Typography.cardTag)
                 .foregroundStyle(ReTurnDesign.Colors.secondaryLabel)
         }
