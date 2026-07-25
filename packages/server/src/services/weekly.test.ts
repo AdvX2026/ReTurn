@@ -9,9 +9,16 @@ import {
   markDaySaved,
 } from "../db/repo.js";
 import { type Db, openMemoryDb } from "../db/schema.js";
-import { addDays } from "../util/time.js";
+import { addDays, formatDate, parseDate, todayDate } from "../util/time.js";
 import { saveToday } from "./save.js";
 import { averageStats, shouldProduceWeekly, weekWindow } from "./weekly.js";
+
+/** Most recent Sunday on or before `anchor` (local calendar). */
+function sundayOnOrBefore(anchor: string = todayDate()): string {
+  const d = parseDate(anchor);
+  d.setDate(d.getDate() - d.getDay());
+  return formatDate(d);
+}
 
 describe("weekly helpers", () => {
   let db: Db;
@@ -21,6 +28,7 @@ describe("weekly helpers", () => {
   });
 
   it("weekWindow is 7 inclusive days ending on week_end", () => {
+    // Fixed calendar arithmetic (not "today"-dependent).
     assert.deepEqual(weekWindow("2026-07-26"), {
       week_start: "2026-07-20",
       week_end: "2026-07-26",
@@ -28,7 +36,7 @@ describe("weekly helpers", () => {
   });
 
   it("shouldProduceWeekly on Sunday even with few saves", () => {
-    // 2026-07-26 is a Sunday.
+    // 2026-07-26 is a Sunday (local parseDate day-of-week).
     assert.equal(shouldProduceWeekly(db, "2026-07-26"), true);
   });
 
@@ -125,20 +133,23 @@ describe("saveToday weekly card", () => {
   });
 
   it("inserts a weekly card on Sunday Save", async () => {
-    // 2026-07-26 Sunday
-    const r = await saveToday(db, { date: "2026-07-26", note_text: "week end" });
+    // listCards(before) only returns date <= todayDate(); use a Sunday that is not in the future.
+    const sunday = sundayOnOrBefore();
+    const { week_start, week_end } = weekWindow(sunday);
+
+    const r = await saveToday(db, { date: sunday, note_text: "week end" });
     assert.equal(r.already_saved, false);
     assert.ok(r.cards_created >= 2); // briefing + weekly (+ maybe todos)
 
-    const weekly = getCardByTypeDate(db, "weekly", "2026-07-26");
+    const weekly = getCardByTypeDate(db, "weekly", sunday);
     assert.ok(weekly);
     const content = weekly!.content as WeeklyCardContent;
-    assert.equal(content.week_end, "2026-07-26");
-    assert.equal(content.week_start, "2026-07-20");
+    assert.equal(content.week_end, week_end);
+    assert.equal(content.week_start, week_start);
     assert.ok(content.summary.length > 0);
     assert.ok(content.opening_line.length > 0);
     assert.ok(Array.isArray(content.highlights));
-    assert.ok(content.day_dates.includes("2026-07-26"));
+    assert.ok(content.day_dates.includes(sunday));
     assert.ok(content.profession);
 
     const before = listCards(db, { direction: "before", limit: 20 });
@@ -146,11 +157,12 @@ describe("saveToday weekly card", () => {
   });
 
   it("does not duplicate weekly on re-save", async () => {
-    await saveToday(db, { date: "2026-07-26" });
-    const first = getCardByTypeDate(db, "weekly", "2026-07-26")!;
-    const second = await saveToday(db, { date: "2026-07-26" });
+    const sunday = sundayOnOrBefore();
+    await saveToday(db, { date: sunday });
+    const first = getCardByTypeDate(db, "weekly", sunday)!;
+    const second = await saveToday(db, { date: sunday });
     assert.equal(second.already_saved, true);
-    const again = getCardByTypeDate(db, "weekly", "2026-07-26")!;
+    const again = getCardByTypeDate(db, "weekly", sunday)!;
     assert.equal(again.id, first.id);
   });
 });
