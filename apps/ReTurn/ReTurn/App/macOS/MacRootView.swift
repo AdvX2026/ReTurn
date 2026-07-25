@@ -114,7 +114,7 @@ struct MacRootView: View {
         case .before:
             MacBeforeView()
         case .now:
-            MacNowPage()
+            MacNowPage(isActive: currentPage == .now)
         case .after:
             MacAfterView()
         }
@@ -243,18 +243,16 @@ private extension TimelinePage {
     }
 }
 
-/// The same hero as mobile, at a fixed width: the desktop window is too wide
-/// for the iOS proportional sizing even inside the pager. Once the
-/// conversation starts, the hero collapses to a header over the transcript.
-///
-/// Layout is top-aligned on purpose. The mobile hero uses a bottom optical
-/// lift to sit near vertical center on a phone; on a tall desktop page the
-/// same `.frame(maxHeight: .infinity)` default (center) left a large empty
-/// band under the page indicator. Top-aligning is the root fix — no extra
-/// spacer chrome.
+/// The desktop hero keeps the mobile mascot's motion at a fixed width and
+/// centers the complete idle state in the space between the page picker and
+/// composer. Once chat has entries, the mascot becomes a compact top header
+/// and the conversation receives the remaining height.
 private struct MacNowPage: View {
+    let isActive: Bool
+
     @Environment(ChatStore.self) private var chat: ChatStore
     @Environment(StatsStore.self) private var stats: StatsStore
+    @Environment(\.scenePhase) private var scenePhase
     @Namespace private var mascotSpace
 
     var body: some View {
@@ -270,9 +268,16 @@ private struct MacNowPage: View {
 
     private var heroBody: some View {
         VStack(spacing: ReTurnDesign.Spacing.medium) {
-            MascotImage()
-                .frame(width: ReTurnDesign.Desktop.nowMascotWidth)
-                .matchedGeometryEffect(id: "mascot", in: mascotSpace)
+            MacMascotView(
+                stats: stats.stats ?? .empty,
+                allowsContinuousMotion: isActive && scenePhase == .active
+            )
+            .frame(
+                width: MacMascotView.frameWidth(
+                    forMascotWidth: ReTurnDesign.Desktop.nowMascotWidth
+                )
+            )
+            .matchedGeometryEffect(id: "mascot", in: mascotSpace)
 
             Text(nowGreeting(for: stats.characterState))
                 .font(ReTurnDesign.Typography.heroTitle)
@@ -283,8 +288,7 @@ private struct MacNowPage: View {
             NowActionBar()
             SaveResultLine()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .padding(.top, ReTurnDesign.Desktop.contentPadding)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var conversationBody: some View {
