@@ -175,12 +175,9 @@ enum ReTurnDesign {
         static let navigationDimDuration = 0.45
     }
 
-    /// macOS shell metrics: sidebar root, two-pane Before, adaptive After grid.
-    /// Desktop-only; iOS layout keeps the pager tokens above.
+    /// macOS shell metrics: directional page navigation, two-pane Before,
+    /// adaptive After grid. Desktop-only; iOS layout keeps the pager tokens.
     enum Desktop {
-        static let sidebarMinimumWidth: CGFloat = 200
-        static let sidebarIdealWidth: CGFloat = 220
-        static let sidebarMaximumWidth: CGFloat = 260
         static let windowMinimumWidth: CGFloat = 940
         static let windowMinimumHeight: CGFloat = 600
         /// The desktop Now page has no pager, so the mascot takes a fixed
@@ -188,9 +185,26 @@ enum ReTurnDesign {
         static let nowMascotWidth: CGFloat = 220
         /// Horizontal breathing room around full-width desktop content.
         static let contentPadding: CGFloat = 32
+        /// Diameter of the floating edge-navigation arrows (previous/next
+        /// page, flanking the window like a full-screen photo browser).
+        static let edgeNavigationSize: CGFloat = 36
+        static let edgeNavigationOpacity = 0.55
 
         enum Before {
-            static let dayListWidth: CGFloat = 280
+            /// Width of the calendar + briefing column.
+            static let sidebarWidth: CGFloat = 280
+            static let calendarCellHeight: CGFloat = 34
+            static let calendarDotSize: CGFloat = 4
+
+            // Horizontal 24-hour timeline.
+            static let timelineHourLabelHeight: CGFloat = 16
+            static let timelineSpanBarHeight: CGFloat = 22
+            static let timelineSleepBarHeight: CGFloat = 12
+            static let timelineInputDotSize: CGFloat = 20
+            static let timelineAmbientDotSize: CGFloat = 5
+            static let timelineLaneGap: CGFloat = 6
+            /// A span bar shows its label only above this width.
+            static let timelineSpanLabelMinimumWidth: CGFloat = 72
         }
 
         enum After {
