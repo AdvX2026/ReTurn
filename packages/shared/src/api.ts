@@ -152,7 +152,6 @@ export const SaveResponse = z.object({
   date: z.string(),
   saved_at: z.string().datetime(),
   already_saved: z.boolean(),
-  degraded: z.boolean(),
   summary: z.string().nullable(),
   opening_line: z.string().nullable(),
   briefing: z.string().nullable().optional(),
@@ -167,40 +166,21 @@ export const SaveResponse = z.object({
 });
 export type SaveResponse = z.infer<typeof SaveResponse>;
 
-// ── continue ─────────────────────────────────────────────
-
-export const ContinueResponse = z.object({
-  /** The day whose Before is shown (yesterday if available). */
-  before: z
-    .object({
-      date: z.string(),
-      opening_line: z.string().nullable(),
-      summary: z.string().nullable(),
-      review_points: z.array(ReviewPoint),
-      stats: StatsSchema.nullable(),
-      character_state: CharacterState.nullable(),
-      stats_delta: StatsSchema.nullable(),
-    })
-    .nullable(),
-  /** Today: todos + live character. */
-  future: z.object({
-    date: z.string(),
-    todos: z.array(TodoRecord),
-  }),
-  character_state: CharacterState,
-  stats: StatsSchema,
-  streak: z.number().int().nonnegative(),
-  is_cold_start: z.boolean(),
-});
-export type ContinueResponse = z.infer<typeof ContinueResponse>;
-
 // ── stats / timeline / days ──────────────────────────────
+
+export const CollectionStatus = z.object({
+  device_count: z.number().int().nonnegative(),
+  sample_count: z.number().int().nonnegative(),
+  last_seen_at: z.string().datetime().nullable(),
+});
+export type CollectionStatus = z.infer<typeof CollectionStatus>;
 
 export const StatsTodayResponse = z.object({
   date: z.string(),
   stats: StatsSchema,
   character_state: CharacterState,
   saved: z.boolean(),
+  collection: CollectionStatus,
   cadence: CadenceMode.optional(),
 });
 export type StatsTodayResponse = z.infer<typeof StatsTodayResponse>;
@@ -338,7 +318,6 @@ export const AskResponse = z.object({
   answer: z.string(),
   citations: z.array(AskCitation),
   retrieved: z.number().int().nonnegative(),
-  degraded: z.boolean(),
 });
 export type AskResponse = z.infer<typeof AskResponse>;
 
@@ -380,7 +359,6 @@ export const ChatResponse = z.object({
     .nullable()
     .optional(),
   task_id: z.string().uuid().nullable().optional(),
-  degraded: z.boolean().optional(),
 });
 export type ChatResponse = z.infer<typeof ChatResponse>;
 
@@ -410,9 +388,38 @@ export type ResumeRequest = z.infer<typeof ResumeRequest>;
 export const ResumeResponse = z.object({
   message_id: z.string().uuid(),
   reply: z.string(),
-  degraded: z.boolean(),
 });
 export type ResumeResponse = z.infer<typeof ResumeResponse>;
+
+// ── provider usage ───────────────────────────────────────
+
+export const UsageKind = z.enum(["llm", "transcription", "vision", "embedding"]);
+export type UsageKind = z.infer<typeof UsageKind>;
+
+export const UsageTotals = z.object({
+  calls: z.number().int().nonnegative(),
+  succeeded: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  prompt_tokens: z.number().int().nonnegative(),
+  completion_tokens: z.number().int().nonnegative(),
+  total_tokens: z.number().int().nonnegative(),
+});
+export type UsageTotals = z.infer<typeof UsageTotals>;
+
+export const UsageBreakdown = UsageTotals.extend({
+  kind: UsageKind,
+  operation: z.string().min(1),
+  model: z.string().min(1),
+});
+export type UsageBreakdown = z.infer<typeof UsageBreakdown>;
+
+export const UsageResponse = z.object({
+  from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  totals: UsageTotals,
+  breakdown: z.array(UsageBreakdown),
+});
+export type UsageResponse = z.infer<typeof UsageResponse>;
 
 // ── tasks ────────────────────────────────────────────────
 

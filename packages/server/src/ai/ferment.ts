@@ -6,6 +6,7 @@ import {
   type Session,
 } from "@return/shared";
 import { config } from "../config.js";
+import type { Db } from "../db/schema.js";
 import { extractJson, llmChat } from "./llm.js";
 
 export interface FermentContext {
@@ -43,12 +44,12 @@ export class FermentError extends Error {
  * One LLM call → structured ferment JSON.
  * Timeout + single retry + Zod validate (PRD §6.3).
  */
-export async function runFerment(ctx: FermentContext): Promise<FermentResult> {
+export async function runFerment(db: Db, ctx: FermentContext): Promise<FermentResult> {
   const prompt = buildPrompt(ctx);
   let lastErr: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const raw = await chatCompletion(prompt);
+      const raw = await chatCompletion(db, prompt);
       const parsed = extractJson(raw);
       const result = FermentResultSchema.safeParse(parsed);
       if (!result.success) {
@@ -153,9 +154,11 @@ ${dismissed || "(none)"}
 `;
 }
 
-async function chatCompletion(userPrompt: string): Promise<string> {
+async function chatCompletion(db: Db, userPrompt: string): Promise<string> {
   try {
-    return await llmChat({
+    return await llmChat(db, {
+      operation: "ferment",
+      kind: "llm",
       system:
         "You output only compact JSON. Never wrap in markdown. Never include scores or attributes.",
       user: userPrompt,

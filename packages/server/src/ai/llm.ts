@@ -3,6 +3,8 @@
  * All server LLM call sites go through here (ferment / ask / chat / resume).
  */
 import { NotConfiguredError, config, isLlmConfigured } from "../config.js";
+import type { Db } from "../db/schema.js";
+import { recordProviderUsage } from "../usage.js";
 
 export class LlmError extends Error {
   constructor(
@@ -15,6 +17,8 @@ export class LlmError extends Error {
 }
 
 export interface LlmChatOptions {
+  operation: string;
+  kind: "llm" | "vision";
   system: string;
   user: string;
   imageUrl?: string;
@@ -25,7 +29,7 @@ export interface LlmChatOptions {
   json?: boolean;
 }
 
-export async function llmChat(opts: LlmChatOptions): Promise<string> {
+export async function llmChat(db: Db, opts: LlmChatOptions): Promise<string> {
   if (!isLlmConfigured()) {
     throw new NotConfiguredError("LLM", "set LLM_API_KEY");
   }
@@ -68,10 +72,30 @@ export async function llmChat(opts: LlmChatOptions): Promise<string> {
     }
     const data = (await res.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
+      usage?: {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+        total_tokens?: number;
+      };
     };
     const content = data.choices?.[0]?.message?.content?.trim();
     if (!content) throw new LlmError("empty LLM response");
+    recordProviderUsage(db, {
+      kind: opts.kind,
+      operation: opts.operation,
+      model: config.llm.model,
+      status: "succeeded",
+      ...data.usage,
+    });
     return content;
+  } catch (error) {
+    recordProviderUsage(db, {
+      kind: opts.kind,
+      operation: opts.operation,
+      model: config.llm.model,
+      status: "failed",
+    });
+    throw error;
   } finally {
     clearTimeout(timer);
   }

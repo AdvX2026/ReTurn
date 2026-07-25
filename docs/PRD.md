@@ -59,7 +59,7 @@
 | F3 | 双向流主视图 | iOS 以 Now 为锚点横向排列 Before / Now / After，顶部 label 与左右滑动位置共用 selection；Before 承载历史 Timeline 与历史 Product Card，After 承载灵感卡、todo 建议卡、健康建议卡；Now 承载对话消息、问候、吉祥物、Task 回传与待确认项（平时折叠/半隐藏，有内容时展开）。向上滑动露出 sidebar：空间身份 / 进行中 task / 设置&关于。macOS 布局另行设计 |
 | F4 | Input 与意图分诊 | Claude App 式底部输入。小模型分诊为 a.灵感 b.检索 c.提问，告知判断结果、可纠正，无法判断时交用户选择。**提问工作流是主线**：取相关节点+会话摘要塞 prompt 回答（“昨天干了什么”“刚刚在干什么”），回答落 Now。语音输入：录音 → Pi 转写 → 转写文本进分诊 |
 | F5 | Save 夜间检查点 + 发酵 | 点 Save（可附一句留言作发酵锚点，可跳过）→ 收尾环境快照 → 夜间发酵：产出一条 briefing `CardRecord`（UI 渲染为 Daily Briefing Card Group，含五维属性、状态、streak + 昨日简报；呈现分层见 §4.3），并分别产出 todo 建议卡、健康建议卡、节点标签与连边；todo 建议须与提醒事项中未完成项**查重**、并按历史建议的采纳情况校准（偏好回环，见 §6.3）；属性与状态由纯代码结算。幂等：当日已 Save 直接返回 |
-| F6 | Resume 小复盘 | 白天随需触发：最近几小时会话聚合 → 一次小 LLM 调用（或模板兜底）→「你刚才在做 X」即时回 Now，不落卡 |
+| F6 | Resume 小复盘 | 白天随需触发：最近几小时会话聚合 → 一次小 LLM 调用 →「你刚才在做 X」即时回 Now，不落卡；provider 未配置或调用失败时明确返回错误 |
 | F7 | 时间线回溯 | Timeline 是紧凑、可下钻的历史索引：精确事件用 Point，持续/区间事件用 Span，低重要度痕迹降为 Ambient，相关高价值事件合并为可点击 Cluster；**跨日可回溯**（好几天/几周前），检索定位可跳转到指定位置。完整分类、Input 与 Daily Briefing 规则见 §3.2 |
 | F8 | iOS 端 | 与桌面同一 SwiftUI 多平台代码库，**对等全功能**（双向流、Input、Task、Save/Resume）；另负责 HealthKit 健康上报（进前台即上报）。免费账号真机签名，受阻则模拟器演示兜底 |
 
@@ -69,7 +69,7 @@
 |---|---|---|
 | F9 | 灵感工作流 | 分诊命中「灵感」→ 落 idea 节点（provenance=user）→ agent 附一句建议 → 归入 After 灵感卡。发酵也可从采集/对话中抽取灵感（provenance=auto）；**卡片展示必须区分用户记录与自动抽取两种来源** |
 | F10 | 检索定位 | 分诊命中「检索」→ 关键词匹配起步（embedding 余弦视时间）→ 返回 `{date, node_ids}` → 前端滚动时间线定位。能跳转即达标 |
-| F11 | Task 管线 | 提交会议纪要文本 → 异步加工 → 落高权重节点 → 完成消息回传 Now（用户打开时可见）；sidebar 展示进行中 task。**截图 → 视觉 API 提取文本**视时间接入，失败降级为「请粘贴文本」 |
+| F11 | Task 管线 | 提交会议纪要文本 → 异步加工 → 落高权重节点 → 完成消息回传 Now（用户打开时可见）；sidebar 展示进行中 task。截图 → 视觉 API 提取文本；失败时 Task 标记为 `failed`，会议纪要保留原文，截图不伪造提取结果 |
 | F12 | 健康建议卡 | health_daily 数据 → 夜间发酵顺带生成建议文案 → After 健康卡。数据必须真，文案从简 |
 
 ### P1 — 概念立住 / 有余力再做
@@ -392,7 +392,7 @@ cards(id, type /* briefing|idea|todo_suggestion|health|weekly */, date,
 | Monorepo | pnpm workspaces：`shared` / `server` / `sampler`；`apps/ReTurn` 为独立 Xcode 多平台工程（同仓、不进 pnpm workspace） | Swift 工程与后端契约改动在同一 diff 内可见 |
 | 合同 | `shared`：Zod schema（API 请求/响应 + 发酵 JSON + kind/intent/卡片枚举）是唯一事实来源；Swift 侧手写 Codable 镜像集中于 `Models.swift` | 改合同必须同步两份；REST 可 curl 调试 |
 | 服务端（Pi） | Fastify + fastify-type-provider-zod；`node:sqlite` + 手写 SQL + 编号迁移 | 表不多不上 ORM；systemd 常驻；LLM/转写/视觉 key 走 Pi 环境变量，**不下发客户端、不入 git** |
-| LLM 调用 | Vercel AI SDK + OpenAI-compatible provider，`generateObject` 绑 Zod schema | 发酵/提问用主模型；**分诊与 Resume 用廉价小模型**；语音走 Whisper 兼容转写；截图走视觉 API（可选）；全部由 Pi 发起 |
+| LLM 调用 | Pi 直接调用 OpenAI-compatible provider；结构化结果用 Zod 校验 | 发酵/提问用主模型；**分诊与 Resume 用廉价小模型**；语音走显式配置的 Whisper 兼容转写；截图走多模态模型；全部由 Pi 发起 |
 | 采样器 | 独立 Node 常驻进程（launchd 托管）：setInterval + execa 调 osascript；localhost 控制面用裸 `node:http`；节奏模式随上报响应从 Pi 拉取 | 与服务端同栈，outbox / schema 复用 `shared` |
 | 前端（双端） | SwiftUI 多平台工程（macOS 14 / iOS 17 基线），一份代码出双端对等功能 | URLSession async/await 直连 Pi 与采样器；无 WebView、无 JS 运行时 |
 | 状态管理 | `@Observable` store + `Task` 循环轮询（messages / cards / 采集状态；缓存、重试、离线降级）；纯 UI 状态用 `@State` | 不引路由、不上 TCA |
@@ -422,11 +422,12 @@ GET  /api/cards?direction=before|future&cursor=   → 双向流分页（合同�
 GET  /api/tasks?status=             → sidebar 进行中任务
 POST /api/resume                    → 小复盘（近实时，落 message）
 POST /api/save   { date, note_text? | note_voice_ref? }
-     → 夜间检查点：触发发酵，阻塞至完成（或降级）；幂等：当日已存档直接返回
+     → 夜间检查点：触发发酵，阻塞至完成；失败则当日保持未存档并明确返回错误；幂等：当日已存档直接返回
 GET  /api/timeline?from=&to=        → 范围化时间轴（Pi 从节点即时聚合，不落新表）
 GET  /api/days?range=30             → 属性/状态/streak 历史（周/月视图数据源）
 PATCH /api/todos/:id                → 勾选（同时落 todo_check 节点）
 GET  /api/stats/today               → 实时五维 + 当前状态 + 采集状态（Now 问候可用）
+GET  /api/usage?from=&to=           → provider 调用次数、成功/失败与 token 聚合（不返回内容）
 GET  /api/ping                      → outbox 探活
 ```
 
@@ -438,11 +439,11 @@ GET  /api/ping                      → outbox 探活
 - **灵感**：落 idea 节点（provenance=user）→ 附一句建议 → 归入 After 灵感卡。
 - **检索**：关键词起步（embedding 视时间）→ `{date, node_ids}` → 前端跳转时间线。
 - **提问**：相关节点 + 会话摘要塞 prompt → 主模型回答 → 落 message。
-- **Task**：纪要文本 /（截图 → 视觉 API）→ 提取落高权重节点 → 完成消息回 Now；失败降级不丢输入。
-- **Resume**：最近几小时会话聚合（复用 sessions 代码）→ 小模型一句话复盘（或模板兜底）→ 即时返回。
+- **Task**：纪要文本 / 截图 → provider 提取 → 落高权重节点 → 完成消息回 Now；失败时 Task 明确为 `failed`，纪要原文保留，不生成伪结果。
+- **Resume**：最近几小时会话聚合（复用 sessions 代码）→ 小模型一句话复盘 → 即时返回；无会话时返回确定性事实文案，provider 失败则明确报错。
 - **夜间发酵（Save 触发）**：1~2 次主模型调用，输入「当日节点 + 对话 + 高权重资料 + 留言锚点 + 近几日摘要 + 历史 todo 建议及其采纳情况」，输出结构化 JSON：`{ summary, briefing, review_points[], todos[], health_advice, ideas[], node_tags{}, edges[] }` → Zod 校验 → 落 cards/edges/todos → 纯代码结算五维属性与状态。采样节点只作「环境上下文」。
 - **Todo 偏好回环（与 F5 联动）**：AI todo 建议卡上的「采纳」动作 → UI 端经 EventKit 写入 Apple 提醒事项；提醒事项被采样器回采（`reminder` 节点）构成**正样本**（进了提醒事项 = 用户认可，无需额外打分 UI）；历史建议与提醒事项的差集构成**负样本**（建议了但未采纳 = 不买账）。发酵生成 todo 时把两类样本喂回 prompt 校准，同时天然实现去重——已在提醒事项里的不重复建议。
-- 所有 LLM 调用带超时 + 一次重试 + Zod 校验；发酵失败降级回放上一次已落库结果，不阻塞 Save 主流程。
+- 需要结构化输出的 LLM 调用带超时 + 一次重试 + Zod 校验；发酵失败时不写部分结果、不封存当天，由 API 明确返回错误。
 
 ## 7. 演示脚本（3 分钟）
 
@@ -480,6 +481,6 @@ v0.5 已完成：shared 合同（v0.5 面）、server（路由/SQLite/发酵/统
 13. **属性公式与状态阈值未调参**：系数与阈值全是拍的初值，演示前用全队真实数据调；briefing 展示相对变化感，绝对数值不必精确。
 14. **双进程编排**：采样器没起来会静默丢采集。缓解：UI 常显采集状态条（经 localhost 健康检查）；launchd `KeepAlive` 兜底；演示前检查清单含「采样器已运行」。
 15. **健康同步依赖「当天打开过 iOS App」**：哪天没开 App、备胎快捷指令也没触发，当天就没有精力硬信号——精力公式自动回退纯扣分式，不报错。演示当天打开一次 iOS App 即可。
-16. **视觉 API 链路可选**：截图提取失败或没时间接入时，降级为「请粘贴文本」，Task 主链路不依赖视觉。
+16. **视觉 API 链路风险**：多模态 provider 失败时接口明确报错，不创建伪造的提取结果；演示前用真实截图闭环验证模型能力与超时。
 17. **吉祥物形象未定**：本体形象（形态/性格）需尽早进美术排期——它是 Now 区的门面；表情图与微动效都要等形象定稿才能动工，是前端主线（§8 第 3 步）的前置依赖。
 18. **提醒事项全量回采的隐私敏感度**：已拍板回采全部提醒列表（采样的定位就是收集），其中含纯生活项（买菜/吃药等），会进入 Pi 并可能随发酵摘要送云端 LLM。叙事与 §9.7 一致：原始数据只在家里，推理是无状态调用；发酵 prompt 中提醒事项只用于 todo 偏好校准与环境上下文，briefing 文案不主动展开个人生活条目。

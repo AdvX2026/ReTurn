@@ -181,19 +181,21 @@ struct APIClient {
         )
     }
 
-    // ── save / continue / stats ──────────────────────────
+    // ── save / stats / usage ─────────────────────────────
 
     func save(_ body: SaveRequest) async throws -> SaveResponse {
         try await send("POST", "/api/save", body: body, timeout: Self.llmTimeout)
     }
 
-    /// LEGACY v0.5 — superseded by cards + messages.
-    func continueToday() async throws -> ContinueResponse {
-        try await get("/api/continue")
-    }
-
     func statsToday() async throws -> StatsTodayResponse {
         try await get("/api/stats/today")
+    }
+
+    func usage(from: String, to: String) async throws -> UsageResponse {
+        try await get(
+            "/api/usage",
+            query: [.init(name: "from", value: from), .init(name: "to", value: to)]
+        )
     }
 
     func timeline(date: String) async throws -> TimelineResponse {
