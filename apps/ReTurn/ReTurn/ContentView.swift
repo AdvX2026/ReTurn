@@ -79,7 +79,14 @@ struct ContentView: View {
             #endif
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            ComposerBar(isFocused: $isComposerFocused)
+            VStack(spacing: 0) {
+                if isComposerFocused {
+                    ComposerWalker()
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                ComposerBar(isFocused: $isComposerFocused)
+            }
+            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: isComposerFocused)
         }
     }
 
@@ -366,6 +373,47 @@ private struct ComposerBar: View {
                 // TODO: Present the file importer.
             }
         }
+    }
+}
+
+/// Mini Kongkong pacing back and forth above the composer while it is
+/// focused. The stride (stepping legs, swinging arms, bobbing body, forward
+/// lean) lives in `MascotView(walking:)`; this wrapper only translates the
+/// frame at a constant speed and flips the facing at each end. The
+/// profession stays fixed until a real Now store owns one.
+private struct ComposerWalker: View {
+    private let mascotWidth: CGFloat = 56
+    private let pointsPerSecond: CGFloat = 110
+
+    var body: some View {
+        // `SwiftUI.` prefix is required: the app has its own TimelineView.
+        SwiftUI.TimelineView(.animation) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            GeometryReader { proxy in
+                let frameWidth = MascotView.frameWidth(forMascotWidth: mascotWidth)
+                let travel = max(proxy.size.width - frameWidth, 1)
+                // Triangle wave: constant speed, instant cartoon turnaround.
+                let cycle = (t * pointsPerSecond)
+                    .truncatingRemainder(dividingBy: travel * 2)
+                let outbound = cycle < travel
+                MascotView(profession: .coder, walking: true)
+                    .frame(width: frameWidth)
+                    .scaleEffect(x: outbound ? 1 : -1, y: 1)
+                    .position(
+                        x: (outbound ? cycle : travel * 2 - cycle) + frameWidth / 2,
+                        y: proxy.size.height / 2
+                    )
+            }
+        }
+        .frame(height: mascotHeight)
+        .accessibilityElement()
+        .accessibilityLabel("Kongkong pacing")
+        .accessibilityIdentifier("ComposerWalker")
+    }
+
+    private var mascotHeight: CGFloat {
+        MascotView.frameWidth(forMascotWidth: mascotWidth)
+            * MascotView.Design.height / MascotView.Design.width
     }
 }
 

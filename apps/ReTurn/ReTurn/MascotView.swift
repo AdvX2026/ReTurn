@@ -29,6 +29,11 @@ struct MascotView: View {
     /// `nil` renders the plain mascot with no stat wearables.
     var stats: Stats?
     var profession: MascotProfession = .coder
+    /// Stride mode: legs step, arms counter-swing and the body bobs and leans
+    /// at a fixed cadence instead of the energy-driven idle tempo. The
+    /// composer walker uses this; pass `stats: nil` with it — the pacing
+    /// figure is small and busy enough without the wearables.
+    var walking = false
     var onHop: (() -> Void)?
 
     @State private var hopping = false
@@ -62,6 +67,11 @@ struct MascotView: View {
         static let gearMinSpin = 0.5
         static let gearMaxSpin = 3.0
         static let hopHeight: CGFloat = 26
+        static let walkCadence = 3.2
+        static let walkBobAmplitude = 0.045
+        static let armWalkSwing = 16.0
+        static let legWalkSwing = 15.0
+        static let walkLean = 4.0
     }
 
     var body: some View {
@@ -145,24 +155,35 @@ struct MascotView: View {
     /// deforms together like proper cartoon wear.
     private func drawBody(in context: inout GraphicsContext, t: TimeInterval) {
         let energy = stats?.energy ?? 50
-        let amplitude = statFraction(energy, min: Motion.bounceMinAmplitude, max: Motion.bounceMaxAmplitude)
-        let speed = statFraction(energy, min: Motion.bounceMinSpeed, max: Motion.bounceMaxSpeed)
+        // Walking swaps the energy-driven idle tempo for a fixed stride.
+        let amplitude = walking
+            ? Motion.walkBobAmplitude
+            : statFraction(energy, min: Motion.bounceMinAmplitude, max: Motion.bounceMaxAmplitude)
+        let speed = walking
+            ? Motion.walkCadence
+            : statFraction(energy, min: Motion.bounceMinSpeed, max: Motion.bounceMaxSpeed)
         let phase = sin(t * speed * .pi)
 
         var body = context
         body.translateBy(x: Design.pivot.x, y: Design.pivot.y)
         // Counter-phase horizontal squash keeps the silhouette's volume.
         body.scaleBy(x: 1 - phase * amplitude * 0.3, y: 1 + phase * amplitude)
+        if walking {
+            // A slight constant lean into the direction of travel; the
+            // caller's horizontal flip turns it around at each end.
+            body.rotate(by: .degrees(Motion.walkLean))
+        }
         body.translateBy(x: -Design.pivot.x, y: -Design.pivot.y)
 
-        // Arms pivot where they meet the body; they wave with the bounce.
-        // The left arm's pivot and angle are shared with the worn
-        // accessories so a gripped piece rides the wave. Folded a few
+        // Arms pivot where they meet the body: a gentle wave at idle, a full
+        // counter-swing against the same-side leg when walking. Folded a few
         // degrees inward from the Figma pose so they nestle against the
         // body's slope instead of hovering off it.
         let leftArmAnchor = CGPoint(x: 38.5, y: 60.7349)
-        let wave = sin(t * speed * .pi + 1.2) * Motion.armWaveAmplitude
-        let leftArmDegrees = -32 + wave
+        let armSwing = walking
+            ? -phase * Motion.armWalkSwing
+            : sin(t * speed * .pi + 1.2) * Motion.armWaveAmplitude
+        let leftArmDegrees = -32 + armSwing
         drawLimb(
             &body,
             rect: CGRect(x: 31, y: 48.2349, width: 15, height: 25),
@@ -176,12 +197,21 @@ struct MascotView: View {
             degrees: -leftArmDegrees
         )
 
-        for legX in [46.0, 113.0] as [CGFloat] {
-            body.fill(
-                Path(roundedRect: CGRect(x: legX, y: 102, width: 15, height: 25), cornerRadius: 4),
-                with: .color(Design.bodyColor)
-            )
-        }
+        // Legs stay planted at idle; when walking they step alternately
+        // around the hip, whose top the body fill goes on to cover.
+        let step = walking ? phase * Motion.legWalkSwing : 0
+        drawLimb(
+            &body,
+            rect: CGRect(x: 46, y: 102, width: 15, height: 25),
+            anchor: CGPoint(x: 53.5, y: 104),
+            degrees: step
+        )
+        drawLimb(
+            &body,
+            rect: CGRect(x: 113, y: 102, width: 15, height: 25),
+            anchor: CGPoint(x: 120.5, y: 104),
+            degrees: -step
+        )
 
         fillBody(&body, color: Design.bodyColor)
         MascotAccessory.drawWorn(
