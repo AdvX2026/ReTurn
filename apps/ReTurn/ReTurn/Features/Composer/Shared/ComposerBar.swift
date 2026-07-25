@@ -8,7 +8,6 @@ struct ComposerBar: View {
     let isActive: Bool
     @Environment(ChatStore.self) private var chat: ChatStore
     @Environment(APIEnvironment.self) private var api: APIEnvironment
-    @Environment(NodesStore.self) private var nodes: NodesStore
     @State private var text = ""
     @State private var recorder = VoiceRecorder()
     @State private var isImportingImage = false
@@ -26,18 +25,11 @@ struct ComposerBar: View {
     }
 
     private func send() {
-        guard !trimmedText.isEmpty, !chat.isSending else { return }
+        guard !trimmedText.isEmpty, !chat.isSending, api.isConnected else { return }
         let outgoing = trimmedText
         text = ""
         isFocused = false
-        if api.isConnected {
-            Task { await chat.send(outgoing) }
-        } else {
-            // Offline: PRD §5.2 allows node writes only — queue as idea, flush later.
-            Task {
-                _ = await nodes.enqueue(kind: .idea, content: outgoing, title: "Offline note")
-            }
-        }
+        Task { await chat.send(outgoing) }
     }
 
     var body: some View {
@@ -218,6 +210,7 @@ struct ComposerBar: View {
                 )
                 .background(ReTurnDesign.Colors.voiceButtonBackground, in: Circle())
                 .buttonStyle(.plain)
+                .disabled(!api.isConnected)
         }
     }
 
@@ -232,7 +225,7 @@ struct ComposerBar: View {
                 isImportingFile = true
             }
         }
-        .disabled(!api.isConnected)
+        .disabled(!api.isConnected || chat.isSending)
     }
 
     private func toggleRecording() {
@@ -253,6 +246,7 @@ struct ComposerBar: View {
     private func handleImage(_ result: Result<URL, Error>) {
         Task {
             do {
+                guard api.isConnected, !chat.isSending else { return }
                 let url = try result.get()
                 let data = try readSecurityScoped(url)
                 let image = try ImageAttachment.dataURL(from: data)
@@ -269,6 +263,7 @@ struct ComposerBar: View {
     private func handleFile(_ result: Result<URL, Error>) {
         Task {
             do {
+                guard api.isConnected, !chat.isSending else { return }
                 let url = try result.get()
                 let data = try readSecurityScoped(url)
                 if let type = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType,

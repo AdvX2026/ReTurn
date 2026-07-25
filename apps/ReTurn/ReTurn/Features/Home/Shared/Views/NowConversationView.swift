@@ -65,13 +65,9 @@ struct NowConversationView: View {
                             .foregroundStyle(ReTurnDesign.Colors.secondaryLabel)
                             .padding(.leading, ReTurnDesign.Spacing.extraSmall)
                     }
-                    if let messageID = entry.correctionMessageID {
+                    if let messageID = entry.correctionMessageID,
+                       needsIntentCorrection(messageID) {
                         intentCorrection(for: messageID)
-                    }
-                    if entry.taskID != nil {
-                        Label("Processing in the background", systemImage: "progress.indicator")
-                            .font(.caption)
-                            .foregroundStyle(ReTurnDesign.Colors.secondaryLabel)
                     }
                 }
                 Spacer(minLength: 48)
@@ -95,6 +91,13 @@ struct NowConversationView: View {
         .font(.caption)
         .buttonStyle(.bordered)
         .disabled(!api.isConnected || chat.correctingMessageIDs.contains(messageID))
+    }
+
+    private func needsIntentCorrection(_ messageID: String) -> Bool {
+        guard let intent = entries.first(where: { $0.id == messageID })?.intent else {
+            return true
+        }
+        return intent == .unknown
     }
 
     /// The triage outcome in one glanceable word. `unknown` stays silent —

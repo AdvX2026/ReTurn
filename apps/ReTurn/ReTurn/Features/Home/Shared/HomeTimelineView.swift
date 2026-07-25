@@ -127,30 +127,34 @@ struct HomeTimelineView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             Group {
                 #if os(iOS)
-                ZStack {
-                    ComposerBar(
-                        isFocused: $isComposerFocused,
-                        isActive: isNowPage && isChromeVisible
-                    )
+                VStack(spacing: 0) {
+                    ConnectionStatusView()
+
+                    ZStack {
+                        ComposerBar(
+                            isFocused: $isComposerFocused,
+                            isActive: isNowPage && isChromeVisible
+                        )
                         .opacity(isNowPage ? 1 : 0)
                         .blur(radius: isNowPage ? 0 : bottomChromeInactiveBlurRadius)
                         .zIndex(isNowPage ? 1 : 0)
                         .allowsHitTesting(isNowPage)
                         .accessibilityHidden(!isNowPage)
 
-                    TimelineSearchBar(isFocused: $isSearchFocused)
-                        .opacity(isNowPage ? 0 : 1)
-                        .blur(radius: isNowPage ? bottomChromeInactiveBlurRadius : 0)
-                        .zIndex(isNowPage ? 0 : 1)
-                        .allowsHitTesting(!isNowPage)
-                        .accessibilityHidden(isNowPage)
+                        TimelineSearchBar(isFocused: $isSearchFocused)
+                            .opacity(isNowPage ? 0 : 1)
+                            .blur(radius: isNowPage ? bottomChromeInactiveBlurRadius : 0)
+                            .zIndex(isNowPage ? 0 : 1)
+                            .allowsHitTesting(!isNowPage)
+                            .accessibilityHidden(isNowPage)
+                    }
+                    .animation(
+                        .easeInOut(
+                            duration: ReTurnDesign.Motion.bottomChromeTransitionDuration
+                        ),
+                        value: isNowPage
+                    )
                 }
-                .animation(
-                    .easeInOut(
-                        duration: ReTurnDesign.Motion.bottomChromeTransitionDuration
-                    ),
-                    value: isNowPage
-                )
                 #else
                 VStack(spacing: 0) {
                     ConnectionStatusView()

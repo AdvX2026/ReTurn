@@ -4,6 +4,10 @@ import Testing
 
 @MainActor
 struct ChatAndNodesStoreTests {
+    @Test func defaultPiAddressTargetsTheLanHost() {
+        #expect(APIEnvironment.defaultBaseURLString == "http://return.local:8787")
+    }
+
     @Test func historyMergeRejectsResponseAfterLocalMutation() {
         let current = [entry(id: "local-new", failed: false)]
 
@@ -85,6 +89,26 @@ struct ChatAndNodesStoreTests {
         )
 
         #expect(visible.map(\.id) == [chat.id, task.id, latestResume.id])
+    }
+
+    @Test func chatServiceFailureKeepsPiReachable() {
+        let api = APIEnvironment()
+        api.markReachable()
+
+        api.markRequestFailure(
+            APIError.http(status: 503, message: "LLM provider unavailable")
+        )
+
+        #expect(api.isConnected)
+    }
+
+    @Test func chatTransportFailureMarksPiUnreachable() {
+        let api = APIEnvironment()
+        api.markReachable()
+
+        api.markRequestFailure(URLError(.cannotConnectToHost))
+
+        #expect(!api.isConnected)
     }
 
     @Test func nodesOutboxReloadKeepsOriginalClientUUID() async {

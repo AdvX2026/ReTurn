@@ -18,7 +18,8 @@ final class APIEnvironment {
         case disconnected(String)
     }
 
-    static let defaultBaseURLString = "http://127.0.0.1:8787"
+    static let defaultBaseURLString = "http://return.local:8787"
+    private static let legacyLoopbackBaseURLString = "http://127.0.0.1:8787"
     private static let baseURLDefaultsKey = "piBaseURL"
     private static let deviceIDDefaultsKey = "deviceID"
     private static let apiTokenDefaultsKey = "piApiToken"
@@ -54,7 +55,13 @@ final class APIEnvironment {
 
     init() {
         let defaults = UserDefaults.standard
-        baseURLString = defaults.string(forKey: Self.baseURLDefaultsKey) ?? Self.defaultBaseURLString
+        let storedBaseURL = defaults.string(forKey: Self.baseURLDefaultsKey)
+        baseURLString = storedBaseURL == Self.legacyLoopbackBaseURLString
+            ? Self.defaultBaseURLString
+            : storedBaseURL ?? Self.defaultBaseURLString
+        if storedBaseURL == Self.legacyLoopbackBaseURLString {
+            defaults.set(Self.defaultBaseURLString, forKey: Self.baseURLDefaultsKey)
+        }
         apiToken = defaults.string(forKey: Self.apiTokenDefaultsKey) ?? ""
         healthToken = defaults.string(forKey: Self.healthTokenDefaultsKey) ?? ""
         if let existing = defaults.string(forKey: Self.deviceIDDefaultsKey) {
@@ -135,6 +142,17 @@ final class APIEnvironment {
 
     func markUnreachable(_ error: Error) {
         connectionState = .disconnected(apiErrorMessage(error))
+    }
+
+    /// A valid HTTP response means the Pi is reachable even when the requested
+    /// workflow failed. Keep transport reachability separate from service and
+    /// decoding errors so one provider failure doesn't disable the composer.
+    func markRequestFailure(_ error: Error) {
+        if error is APIError || error is DecodingError {
+            markReachable()
+        } else {
+            markUnreachable(error)
+        }
     }
 }
 

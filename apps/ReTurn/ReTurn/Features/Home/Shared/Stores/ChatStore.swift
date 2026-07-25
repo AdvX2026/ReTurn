@@ -119,7 +119,7 @@ final class ChatStore {
             let message = apiErrorMessage(error)
             historyState = .failed(message)
             lastError = message
-            api.markUnreachable(error)
+            api.markRequestFailure(error)
         }
     }
 
@@ -210,7 +210,7 @@ final class ChatStore {
             await loadHistory(force: true)
         } catch {
             lastError = apiErrorMessage(error)
-            api.markUnreachable(error)
+            api.markRequestFailure(error)
         }
     }
 
@@ -244,7 +244,7 @@ final class ChatStore {
             api.markReachable()
         } catch {
             lastError = apiErrorMessage(error)
-            api.markUnreachable(error)
+            api.markRequestFailure(error)
         }
     }
 
@@ -326,7 +326,7 @@ final class ChatStore {
                 $0[index].retryPayload = payload
             }
         }
-        api.markUnreachable(error)
+        api.markRequestFailure(error)
     }
 
     private func mutateEntries(_ mutation: (inout [Entry]) -> Void) {
