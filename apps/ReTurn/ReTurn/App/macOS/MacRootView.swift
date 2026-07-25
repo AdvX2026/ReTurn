@@ -331,7 +331,7 @@ private struct MacNowPage: View {
                 .padding(.bottom, ReTurnDesign.Spacing.extraSmall)
             }
 
-            // Conversation fills remaining space; anchored to bottom
+            // Conversation fills the remainder; short content starts at top.
             NowConversationView(entries: chat.entries)
                 .frame(maxWidth: ReTurnDesign.Metrics.composerFocusedRegularMaxWidth)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -1,26 +1,46 @@
 #if os(macOS)
 import SwiftUI
 
-/// The Now transcript: user bubbles on the trailing edge in accent, replies
-/// on the leading edge with the triage intent as a caption — PRD F4 requires
-/// the app to say what it decided to do with the input. Anchored to the
-/// bottom so the newest reply stays visible without manual scrolling.
+/// The Now transcript starts below the desktop header and grows downward.
+/// User bubbles stay on the trailing edge in accent; replies lead with the
+/// triage intent required by PRD F4. Only overflowing content follows the
+/// latest reply, with a dedicated bottom target keeping it above Composer.
 struct NowConversationView: View {
     let entries: [ChatStore.Entry]
     @Environment(APIEnvironment.self) private var api: APIEnvironment
     @Environment(ChatStore.self) private var chat: ChatStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var scrollTarget: String?
+
+    private static let bottomID = "chat-bottom"
 
     var body: some View {
         ScrollView {
             LazyVStack(spacing: ReTurnDesign.Spacing.medium) {
                 ForEach(entries) { entry in
                     bubble(for: entry)
+                        .id(entry.id)
                 }
+
+                Color.clear
+                    .frame(height: ReTurnDesign.Card.pageBottomPadding)
+                    .id(Self.bottomID)
+                    .accessibilityHidden(true)
             }
+            .scrollTargetLayout()
             .padding(.horizontal, ReTurnDesign.Metrics.screenHorizontalInset)
             .padding(.vertical, ReTurnDesign.Spacing.small)
         }
-        .defaultScrollAnchor(.bottom)
+        .scrollIndicators(.hidden)
+        .scrollPosition(id: $scrollTarget)
+        .defaultScrollAnchor(.top)
+        .onChange(of: entries.last?.id, initial: true) { _, latestID in
+            guard latestID != nil else { return }
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
+                scrollTarget = Self.bottomID
+            }
+        }
+        .accessibilityIdentifier("now.conversation")
     }
 
     @ViewBuilder
