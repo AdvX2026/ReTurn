@@ -51,23 +51,6 @@ struct TimelinePageNavigation: View {
             .easeInOut(duration: ReTurnDesign.Motion.navigationDimDuration),
             value: isDimmed
         )
-        .background(alignment: .top) {
-            #if os(iOS)
-            LinearGradient(
-                colors: [
-                    ReTurnDesign.Colors.screenBackground,
-                    ReTurnDesign.Colors.screenBackground.opacity(0.96),
-                    ReTurnDesign.Colors.screenBackground.opacity(0),
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: ReTurnDesign.Metrics.navigationGradientHeight)
-            .allowsHitTesting(false)
-            #else
-            EmptyView()
-            #endif
-        }
         // Restarts whenever the page changes or the pager starts and stops, so
         // the navigation is at full strength for the whole gesture and only
         // recedes once everything settles. Opacity does not affect hit testing,

@@ -32,7 +32,7 @@ struct HomeTimelineView: View {
         .scrollTargetBehavior(.paging)
         .scrollPosition(id: $selectedPage)
 
-        let timelineContent = ZStack {
+        let timelineContent = ZStack(alignment: .top) {
             ReTurnDesign.Colors.screenBackground
                 .ignoresSafeArea()
 
@@ -54,6 +54,29 @@ struct HomeTimelineView: View {
             } else {
                 pager
             }
+
+            #if os(iOS)
+            Rectangle()
+                .fill(.bar)
+                .frame(height: ReTurnDesign.Metrics.navigationBackdropHeight)
+                .mask {
+                    LinearGradient(
+                        stops: [
+                            .init(color: .white, location: 0),
+                            .init(color: .white, location: 0.48),
+                            .init(color: .white.opacity(0.72), location: 0.72),
+                            .init(color: .clear, location: 1),
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                }
+                .ignoresSafeArea(edges: [.top, .horizontal])
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+                .opacity(isChromeVisible ? 1 : 0)
+                .animation(chromeAnimation, value: isChromeVisible)
+            #endif
         }
         .safeAreaInset(edge: .top, spacing: 0) {
             TimelinePageNavigation(
