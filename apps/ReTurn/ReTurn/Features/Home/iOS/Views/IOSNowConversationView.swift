@@ -227,7 +227,7 @@ struct IOSNowConversationView: View {
         HStack(spacing: ReTurnDesign.Spacing.small) {
             Image(systemName: "checkmark")
                 .font(.caption.weight(.bold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.gray)
                 .frame(
                     width: ReTurnDesign.Metrics.composerAccessorySize,
                     height: ReTurnDesign.Spacing.large
