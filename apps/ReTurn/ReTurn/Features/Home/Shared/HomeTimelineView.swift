@@ -7,8 +7,8 @@ struct HomeTimelineView: View {
 
     @State private var selectedPage: TimelinePage?
     @State private var isPagerScrolling = false
-    @State private var isBeforeScrolling = false
-    @State private var isBeforeChromeVisible = true
+    @State private var isDataPageScrolling = false
+    @State private var isDataPageChromeVisible = true
     @FocusState private var isComposerFocused: Bool
     #if os(iOS)
     @FocusState private var isSearchFocused: Bool
@@ -25,9 +25,9 @@ struct HomeTimelineView: View {
                     TimelinePageContent(
                         page: page,
                         isActive: page == currentPage && !isPagerScrolling,
-                        isBeforeChromeVisible: isBeforeChromeVisible,
-                        onBeforeChromeVisibilityChange: updateBeforeChromeVisibility,
-                        onBeforeScrollActivityChange: updateBeforeScrollActivity
+                        isDataPageChromeVisible: isDataPageChromeVisible,
+                        onDataPageChromeVisibilityChange: updateDataPageChromeVisibility,
+                        onDataPageScrollActivityChange: updateDataPageScrollActivity
                     )
                         .containerRelativeFrame([.horizontal, .vertical])
                         .id(page)
@@ -50,11 +50,11 @@ struct HomeTimelineView: View {
             if #available(iOS 18.0, macOS 15.0, *) {
                 pager
                     .onScrollPhaseChange { _, phase in
-                        let isScrolling = phase != ScrollPhase.idle
+                        let isScrolling = phase.isScrolling
                         isPagerScrolling = isScrolling
                         if isScrolling {
-                            isBeforeChromeVisible = true
-                            isBeforeScrolling = false
+                            isDataPageChromeVisible = true
+                            isDataPageScrolling = false
                         }
                     }
             } else {
@@ -180,8 +180,8 @@ struct HomeTimelineView: View {
                 isComposerFocused = false
             }
             #endif
-            isBeforeChromeVisible = true
-            isBeforeScrolling = false
+            isDataPageChromeVisible = true
+            isDataPageScrolling = false
         }
         .onChange(of: chat.pendingJump) { _, jump in
             guard jump != nil else { return }
@@ -196,7 +196,7 @@ struct HomeTimelineView: View {
     }
 
     private var isChromeVisible: Bool {
-        selectedPage != .before || isBeforeChromeVisible
+        isNowPage || isDataPageChromeVisible
     }
 
     private var currentPage: TimelinePage {
@@ -212,7 +212,7 @@ struct HomeTimelineView: View {
     }
 
     private var isTimelineScrolling: Bool {
-        isPagerScrolling || (selectedPage == .before && isBeforeScrolling)
+        isPagerScrolling || (!isNowPage && isDataPageScrolling)
     }
 
     private var chromeAnimation: Animation {
@@ -227,11 +227,11 @@ struct HomeTimelineView: View {
         }
     }
 
-    private func updateBeforeChromeVisibility(_ isVisible: Bool) {
+    private func updateDataPageChromeVisibility(_ isVisible: Bool) {
         guard
-            selectedPage == .before,
+            !isNowPage,
             !isPagerScrolling,
-            isBeforeChromeVisible != isVisible
+            isDataPageChromeVisible != isVisible
         else {
             return
         }
@@ -242,12 +242,12 @@ struct HomeTimelineView: View {
             isSearchFocused = false
             #endif
         }
-        isBeforeChromeVisible = isVisible
+        isDataPageChromeVisible = isVisible
     }
 
-    private func updateBeforeScrollActivity(_ isScrolling: Bool) {
-        isBeforeScrolling =
-            selectedPage == .before
+    private func updateDataPageScrollActivity(_ isScrolling: Bool) {
+        isDataPageScrolling =
+            !isNowPage
             && !isPagerScrolling
             && isScrolling
     }

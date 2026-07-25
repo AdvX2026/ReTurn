@@ -14,8 +14,13 @@ struct AfterView: View {
     let onTodoDismiss: ((String) -> Void)?
     let onOpenHealth: (() -> Void)?
     let onOpenIdea: ((IdeaCardContent) -> Void)?
+    let isChromeVisible: Bool
+    let onChromeVisibilityChange: (Bool) -> Void
+    let onScrollActivityChange: (Bool) -> Void
     let loadMoreID: String?
     let onLoadMore: (() async -> Void)?
+
+    @State private var chromeScrollTracker = TimelineChromeScrollTracker()
 
     init(
         todoSuggestions: [TodoSuggestionCardContent],
@@ -30,6 +35,9 @@ struct AfterView: View {
         onTodoDismiss: ((String) -> Void)? = nil,
         onOpenHealth: (() -> Void)? = nil,
         onOpenIdea: ((IdeaCardContent) -> Void)? = nil,
+        isChromeVisible: Bool = true,
+        onChromeVisibilityChange: @escaping (Bool) -> Void = { _ in },
+        onScrollActivityChange: @escaping (Bool) -> Void = { _ in },
         loadMoreID: String? = nil,
         onLoadMore: (() async -> Void)? = nil
     ) {
@@ -45,6 +53,9 @@ struct AfterView: View {
         self.onTodoDismiss = onTodoDismiss
         self.onOpenHealth = onOpenHealth
         self.onOpenIdea = onOpenIdea
+        self.isChromeVisible = isChromeVisible
+        self.onChromeVisibilityChange = onChromeVisibilityChange
+        self.onScrollActivityChange = onScrollActivityChange
         self.loadMoreID = loadMoreID
         self.onLoadMore = onLoadMore
     }
@@ -62,78 +73,100 @@ struct AfterView: View {
     }
 
     var body: some View {
+        let cardsScroll = ScrollView {
+            LazyVStack(
+                alignment: .leading,
+                spacing: ReTurnDesign.Card.groupSpacing
+            ) {
+                if hasSuggestions {
+                    CardGroup("Suggestions") {
+                        ForEach(healthCards.indices, id: \.self) { index in
+                            HealthAdviceCard(
+                                content: healthCards[index],
+                                onOpen: onOpenHealth
+                            )
+                        }
+
+                        ForEach(todoSuggestions.indices, id: \.self) { index in
+                            TodoSuggestionCard(
+                                content: todoSuggestions[index],
+                                doneTodoIDs: doneTodoIDs,
+                                dismissedTodoIDs: dismissedTodoIDs,
+                                todoErrors: todoErrors,
+                                onOpen: onOpenTodo,
+                                onDone: onTodoDone,
+                                onAccept: onTodoAccept,
+                                onDismiss: onTodoDismiss
+                            )
+                        }
+                    }
+                }
+
+                if !ideas.isEmpty {
+                    CardGroup("Ideas") {
+                        ForEach(ideas.indices, id: \.self) { index in
+                            IdeaCard(
+                                content: ideas[index],
+                                onOpen: onOpenIdea
+                            )
+                        }
+                    }
+                }
+
+                if let loadMoreID {
+                    Color.clear
+                        .frame(height: 1)
+                        .accessibilityHidden(true)
+                        .task(id: loadMoreID) {
+                            if let onLoadMore {
+                                await onLoadMore()
+                            }
+                        }
+                }
+            }
+        }
+        .contentMargins(
+            .horizontal,
+            ReTurnDesign.Metrics.screenHorizontalInset,
+            for: .scrollContent
+        )
+        .contentMargins(
+            .top,
+            ReTurnDesign.Metrics.mainContentTopPadding,
+            for: .scrollContent
+        )
+        .contentMargins(
+            .bottom,
+            ReTurnDesign.Card.pageBottomPadding,
+            for: .scrollContent
+        )
+        .scrollIndicators(.hidden)
+
         ZStack {
             ReTurnDesign.Colors.screenBackground
 
             if hasContent {
-                ScrollView {
-                    LazyVStack(
-                        alignment: .leading,
-                        spacing: ReTurnDesign.Card.groupSpacing
-                    ) {
-                        if hasSuggestions {
-                            CardGroup("Suggestions") {
-                                ForEach(healthCards.indices, id: \.self) { index in
-                                    HealthAdviceCard(
-                                        content: healthCards[index],
-                                        onOpen: onOpenHealth
-                                    )
-                                }
-
-                                ForEach(todoSuggestions.indices, id: \.self) { index in
-                                    TodoSuggestionCard(
-                                        content: todoSuggestions[index],
-                                        doneTodoIDs: doneTodoIDs,
-                                        dismissedTodoIDs: dismissedTodoIDs,
-                                        todoErrors: todoErrors,
-                                        onOpen: onOpenTodo,
-                                        onDone: onTodoDone,
-                                        onAccept: onTodoAccept,
-                                        onDismiss: onTodoDismiss
-                                    )
-                                }
-                            }
+                if #available(iOS 18.0, *) {
+                    cardsScroll
+                        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                            let offset = max(
+                                geometry.contentOffset.y + geometry.contentInsets.top,
+                                0
+                            )
+                            let sampleDistance =
+                                TimelineDesign.Interaction.chromeOffsetSampleDistance
+                            return (offset / sampleDistance).rounded(.down) * sampleDistance
+                        } action: { _, offset in
+                            updateChromeVisibility(for: offset)
                         }
-
-                        if !ideas.isEmpty {
-                            CardGroup("Ideas") {
-                                ForEach(ideas.indices, id: \.self) { index in
-                                    IdeaCard(
-                                        content: ideas[index],
-                                        onOpen: onOpenIdea
-                                    )
-                                }
-                            }
+                        .onScrollPhaseChange { _, phase in
+                            let isScrolling = phase.isScrolling
+                            chromeScrollTracker.setScrolling(isScrolling)
+                            onScrollActivityChange(isScrolling)
                         }
-
-                        if let loadMoreID {
-                            Color.clear
-                                .frame(height: 1)
-                                .accessibilityHidden(true)
-                                .task(id: loadMoreID) {
-                                    if let onLoadMore {
-                                        await onLoadMore()
-                                    }
-                                }
-                        }
-                    }
+                } else {
+                    cardsScroll
                 }
-                .contentMargins(
-                    .horizontal,
-                    ReTurnDesign.Metrics.screenHorizontalInset,
-                    for: .scrollContent
-                )
-                .contentMargins(
-                    .top,
-                    ReTurnDesign.Metrics.mainContentTopPadding,
-                    for: .scrollContent
-                )
-                .contentMargins(
-                    .bottom,
-                    ReTurnDesign.Card.pageBottomPadding,
-                    for: .scrollContent
-                )
-                .scrollIndicators(.hidden)
             } else {
                 ContentUnavailableView(
                     "Nothing waiting yet",
@@ -145,6 +178,19 @@ struct AfterView: View {
             }
         }
         .accessibilityIdentifier("after.page")
+    }
+
+    private func updateChromeVisibility(for offset: CGFloat) {
+        guard
+            let isVisible = chromeScrollTracker.update(
+                offset: offset,
+                isChromeVisible: isChromeVisible
+            )
+        else {
+            return
+        }
+
+        onChromeVisibilityChange(isVisible)
     }
 
     private var hasSuggestions: Bool {
