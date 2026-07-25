@@ -238,7 +238,7 @@ final class TimelineStore {
             let page = try await api.makeClient().listCards(
                 direction: .before,
                 cursor: cursor,
-                limit: 100
+                limit: 50
             )
             cards.append(contentsOf: page.cards.filter { $0.type == .briefing })
             cursor = page.nextCursor

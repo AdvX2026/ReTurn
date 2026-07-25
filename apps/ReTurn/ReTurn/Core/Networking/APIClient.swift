@@ -298,7 +298,10 @@ struct APIClient {
     ) async throws -> ListCardsResponse {
         var query: [URLQueryItem] = [.init(name: "direction", value: direction.rawValue)]
         if let cursor { query.append(.init(name: "cursor", value: cursor)) }
-        if let limit { query.append(.init(name: "limit", value: String(limit))) }
+        if let limit {
+            let serverLimit = min(max(limit, 1), 50)
+            query.append(.init(name: "limit", value: String(serverLimit)))
+        }
         return try await get("/api/cards", query: query)
     }
 }

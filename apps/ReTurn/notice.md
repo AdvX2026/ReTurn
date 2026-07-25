@@ -1,6 +1,7 @@
 # apps/ReTurn — Agent Notice
 
 - SwiftUI multiplatform Xcode project (deployment targets iOS 17.0 / macOS 14.0), built with Xcode 26. MVP UI implementation and demo verification prioritize iOS/macOS 26. Prefer native OS-26 SwiftUI behavior over hand-drawn approximations; preserve the older deployment targets with small, localized `#available` branches and standard-system fallbacks unless the user explicitly changes the minimum versions. visionOS removed. macOS App Sandbox is OFF per PRD §6.1 (sandbox without outgoing-network entitlement blocks LAN access to Pi/sampler).
+- Use root `./script/build_and_run.sh` as the single macOS kill + clean-build + run entrypoint; `--verify` also confirms the launched `ReTurn` process, and the Codex `Run` action invokes the same script.
 - `project.pbxproj` uses synchronized folder groups: any file added under `ReTurn/` / `ReTurnTests/` is picked up automatically — never hand-edit the pbxproj to add files.
 - Xcode 26 builds this target as a mergeable library: the ~58 KB `ReTurn` executable is a stub and the real code lives in `ReTurn.app/ReTurn.debug.dylib`. Incremental `xcodebuild build` has silently no-oped over on-disk source changes here and shipped a stale dylib to the simulator — always `xcodebuild clean build` before install-and-verify. `xcodebuild test` runs on a "Clone" device in a separate device set that `xcrun simctl list` cannot see; capture visual evidence via `XCTAttachment` + `xcrun xcresulttool export attachments --path <xcresult> --output-path <dir>` instead of `simctl io screenshot`.
 

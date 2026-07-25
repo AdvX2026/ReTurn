@@ -55,7 +55,7 @@ struct MacCalendarView: View {
             .foregroundStyle(.secondary)
 
             LazyVGrid(columns: columns, spacing: 0) {
-                ForEach(weekdaySymbols, id: \.self) { symbol in
+                ForEach(Array(weekdaySymbols.enumerated()), id: \.offset) { _, symbol in
                     Text(symbol)
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
