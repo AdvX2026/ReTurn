@@ -119,14 +119,21 @@ struct HomeTimelineView: View {
                 ZStack {
                     ComposerBar(isFocused: $isComposerFocused)
                         .opacity(isNowPage ? 1 : 0)
+                        .scaleEffect(isNowPage ? 1 : bottomChromeInactiveScale)
+                        .offset(y: isNowPage ? 0 : bottomChromeInactiveOffset)
+                        .zIndex(isNowPage ? 1 : 0)
                         .allowsHitTesting(isNowPage)
                         .accessibilityHidden(!isNowPage)
 
                     TimelineSearchBar(isFocused: $isSearchFocused)
                         .opacity(isNowPage ? 0 : 1)
+                        .scaleEffect(isNowPage ? bottomChromeInactiveScale : 1)
+                        .offset(y: isNowPage ? bottomChromeInactiveOffset : 0)
+                        .zIndex(isNowPage ? 0 : 1)
                         .allowsHitTesting(!isNowPage)
                         .accessibilityHidden(isNowPage)
                 }
+                .animation(chromeAnimation, value: isNowPage)
                 #else
                 ComposerBar(isFocused: $isComposerFocused)
                 #endif
@@ -160,6 +167,14 @@ struct HomeTimelineView: View {
 
     private var isNowPage: Bool {
         (selectedPage ?? .now) == .now
+    }
+
+    private var bottomChromeInactiveScale: CGFloat {
+        reduceMotion ? 1 : 0.97
+    }
+
+    private var bottomChromeInactiveOffset: CGFloat {
+        reduceMotion ? 0 : 6
     }
 
     private var isTimelineScrolling: Bool {
