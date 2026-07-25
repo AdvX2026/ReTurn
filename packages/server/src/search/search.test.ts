@@ -72,7 +72,7 @@ describe("tokenize", () => {
 });
 
 describe("ranking", () => {
-  it("RRF single channel degrades; dual channel boosts intersection", () => {
+  it("RRF combines available channel ranks and boosts intersections", () => {
     const onlyKw = rrfScore(1, null);
     const onlySem = rrfScore(null, 1);
     const both = rrfScore(1, 1);
@@ -122,7 +122,7 @@ describe("ranking", () => {
 });
 
 describe("snippet", () => {
-  it("window around hit; fallback to start", () => {
+  it("windows around a hit and starts at the beginning when no hit exists", () => {
     const body = `${"前文".repeat(40)}产品评审会议纪要${"后文".repeat(40)}`;
     const snip = extractSnippet(body, "评审");
     assert.ok(snip.includes("评审"));
@@ -199,7 +199,6 @@ describe("index + search integration", () => {
     // 2-char Chinese must hit
     const r1 = await search(db, {
       q: "评审",
-      semantic: false,
       now: new Date(2026, 6, 24),
     });
     assert.ok(r1.results.length >= 1, "评审 should hit");
@@ -215,7 +214,6 @@ describe("index + search integration", () => {
     // English
     const r2 = await search(db, {
       q: "hybrid",
-      semantic: false,
       now: new Date(2026, 6, 24),
     });
     assert.ok(r2.results.some((h) => h.kind === "url"));
@@ -224,7 +222,6 @@ describe("index + search integration", () => {
     const r3 = await search(db, {
       q: "search",
       kinds: ["git_commit"],
-      semantic: false,
       now: new Date(2026, 6, 24),
     });
     assert.ok(r3.results.every((h) => h.kind === "git_commit"));
@@ -248,7 +245,6 @@ describe("index + search integration", () => {
       q: "评审",
       from: "2026-07-24",
       to: "2026-07-24",
-      semantic: false,
       now: new Date(2026, 6, 24),
     });
     const feedIdx = r4.results.findIndex((h) => h.kind === "text");
@@ -262,7 +258,6 @@ describe("index + search integration", () => {
     deleteNode(db, a.node.id);
     const r5 = await search(db, {
       q: "全局检索升级方案",
-      semantic: false,
       now: new Date(2026, 6, 24),
     });
     assert.ok(!r5.results.some((h) => h.node?.id === a.node.id));

@@ -66,14 +66,7 @@ export function scoreIntake(nodes: NodeRecord[], emailInCount = 0): number {
 /** 专注: HHI of session durations + longest session weight. */
 export function scoreFocus(sessions: Session[], nodes: NodeRecord[]): number {
   const usable = sessions.filter((s) => s.durationMin > 0);
-  if (usable.length === 0) {
-    // Fallback: if only samples exist without aggregation edge, mild score from sample count.
-    const samples = nodes.filter(
-      (n) => n.kind === "app_sample" || n.kind === "agent_session",
-    );
-    if (samples.length === 0) return 0;
-    return clamp(samples.length * 2, 0, 40);
-  }
+  if (usable.length === 0) return 0;
 
   const total = usable.reduce((s, x) => s + x.durationMin, 0);
   if (total <= 0) return 0;
@@ -204,35 +197,20 @@ export function extractHealth(nodes: NodeRecord[]): {
   sleepMinutes: number | null;
   steps: number | null;
 } {
-  const health = nodes
+  // Latest VALID row wins; a malformed health_daily row must not poison every
+  // stats/continue endpoint — skip it loudly and fall back to older rows.
+  const candidates = nodes
     .filter((n) => n.kind === "health_daily")
     .slice()
-    .sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-    )[0];
-  if (!health) return { sleepMinutes: null, steps: null };
-  const meta = (health.source_meta ?? {}) as Record<string, unknown>;
-  const sleep =
-    typeof meta.sleep_minutes === "number"
-      ? meta.sleep_minutes
-      : typeof health.content === "string"
-        ? null
-        : null;
-  const steps = typeof meta.steps === "number" ? meta.steps : null;
-  // Prefer meta; also accept top-level fields stored in content JSON.
-  let sleepMinutes = sleep;
-  let stepCount = steps;
-  if (health.content) {
-    try {
-      const c = JSON.parse(health.content) as Record<string, unknown>;
-      if (sleepMinutes == null && typeof c.sleep_minutes === "number")
-        sleepMinutes = c.sleep_minutes;
-      if (stepCount == null && typeof c.steps === "number") stepCount = c.steps;
-    } catch {
-      /* ignore */
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  for (const health of candidates) {
+    const meta = (health.source_meta ?? {}) as Record<string, unknown>;
+    if (typeof meta.sleep_minutes === "number" && typeof meta.steps === "number") {
+      return { sleepMinutes: meta.sleep_minutes, steps: meta.steps };
     }
+    console.warn(`[stats] skipping health_daily with invalid source_meta: ${health.id}`);
   }
-  return { sleepMinutes, steps: stepCount };
+  return { sleepMinutes: null, steps: null };
 }
 
 export { EMPTY_STATS };

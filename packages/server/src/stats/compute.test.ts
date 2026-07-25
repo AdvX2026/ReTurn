@@ -213,7 +213,7 @@ describe("scoreEnergy", () => {
     assert.ok(short < 70, `5h sleep got ${short}`);
   });
 
-  it("no health falls back to pure deduction from 100", () => {
+  it("uses the no-health energy formula when health is absent", () => {
     const s = scoreEnergy({
       nodes: [],
       sessions: [],
@@ -430,5 +430,29 @@ describe("extractHealth + computeStats integration", () => {
     });
     assert.ok(tiredStats.energy < 40, `energy=${tiredStats.energy}`);
     assert.equal(resolveCharacterState(tiredStats), "tired");
+  });
+
+  it("skips malformed health_daily rows instead of throwing", () => {
+    // Newest row is corrupt → fall back to the older valid one.
+    const nodes = [
+      node({
+        kind: "health_daily",
+        source_meta: { sleep_minutes: "oops", steps: null },
+        created_at: "2026-07-24T12:00:00.000Z",
+      }),
+      node({
+        kind: "health_daily",
+        source_meta: { sleep_minutes: 420, steps: 8000 },
+        created_at: "2026-07-24T08:00:00.000Z",
+      }),
+    ];
+    const health = extractHealth(nodes);
+    assert.equal(health.sleepMinutes, 420);
+    assert.equal(health.steps, 8000);
+
+    // Only corrupt rows → behave as if health is absent (no poison, no throw).
+    const onlyBad = extractHealth([nodes[0]!]);
+    assert.equal(onlyBad.sleepMinutes, null);
+    assert.equal(onlyBad.steps, null);
   });
 });
