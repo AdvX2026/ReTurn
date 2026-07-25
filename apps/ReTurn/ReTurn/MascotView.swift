@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 /// Kongkong, alive: the Now-page mascot as layered native drawing with idle
@@ -37,6 +38,8 @@ struct MascotView: View {
     var onHop: (() -> Void)?
 
     @State private var hopping = false
+    /// Currently playing emote and when it started; `nil` is idle.
+    @State private var emote: (kind: Emote, started: Date)?
 
     enum Design {
         static let coreWidth: CGFloat = 175
@@ -72,6 +75,22 @@ struct MascotView: View {
         static let armWalkSwing = 16.0
         static let legWalkSwing = 15.0
         static let walkLean = 4.0
+        static let emoteCheckInterval = 6.0
+    }
+
+    /// A short playful burst in the spirit of Claude Code's Clawd mascot:
+    /// a wave, a cheer with both arms up, or a full twirl. Fires at random
+    /// while idling; the walker keeps pacing instead.
+    private enum Emote: String, CaseIterable {
+        case wave, cheer, twirl
+
+        var duration: TimeInterval {
+            switch self {
+            case .wave: return 1.6
+            case .cheer: return 1.4
+            case .twirl: return 1.1
+            }
+        }
     }
 
     var body: some View {
@@ -117,6 +136,29 @@ struct MascotView: View {
             }
             onHop?()
         }
+        // Idle emotes: every few seconds a chance at a wave, cheer or twirl.
+        // A task loop, not onReceive(Timer.publish): the TimelineView redraw
+        // re-creates an inline publisher every frame, and re-subscribing to
+        // it never lets the timer reach its interval.
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(Motion.emoteCheckInterval))
+                guard !Task.isCancelled else { return }
+                guard !walking, emote == nil else { continue }
+                // UI tests pin the emote via MASCOT_EMOTE (an unmatched
+                // value, e.g. "off", suppresses it); idle runs fire at random.
+                let kind: Emote?
+                if let pinned = ProcessInfo.processInfo.environment["MASCOT_EMOTE"] {
+                    kind = Emote(rawValue: pinned)
+                } else {
+                    kind = Double.random(in: 0...1) < 0.55 ? Emote.allCases.randomElement() : nil
+                }
+                guard let kind else { continue }
+                emote = (kind, .now)
+                try? await Task.sleep(for: .seconds(kind.duration))
+                emote = nil
+            }
+        }
         .accessibilityElement()
         .accessibilityLabel(accessibilitySummary)
         .accessibilityAddTraits(.isButton)
@@ -156,24 +198,13 @@ struct MascotView: View {
     private func drawBody(in context: inout GraphicsContext, t: TimeInterval) {
         let energy = stats?.energy ?? 50
         // Walking swaps the energy-driven idle tempo for a fixed stride.
-        let amplitude = walking
+        var amplitude = walking
             ? Motion.walkBobAmplitude
             : statFraction(energy, min: Motion.bounceMinAmplitude, max: Motion.bounceMaxAmplitude)
         let speed = walking
             ? Motion.walkCadence
             : statFraction(energy, min: Motion.bounceMinSpeed, max: Motion.bounceMaxSpeed)
         let phase = sin(t * speed * .pi)
-
-        var body = context
-        body.translateBy(x: Design.pivot.x, y: Design.pivot.y)
-        // Counter-phase horizontal squash keeps the silhouette's volume.
-        body.scaleBy(x: 1 - phase * amplitude * 0.3, y: 1 + phase * amplitude)
-        if walking {
-            // A slight constant lean into the direction of travel; the
-            // caller's horizontal flip turns it around at each end.
-            body.rotate(by: .degrees(Motion.walkLean))
-        }
-        body.translateBy(x: -Design.pivot.x, y: -Design.pivot.y)
 
         // Arms pivot where they meet the body: a gentle wave at idle, a full
         // counter-swing against the same-side leg when walking. The Figma
@@ -186,7 +217,46 @@ struct MascotView: View {
         let armSwing = walking
             ? -phase * Motion.armWalkSwing
             : sin(t * speed * .pi + 1.2) * Motion.armWaveAmplitude
-        let leftArmDegrees = -32 + armSwing
+        var leftArmDegrees = -32 + armSwing
+        var rightArmDegrees = -leftArmDegrees
+
+        // A running emote steals the arms and may spin the whole body; the
+        // walker keeps its own beat.
+        var emoteTwirl = 0.0
+        var cheerGlints = false
+        if let emote, !walking {
+            let p = Swift.min((t - emote.started.timeIntervalSinceReferenceDate) / emote.kind.duration, 1)
+            let raise = Self.emoteEnvelope(p)
+            switch emote.kind {
+            case .wave:
+                rightArmDegrees = 32 + raise * (95 + 12 * sin(t * 10))
+            case .cheer:
+                leftArmDegrees = -32 - raise * 105
+                rightArmDegrees = 32 + raise * 105
+                amplitude += raise * 0.05
+                cheerGlints = raise > 0.3
+            case .twirl:
+                emoteTwirl = 360 * Self.smoothstep(p)
+            }
+        }
+
+        var body = context
+        body.translateBy(x: Design.pivot.x, y: Design.pivot.y)
+        // Counter-phase horizontal squash keeps the silhouette's volume.
+        body.scaleBy(x: 1 - phase * amplitude * 0.3, y: 1 + phase * amplitude)
+        if walking {
+            // A slight constant lean into the direction of travel; the
+            // caller's horizontal flip turns it around at each end.
+            body.rotate(by: .degrees(Motion.walkLean))
+        }
+        body.translateBy(x: -Design.pivot.x, y: -Design.pivot.y)
+        if emoteTwirl != 0 {
+            // Twirl about the body centre so the whole figure spins in place.
+            body.translateBy(x: Design.center.x, y: Design.center.y)
+            body.rotate(by: .degrees(emoteTwirl))
+            body.translateBy(x: -Design.center.x, y: -Design.center.y)
+        }
+
         drawLimb(
             &body,
             rect: CGRect(x: 31, y: 48.2349, width: 15, height: 25),
@@ -197,7 +267,7 @@ struct MascotView: View {
             &body,
             rect: CGRect(x: Design.coreWidth - 31 - 15, y: 48.2349, width: 15, height: 25),
             anchor: rightArmAnchor,
-            degrees: -leftArmDegrees
+            degrees: rightArmDegrees
         )
 
         // Legs stay planted at idle; when walking they step alternately
@@ -222,7 +292,7 @@ struct MascotView: View {
             in: &body,
             leftArm: (anchor: leftArmAnchor, degrees: leftArmDegrees)
         )
-        drawEyes(in: &body, t: t)
+        drawEyes(in: &body, t: t, forceGlints: cheerGlints)
         drawMouth(in: &body)
     }
 
@@ -242,7 +312,9 @@ struct MascotView: View {
         )
     }
 
-    private func drawEyes(in context: inout GraphicsContext, t: TimeInterval) {
+    /// `forceGlints` lights the star glints even with no focus stat — the
+    /// cheer emote's sparkle eyes.
+    private func drawEyes(in context: inout GraphicsContext, t: TimeInterval, forceGlints: Bool = false) {
         let cycle = t.truncatingRemainder(dividingBy: Motion.blinkInterval)
         // Smooth close-open inside the blink window; wide open otherwise.
         let blinkScale = cycle < Motion.blinkDuration
@@ -250,7 +322,7 @@ struct MascotView: View {
             : 1
 
         // Focus: steady pupils when high, a slow distracted wander when low.
-        let focus = stats?.focus ?? 50
+        let focus = stats?.focus ?? (forceGlints ? 85 : 50)
         let wander = (1 - statFraction(focus)) * 2.2 * sin(t * 0.9)
         // Energy: below ~45 the lids slide down over the eyes -- the fatigue
         // read. The lid is body-coloured, so the eye simply looks shorter.
@@ -284,7 +356,7 @@ struct MascotView: View {
                 eye.stroke(crease, with: .color(.black.opacity(0.25)), lineWidth: 1)
             }
 
-            if stats?.focus != nil {
+            if stats?.focus != nil || forceGlints {
                 let prominence = statFraction(focus, min: 0.35, max: 1)
                 let pulse = 1 + 0.18 * sin(t * 2.4 + eyeX)
                 var glint = context
@@ -457,6 +529,17 @@ struct MascotView: View {
     private func statFraction(_ value: Double, min: Double = 0, max: Double = 1) -> Double {
         let clamped = Swift.min(Swift.max(value, 0), 100) / 100
         return min + (max - min) * clamped
+    }
+
+    /// 0→1→0 over an emote's progress: up in the first quarter, hold, back
+    /// down in the last.
+    private static func emoteEnvelope(_ p: Double) -> Double {
+        smoothstep(Swift.min(p / 0.25, 1) * Swift.min((1 - p) / 0.25, 1))
+    }
+
+    private static func smoothstep(_ x: Double) -> Double {
+        let clamped = Swift.min(Swift.max(x, 0), 1)
+        return clamped * clamped * (3 - 2 * clamped)
     }
 
     private var accessibilitySummary: Text {
