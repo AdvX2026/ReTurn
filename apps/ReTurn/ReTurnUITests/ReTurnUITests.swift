@@ -45,6 +45,29 @@ final class ReTurnUITests: XCTestCase {
         XCTAssertTrue(walker.exists)
     }
 
+    /// Launches once per emote kind with MASCOT_EMOTE pinning the idle
+    /// burst, then captures frames across the first one as visual evidence.
+    @MainActor
+    func testMascotEmotes() throws {
+        for kind in ["wave", "cheer", "twirl"] {
+            let app = XCUIApplication()
+            app.launchEnvironment["MASCOT_EMOTE"] = kind
+            app.launch()
+            XCTAssertTrue(app.staticTexts["Teethe is back!"].waitForExistence(timeout: 5))
+            // The emote check fires 6 s after the mascot appears; spread
+            // frames over the following seconds to land mid-burst.
+            sleep(6)
+            for index in 0..<5 {
+                if index > 0 { usleep(500_000) }
+                let frame = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+                frame.name = "\(kind)-\(index)"
+                frame.lifetime = .keepAlways
+                add(frame)
+            }
+            app.terminate()
+        }
+    }
+
     @MainActor
     func testLaunchPerformance() throws {
         // This measures how long it takes to launch your application.

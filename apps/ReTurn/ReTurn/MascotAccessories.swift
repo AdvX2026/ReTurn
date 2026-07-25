@@ -182,8 +182,10 @@ enum MascotAccessory {
     /// Manager: a dapper bow tie under the chin — two wings flaring from a
     /// pinched knot. (A dangling red blade on the chest read as a tongue.)
     private static func drawBowTie(in context: inout GraphicsContext) {
-        let red = Color(red: 0.85, green: 0.25, blue: 0.3)
-        let darkRed = Color(red: 0.7, green: 0.17, blue: 0.23)
+        // Deep navy: one quiet dark accent against the cornflower body
+        // instead of a third saturated hue.
+        let blue = Color(red: 0.13, green: 0.22, blue: 0.45)
+        let darkBlue = Color(red: 0.09, green: 0.15, blue: 0.32)
         let center = CGPoint(x: 88, y: 80)
         for side in [-1.0, 1.0] as [CGFloat] {
             var wing = Path()
@@ -192,16 +194,16 @@ enum MascotAccessory {
             wing.addLine(to: CGPoint(x: center.x + side * 14, y: center.y + 8))
             wing.addLine(to: CGPoint(x: center.x + side * 2.5, y: center.y + 3.5))
             wing.closeSubpath()
-            context.fill(wing, with: .color(red))
+            context.fill(wing, with: .color(blue))
             context.stroke(
                 wing,
-                with: .color(red),
+                with: .color(blue),
                 style: StrokeStyle(lineWidth: 2.5, lineJoin: .round)
             )
         }
         context.fill(
             Path(roundedRect: CGRect(x: center.x - 3.5, y: center.y - 4, width: 7, height: 8), cornerRadius: 2.5),
-            with: .color(darkRed)
+            with: .color(darkBlue)
         )
     }
 }
