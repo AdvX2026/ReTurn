@@ -175,14 +175,20 @@ struct ContentView: View {
 }
 
 private struct NowPage: View {
+    /// Placeholder stats and profession until the Now store wires
+    /// `/api/stats/today` and the contract's pending profession field in.
+    private let demoStats = Stats(intake: 72, focus: 64, output: 81, continuity: 45, energy: 88)
+
     var body: some View {
         VStack(spacing: ReTurnDesign.Spacing.medium) {
             // Sized from the scroll viewport, which only changes on rotation --
-            // the mascot is a preserved vector and re-rasterizes on every new
-            // width, so it must not track the composer or keyboard animation.
-            MascotImage()
+            // the mascot redraws every frame, so it must not track the
+            // composer or keyboard animation.
+            MascotView(stats: demoStats, profession: .coder)
                 .containerRelativeFrame(.horizontal) { width, _ in
-                    ReTurnDesign.Layout.mascotWidth(in: width)
+                    MascotView.frameWidth(
+                        forMascotWidth: ReTurnDesign.Layout.mascotWidth(in: width)
+                    )
                 }
 
             Text("Teethe is back!")
