@@ -34,13 +34,14 @@ import {
   type SearchResponse,
   type Stats,
   type StatsTodayResponse,
+  TaskStatus,
   type TimelineResponse,
   type VoiceResponse,
   uuidFromSeed,
 } from "@return/shared";
 import type { FastifyInstance } from "fastify";
 import { TranscribeError, transcribeAudio } from "./ai/transcribe.js";
-import { config, isHealthTokenConfigured } from "./config.js";
+import { NotConfiguredError, config, isHealthTokenConfigured } from "./config.js";
 import {
   type DayRow,
   acceptTodo,
@@ -71,7 +72,7 @@ import {
   upsertDevice,
 } from "./db/repo.js";
 import type { Db } from "./db/schema.js";
-import { AskConfigError, ask } from "./search/ask.js";
+import { ask } from "./search/ask.js";
 import { search } from "./search/query.js";
 import { ChatError, handleChat } from "./services/chat.js";
 import type { MeetingTaskDispatcher } from "./services/meeting-tasks.js";
@@ -99,6 +100,41 @@ function notFound(message: string) {
 
 function unauthorized(message: string) {
   return { statusCode: 401 as const, error: "Unauthorized", message };
+}
+
+function unavailable(message: string) {
+  return { statusCode: 503 as const, error: "Service Unavailable", message };
+}
+
+/**
+ * Map handler failures without leaking provider internals: missing config is
+ * an explicit 503 with a setup hint; everything else logs the detail server-side
+ * and returns a generic message.
+ */
+function sendServiceError(
+  reply: { code: (n: number) => { send: (b: unknown) => unknown } },
+  scope: string,
+  err: unknown,
+  generic: string,
+): unknown {
+  if (err instanceof NotConfiguredError) {
+    return reply.code(503).send(unavailable(err.message));
+  }
+  console.error(`[${scope}] error:`, err);
+  return reply.code(500).send({
+    statusCode: 500,
+    error: "Internal Server Error",
+    message: generic,
+  });
+}
+
+function parseLimit(value: string | undefined, defaultValue: number): number {
+  if (value === undefined || value === "") return defaultValue;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 50) {
+    throw new Error("limit must be an integer from 1 to 50");
+  }
+  return parsed;
 }
 
 export async function registerRoutes(
@@ -139,6 +175,17 @@ export async function registerRoutes(
       return reply.code(400).send(badRequest(parsed.error.message));
     }
     touchDevice(db, parsed.data.device_id);
+    for (const node of parsed.data.nodes) {
+      const sampledAt = node.source_meta?.sampled_at;
+      if (
+        sampledAt !== undefined &&
+        (typeof sampledAt !== "string" || Number.isNaN(Date.parse(sampledAt)))
+      ) {
+        return reply
+          .code(400)
+          .send(badRequest("source_meta.sampled_at must be an ISO date-time"));
+      }
+    }
 
     const result = insertNodes(
       db,
@@ -227,6 +274,9 @@ export async function registerRoutes(
     if (clientUuid && !uuidRe.test(clientUuid)) {
       return reply.code(400).send(badRequest("client_uuid must be a UUID"));
     }
+    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return reply.code(400).send(badRequest("date must be YYYY-MM-DD"));
+    }
     touchDevice(db, deviceId);
 
     // Persist raw audio first so we never lose data on transcribe failure (PRD §9.6).
@@ -239,55 +289,57 @@ export async function registerRoutes(
     writeFileSync(audioPath, fileBuf);
 
     let transcript: string | null = null;
-    let pending = false;
     try {
       transcript = await transcribeAudio(fileBuf, filename, mimeType);
-    } catch (err) {
-      pending = true;
-      console.error(
-        "[voice] transcribe failed, marking pending:",
-        err instanceof TranscribeError ? err.message : err,
-      );
+    } catch (error) {
+      // Audio is already on disk — keep a pending node so the file is reachable
+      // and the client still gets a truthful failure (PRD §9.6: never lose data).
+      insertNode(db, {
+        client_uuid: clientUuid ?? uuid(),
+        kind: "voice",
+        title: title ?? "voice (pending transcript)",
+        content: null,
+        device_id: deviceId,
+        date: date ?? todayDate(),
+        source_meta: {
+          audio_path: audioPath,
+          mime_type: mimeType,
+          filename,
+          pending_transcript: true,
+        },
+      });
+      if (error instanceof NotConfiguredError) {
+        return reply.code(503).send(unavailable(`${error.message}; audio saved`));
+      }
+      console.error("[voice] transcribe failed (audio + pending node saved):", error);
+      return reply.code(502).send({
+        statusCode: 502,
+        error: "Bad Gateway",
+        message:
+          error instanceof TranscribeError
+            ? "transcription failed; audio saved for retry"
+            : "transcription failed",
+      });
     }
 
     const { node } = insertNode(db, {
       client_uuid: clientUuid ?? uuid(),
       kind: "voice",
-      title: title ?? (transcript ? transcript.slice(0, 60) : "voice (pending)"),
+      title: title ?? transcript.slice(0, 60),
       content: transcript,
       device_id: deviceId,
-      date: date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : todayDate(),
+      date: date ?? todayDate(),
       source_meta: {
         audio_path: audioPath,
         mime_type: mimeType,
         filename,
-        pending_transcript: pending,
       },
     });
 
     const body: VoiceResponse = {
       node,
-      transcript: transcript ?? "",
+      transcript,
     };
-
-    // v0.6: if we have a transcript, also run chat triage (same semantics as /api/chat).
-    if (transcript?.trim() && !pending) {
-      try {
-        await handleChat(
-          db,
-          {
-            text: transcript,
-            device_id: deviceId,
-          },
-          meetingTasks,
-        );
-      } catch (err) {
-        console.warn(
-          "[voice] chat triage after transcript failed:",
-          err instanceof Error ? err.message : err,
-        );
-      }
-    }
 
     return body;
   });
@@ -295,11 +347,9 @@ export async function registerRoutes(
   // ── health (Shortcuts fixed token) ────────────────────
   app.post("/api/health", async (req, reply) => {
     if (!isHealthTokenConfigured()) {
-      return reply.code(503).send({
-        statusCode: 503,
-        error: "Service Unavailable",
-        message: "HEALTH_TOKEN not configured — /api/health disabled",
-      });
+      return reply
+        .code(503)
+        .send(unavailable("HEALTH_TOKEN is not configured on the server"));
     }
     const token =
       (req.headers["x-return-token"] as string | undefined) ??
@@ -360,12 +410,7 @@ export async function registerRoutes(
       const result = await saveToday(db, parsed.data);
       return result;
     } catch (err) {
-      console.error("[save] error:", err);
-      return reply.code(500).send({
-        statusCode: 500,
-        error: "Internal Server Error",
-        message: err instanceof Error ? err.message : "save failed",
-      });
+      return sendServiceError(reply, "save", err, "save failed");
     }
   });
 
@@ -428,9 +473,12 @@ export async function registerRoutes(
   });
 
   // ── stats/today ───────────────────────────────────────
-  app.get("/api/stats/today", async (req) => {
+  app.get("/api/stats/today", async (req, reply) => {
     const q = req.query as { date?: string };
-    const date = q.date && /^\d{4}-\d{2}-\d{2}$/.test(q.date) ? q.date : todayDate();
+    const date = q.date ?? todayDate();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return reply.code(400).send(badRequest("date must be YYYY-MM-DD"));
+    }
     const live = computeLiveStats(db, date);
     const body: StatsTodayResponse = {
       date,
@@ -474,9 +522,16 @@ export async function registerRoutes(
   });
 
   // ── days (status overview) ────────────────────────────
-  app.get("/api/days", async (req) => {
+  app.get("/api/days", async (req, reply) => {
     const q = req.query as { range?: string };
-    const range = Math.min(Math.max(Number(q.range) || 30, 1), 90);
+    let range = 30;
+    if (q.range !== undefined) {
+      const parsed = Number(q.range);
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > 90) {
+        return reply.code(400).send(badRequest("range must be an integer from 1 to 90"));
+      }
+      range = parsed;
+    }
     const dates = lastNDays(range);
     const start = dates[0]!;
     const end = dates[dates.length - 1]!;
@@ -520,13 +575,14 @@ export async function registerRoutes(
     if (q.to && !/^\d{4}-\d{2}-\d{2}$/.test(q.to)) {
       return reply.code(400).send(badRequest("to must be YYYY-MM-DD"));
     }
-    let limit = 20;
-    if (q.limit != null && q.limit !== "") {
-      const n = Number(q.limit);
-      if (!Number.isFinite(n) || n < 1) {
-        return reply.code(400).send(badRequest("limit must be 1–50"));
-      }
-      limit = Math.min(Math.floor(n), 50);
+    if (q.from && q.to && q.from > q.to) {
+      return reply.code(400).send(badRequest("from must be ≤ to"));
+    }
+    let limit: number;
+    try {
+      limit = parseLimit(q.limit, 20);
+    } catch (error) {
+      return reply.code(400).send(badRequest((error as Error).message));
     }
     const kinds = q.kinds
       ? q.kinds
@@ -559,19 +615,7 @@ export async function registerRoutes(
       });
       return body;
     } catch (err) {
-      if (err instanceof AskConfigError) {
-        return reply.code(503).send({
-          statusCode: 503,
-          error: "Service Unavailable",
-          message: err.message,
-        });
-      }
-      console.error("[ask] error:", err);
-      return reply.code(500).send({
-        statusCode: 500,
-        error: "Internal Server Error",
-        message: err instanceof Error ? err.message : "ask failed",
-      });
+      return sendServiceError(reply, "ask", err, "ask failed");
     }
   });
 
@@ -589,22 +633,18 @@ export async function registerRoutes(
       if (err instanceof ChatError) {
         return reply.code(400).send(badRequest(err.message));
       }
-      console.error("[chat] error:", err);
-      return reply.code(500).send({
-        statusCode: 500,
-        error: "Internal Server Error",
-        message: err instanceof Error ? err.message : "chat failed",
-      });
+      return sendServiceError(reply, "chat", err, "chat failed");
     }
   });
 
   // ── messages ────────────────────────────────────────
-  app.get("/api/messages", async (req) => {
+  app.get("/api/messages", async (req, reply) => {
     const q = req.query as { cursor?: string; limit?: string };
-    let limit = 50;
-    if (q.limit) {
-      const n = Number(q.limit);
-      if (Number.isFinite(n)) limit = n;
+    let limit: number;
+    try {
+      limit = parseLimit(q.limit, 50);
+    } catch (error) {
+      return reply.code(400).send(badRequest((error as Error).message));
     }
     const body: ListMessagesResponse = listMessages(db, {
       cursor: q.cursor,
@@ -639,10 +679,8 @@ export async function registerRoutes(
           meetingTasks,
         );
       } catch (err) {
-        console.warn(
-          "[messages] re-chat after intent patch failed:",
-          err instanceof Error ? err.message : err,
-        );
+        // Intent is already corrected; a failed follow-up run must not 500 the PATCH.
+        console.error("[messages] follow-up chat failed:", err);
       }
     }
     const body: PatchMessageIntentResponse & { follow_up?: ChatResponse } = {
@@ -663,10 +701,11 @@ export async function registerRoutes(
     if (q.direction && q.direction !== "before" && q.direction !== "future") {
       return reply.code(400).send(badRequest("direction must be before|future"));
     }
-    let limit = 30;
-    if (q.limit) {
-      const n = Number(q.limit);
-      if (Number.isFinite(n)) limit = n;
+    let limit: number;
+    try {
+      limit = parseLimit(q.limit, 30);
+    } catch (error) {
+      return reply.code(400).send(badRequest((error as Error).message));
     }
     const page = listCards(db, {
       direction,
@@ -682,10 +721,16 @@ export async function registerRoutes(
   });
 
   // ── tasks ───────────────────────────────────────────
-  app.get("/api/tasks", async (req) => {
+  app.get("/api/tasks", async (req, reply) => {
     const q = req.query as { status?: string };
+    const status = q.status ? TaskStatus.safeParse(q.status) : null;
+    if (status && !status.success) {
+      return reply
+        .code(400)
+        .send(badRequest("status must be queued|running|done|failed"));
+    }
     const tasks = listTasks(db, {
-      status: q.status as "queued" | "running" | "done" | "failed" | undefined,
+      status: status?.data,
     });
     const body: ListTasksResponse = { tasks };
     return body;
@@ -698,10 +743,14 @@ export async function registerRoutes(
       return reply.code(400).send(badRequest(parsed.error.message));
     }
     if (parsed.data.device_id) touchDevice(db, parsed.data.device_id);
-    const body: ResumeResponse = await handleResume(db, {
-      hours: parsed.data.hours,
-    });
-    return body;
+    try {
+      const body: ResumeResponse = await handleResume(db, {
+        hours: parsed.data.hours,
+      });
+      return body;
+    } catch (err) {
+      return sendServiceError(reply, "resume", err, "resume failed");
+    }
   });
 
   // ── todos ─────────────────────────────────────────────
@@ -769,7 +818,7 @@ export async function registerRoutes(
 
 /**
  * Client event times go into source_meta only — never overwrite server created_at.
- * Drop non-parseable sampled_at; keep Zod-validated client_created_at.
+ * Normalize sampled_at and retain the Zod-validated client_created_at.
  */
 function sanitizeClientMeta(
   sourceMeta: Record<string, unknown> | null | undefined,
@@ -778,11 +827,7 @@ function sanitizeClientMeta(
   const meta: Record<string, unknown> = { ...(sourceMeta ?? {}) };
   if (clientCreatedAt) meta.client_created_at = clientCreatedAt;
   if (typeof meta.sampled_at === "string") {
-    const t = Date.parse(meta.sampled_at);
-    if (Number.isNaN(t)) delete meta.sampled_at;
-    else meta.sampled_at = new Date(t).toISOString();
-  } else if (meta.sampled_at != null) {
-    delete meta.sampled_at;
+    meta.sampled_at = new Date(meta.sampled_at).toISOString();
   }
   return meta;
 }

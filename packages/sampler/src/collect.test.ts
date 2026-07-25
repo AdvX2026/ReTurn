@@ -4,8 +4,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "node:test";
 import type { AgentInterval } from "./agents.js";
+import { collectSample } from "./collect.js";
 import { Outbox } from "./outbox.js";
-import { createKeyDedupe, todayLocal, uuidFromSeed } from "./source.js";
+import {
+  type SampleContext,
+  createKeyDedupe,
+  createSampleContext,
+  dateInTimeZone,
+  uuidFromSeed,
+} from "./source.js";
 import { intervalsToNodes, resetSeenAgentKeys } from "./sources/agents.js";
 
 function agent(
@@ -43,8 +50,80 @@ describe("source helpers", () => {
     assert.ok(d.size <= 3);
   });
 
-  it("todayLocal formats local calendar day", () => {
-    assert.match(todayLocal(new Date(2026, 6, 24, 18, 0, 0)), /^\d{4}-\d{2}-\d{2}$/);
+  it("dateInTimeZone formats an explicit calendar day", () => {
+    assert.equal(
+      dateInTimeZone(new Date("2026-07-24T18:00:00.000Z"), "Asia/Singapore"),
+      "2026-07-25",
+    );
+  });
+
+  it("creates one timezone-aware day window shared by all sources", () => {
+    const ctx = createSampleContext({
+      now: new Date("2026-07-24T18:30:00.000Z"),
+      timezone: "Asia/Singapore",
+      platform: "darwin",
+    });
+    assert.equal(ctx.day, "2026-07-25");
+    assert.equal(ctx.dayStart, "2026-07-24T16:00:00.000Z");
+    assert.equal(ctx.dayEnd, "2026-07-25T16:00:00.000Z");
+    assert.equal(ctx.at, "2026-07-24T18:30:00.000Z");
+  });
+
+  it("honors DST when deriving the shared day window", () => {
+    const ctx = createSampleContext({
+      now: new Date("2026-03-08T18:00:00.000Z"),
+      timezone: "America/New_York",
+    });
+    assert.equal(ctx.day, "2026-03-08");
+    assert.equal(Date.parse(ctx.dayEnd) - Date.parse(ctx.dayStart), 23 * 60 * 60 * 1000);
+  });
+
+  it("passes the same global context object to every pluggable source", async () => {
+    const contexts: SampleContext[] = [];
+    const source = (id: string) => ({
+      id,
+      async sample(ctx: SampleContext) {
+        contexts.push(ctx);
+        return { nodes: [], stats: { ok: 1 } };
+      },
+    });
+    const result = await collectSample({
+      now: new Date("2026-07-24T15:59:59.000Z"),
+      timezone: "Asia/Singapore",
+      sources: [source("one"), source("two")],
+    });
+    assert.equal(contexts.length, 2);
+    assert.equal(contexts[0], contexts[1]);
+    assert.equal(contexts[0]!.day, "2026-07-24");
+    assert.deepEqual(result.snapshot.stats, { one: { ok: 1 }, two: { ok: 1 } });
+  });
+
+  it("reports a failed source without hiding or cascading the failure", async () => {
+    const result = await collectSample({
+      now: new Date("2026-07-24T12:00:00.000Z"),
+      timezone: "UTC",
+      sources: [
+        {
+          id: "broken",
+          async sample() {
+            throw new Error("permission denied");
+          },
+        },
+        {
+          id: "healthy",
+          async sample() {
+            return { nodes: [], stats: { ok: 1 } };
+          },
+        },
+      ],
+    });
+    assert.deepEqual(result.snapshot.stats, {
+      broken: { error: 1 },
+      healthy: { ok: 1 },
+    });
+    assert.deepEqual(result.snapshot.errors, {
+      broken: "permission denied",
+    });
   });
 });
 
@@ -65,7 +144,9 @@ describe("agents source emission policy", () => {
       duration_min: 5,
     });
 
-    const nodes = intervalsToNodes([closed, open], { asSnapshot: false });
+    const nodes = intervalsToNodes([closed, open], {
+      day: "2026-07-24",
+    });
     assert.equal(nodes.length, 1);
     assert.equal(nodes[0]!.kind, "agent_session");
     const meta = nodes[0]!.source_meta as Record<string, unknown>;
@@ -74,14 +155,21 @@ describe("agents source emission policy", () => {
     assert.equal(meta.open, false);
 
     // open still withheld on Save Today (server is insert-only; no dual open+closed)
-    assert.equal(intervalsToNodes([open], { asSnapshot: true }).length, 0);
+    assert.equal(intervalsToNodes([open], { day: "2026-07-24" }).length, 0);
 
     // second call: same closed agent not re-emitted
-    assert.equal(intervalsToNodes([closed, open], { asSnapshot: false }).length, 0);
+    assert.equal(
+      intervalsToNodes([closed, open], {
+        day: "2026-07-24",
+      }).length,
+      0,
+    );
 
     // after "restart", same closed agent gets same client_uuid
     resetSeenAgentKeys();
-    const restarted = intervalsToNodes([closed], { asSnapshot: false });
+    const restarted = intervalsToNodes([closed], {
+      day: "2026-07-24",
+    });
     assert.equal(restarted.length, 1);
     assert.equal(restarted[0]!.client_uuid, nodes[0]!.client_uuid);
   });
@@ -101,7 +189,7 @@ describe("agents source emission policy", () => {
             duration_min: 5,
           }),
         ],
-        { asSnapshot: true },
+        { day: "2026-07-24" },
       ).length,
       0,
     );
@@ -113,7 +201,9 @@ describe("agents source emission policy", () => {
       open: false,
       duration_min: 60,
     });
-    const terminal = intervalsToNodes([closed], { asSnapshot: false });
+    const terminal = intervalsToNodes([closed], {
+      day: "2026-07-24",
+    });
     assert.equal(terminal.length, 1);
     assert.equal((terminal[0]!.source_meta as Record<string, unknown>).open, false);
     assert.equal((terminal[0]!.source_meta as Record<string, unknown>).end, closed.end);

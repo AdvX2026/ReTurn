@@ -44,10 +44,6 @@ export class FermentError extends Error {
  * Timeout + single retry + Zod validate (PRD §6.3).
  */
 export async function runFerment(ctx: FermentContext): Promise<FermentResult> {
-  if (!config.llm.apiKey) {
-    throw new FermentError("LLM_API_KEY not configured");
-  }
-
   const prompt = buildPrompt(ctx);
   let lastErr: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {

@@ -51,6 +51,35 @@ describe("scoreIntake", () => {
     ];
     assert.ok(scoreIntake(diverse) > scoreIntake(mono));
   });
+
+  it("received email bonus: 0 / 10 / 20 emails", () => {
+    assert.equal(scoreIntake([], 0), 0);
+    // 10 received emails → full +20
+    assert.equal(scoreIntake([], 10), 20);
+    // 20 still capped at 20
+    assert.equal(scoreIntake([], 20), 20);
+    // partial: 5 → 10
+    assert.equal(scoreIntake([], 5), 10);
+  });
+
+  it("computeStats counts received email into intake, sent into output", () => {
+    const meta = (d: "received" | "sent") => ({ direction: d });
+    const stats = computeStats({
+      nodes: [
+        node({ kind: "email", source_meta: meta("received") }),
+        node({ kind: "email", source_meta: meta("received") }),
+        node({ kind: "email", source_meta: meta("sent") }),
+      ],
+      sessions: [],
+      todoRate: 0,
+      crossDayEdges: 0,
+      sleepMinutes: null,
+      steps: null,
+    });
+    // 2 received → intake 4; 1 sent → output 2
+    assert.equal(stats.intake, 4);
+    assert.equal(stats.output, 2);
+  });
 });
 
 describe("scoreFocus", () => {
@@ -115,6 +144,16 @@ describe("scoreOutput", () => {
     assert.equal(scoreOutput(0, [], 1), 4);
   });
 
+  it("sent-email bonus: 0 / 10 / 20 emails", () => {
+    assert.equal(scoreOutput(0, [], 0, 0), 0);
+    // 10 sent emails → full +20
+    assert.equal(scoreOutput(0, [], 0, 10), 20);
+    // 20 still capped at 20
+    assert.equal(scoreOutput(0, [], 0, 20), 20);
+    // partial: 5 → 10
+    assert.equal(scoreOutput(0, [], 0, 5), 10);
+  });
+
   it("computeStats raises output when git_commit nodes present", () => {
     const base = computeStats({
       nodes: [],
@@ -174,7 +213,7 @@ describe("scoreEnergy", () => {
     assert.ok(short < 70, `5h sleep got ${short}`);
   });
 
-  it("no health falls back to pure deduction from 100", () => {
+  it("uses the no-health energy formula when health is absent", () => {
     const s = scoreEnergy({
       nodes: [],
       sessions: [],
@@ -391,5 +430,29 @@ describe("extractHealth + computeStats integration", () => {
     });
     assert.ok(tiredStats.energy < 40, `energy=${tiredStats.energy}`);
     assert.equal(resolveCharacterState(tiredStats), "tired");
+  });
+
+  it("skips malformed health_daily rows instead of throwing", () => {
+    // Newest row is corrupt → fall back to the older valid one.
+    const nodes = [
+      node({
+        kind: "health_daily",
+        source_meta: { sleep_minutes: "oops", steps: null },
+        created_at: "2026-07-24T12:00:00.000Z",
+      }),
+      node({
+        kind: "health_daily",
+        source_meta: { sleep_minutes: 420, steps: 8000 },
+        created_at: "2026-07-24T08:00:00.000Z",
+      }),
+    ];
+    const health = extractHealth(nodes);
+    assert.equal(health.sleepMinutes, 420);
+    assert.equal(health.steps, 8000);
+
+    // Only corrupt rows → behave as if health is absent (no poison, no throw).
+    const onlyBad = extractHealth([nodes[0]!]);
+    assert.equal(onlyBad.sleepMinutes, null);
+    assert.equal(onlyBad.steps, null);
   });
 });

@@ -13,7 +13,6 @@ import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join, sep } from "node:path";
 import { createInterface } from "node:readline";
-import { todayLocal } from "./source.js";
 
 export type AgentProviderId = "claude" | "codex";
 
@@ -37,12 +36,13 @@ export interface AgentInterval {
 export interface AgentCollectOptions {
   /** Override provider roots (tests). Defaults to real home dirs. */
   roots?: Partial<Record<AgentProviderId, string>>;
-  /** Clock override (tests). */
-  now?: Date;
+  /** Shared tick clock. */
+  now: Date;
   /** Gap that severs one interval into two (ms). Default 15 min. */
   gapMs?: number;
-  /** Local calendar day YYYY-MM-DD. Default: today in local TZ. */
-  day?: string;
+  /** Shared tick boundaries. */
+  dayStartMs: number;
+  dayEndMs: number;
 }
 
 /** Default silence that severs one session file into multiple intervals. */
@@ -54,7 +54,8 @@ interface ProviderSpec {
   defaultRoot: () => string;
   /**
    * Label a session from path + optional cwd seen in the transcript.
-   * cwd wins when present (real project path); path is the fallback.
+   * cwd is authoritative when present; otherwise derive the label from the
+   * provider's session path.
    */
   projectLabel: (filePath: string, cwd: string | null) => string;
   /** Stable session id for this file. */
@@ -88,55 +89,47 @@ const PROVIDERS: ProviderSpec[] = [
   },
 ];
 
-export { todayLocal };
-
 /**
  * Collect today's agent activity intervals across all known providers.
- * Failures are silent per-file / per-provider (sampler must never crash).
+ * Missing provider roots are empty; operational read failures propagate.
  */
 export async function collectAgentIntervals(
-  opts: AgentCollectOptions = {},
+  opts: AgentCollectOptions,
 ): Promise<AgentInterval[]> {
-  const now = opts.now ?? new Date();
-  const day = opts.day ?? todayLocal(now);
+  const now = opts.now;
   const gapMs = opts.gapMs ?? DEFAULT_GAP_MS;
-  const dayStartMs = localDayStartMs(day);
+  const { dayStartMs, dayEndMs } = opts;
   const out: AgentInterval[] = [];
 
   for (const spec of PROVIDERS) {
     const root = opts.roots?.[spec.id] ?? spec.defaultRoot();
-    try {
-      const files = await listJsonlFiles(root);
-      for (const file of files) {
-        try {
-          // mtime before local midnight → cannot contain today's events
-          const st = await stat(file);
-          if (st.mtimeMs < dayStartMs) continue;
+    const files = await listJsonlFiles(root);
+    for (const file of files) {
+      // mtime before local midnight → cannot contain today's events
+      const st = await stat(file);
+      if (st.mtimeMs < dayStartMs) continue;
 
-          const parsed = await scanSessionFile(file, day);
-          if (parsed.times.length === 0) continue;
+      const parsed = await scanSessionFile(file, {
+        startMs: dayStartMs,
+        endMs: dayEndMs,
+      });
+      if (parsed.times.length === 0) continue;
 
-          const project = spec.projectLabel(file, parsed.cwd);
-          const session_id = spec.sessionId(file);
-          const intervals = gapSplit(parsed.times, gapMs, now.getTime());
-          for (const iv of intervals) {
-            out.push({
-              provider: spec.id,
-              project,
-              start: new Date(iv.start).toISOString(),
-              end: new Date(iv.end).toISOString(),
-              // Honest duration — single-event sessions stay 0, not floored to 1min.
-              duration_min: Math.max(0, (iv.end - iv.start) / 60_000),
-              session_id,
-              open: iv.open,
-            });
-          }
-        } catch {
-          /* skip bad file */
-        }
+      const project = spec.projectLabel(file, parsed.cwd);
+      const session_id = spec.sessionId(file);
+      const intervals = gapSplit(parsed.times, gapMs, now.getTime());
+      for (const iv of intervals) {
+        out.push({
+          provider: spec.id,
+          project,
+          start: new Date(iv.start).toISOString(),
+          end: new Date(iv.end).toISOString(),
+          // Honest duration — single-event sessions stay 0, not floored to 1min.
+          duration_min: Math.max(0, (iv.end - iv.start) / 60_000),
+          session_id,
+          open: iv.open,
+        });
       }
-    } catch {
-      /* missing root / unreadable — ignore */
     }
   }
 
@@ -192,7 +185,7 @@ interface SessionScan {
  */
 export async function scanSessionFile(
   filePath: string,
-  day: string,
+  range: { startMs: number; endMs: number },
 ): Promise<SessionScan> {
   const times: number[] = [];
   let cwd: string | null = null;
@@ -202,14 +195,22 @@ export async function scanSessionFile(
     crlfDelay: Number.POSITIVE_INFINITY,
   });
 
+  let trailingPartial: SyntaxError | null = null;
   try {
     for await (const line of rl) {
       if (!line.trim()) continue;
+      if (trailingPartial) {
+        throw new Error("malformed JSONL record before the final line", {
+          cause: trailingPartial,
+        });
+      }
       let obj: Record<string, unknown>;
       try {
         obj = JSON.parse(line) as Record<string, unknown>;
-      } catch {
-        continue; // trailing partial line / garbage — skip
+      } catch (error) {
+        trailingPartial =
+          error instanceof SyntaxError ? error : new SyntaxError(String(error));
+        continue;
       }
 
       if (cwd === null) {
@@ -219,7 +220,7 @@ export async function scanSessionFile(
 
       const ts = extractTimestamp(obj);
       if (ts === null) continue;
-      if (todayLocal(new Date(ts)) !== day) continue;
+      if (ts < range.startMs || ts >= range.endMs) continue;
       times.push(ts);
     }
   } finally {
@@ -282,8 +283,8 @@ async function walk(dir: string, out: string[]): Promise<void> {
         out.push(p);
       }
     }
-  } catch {
-    /* missing / unreadable dir */
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
 }
 
@@ -308,10 +309,4 @@ function normalizeCwd(cwd: string): string {
     s = s.slice(0, -1);
   }
   return s;
-}
-
-/** Local-timezone midnight for a YYYY-MM-DD day, as epoch ms. */
-export function localDayStartMs(day: string): number {
-  const [y, m, d] = day.split("-").map(Number);
-  return new Date(y!, m! - 1, d!, 0, 0, 0, 0).getTime();
 }

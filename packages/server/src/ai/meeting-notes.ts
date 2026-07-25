@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { isLlmConfigured } from "../config.js";
 import { extractJson, llmChat } from "./llm.js";
 
 const MeetingNotesResultSchema = z
@@ -25,10 +24,6 @@ export class MeetingNotesError extends Error {
 
 /** Extract a structured summary from raw meeting notes with one retry. */
 export async function organizeMeetingNotes(text: string): Promise<MeetingNotesResult> {
-  if (!isLlmConfigured()) {
-    throw new MeetingNotesError("LLM_API_KEY not configured");
-  }
-
   let lastErr: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {

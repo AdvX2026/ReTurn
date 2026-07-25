@@ -43,7 +43,7 @@ export function timeDecay(daysAgo: number, halfLife = TIME_DECAY_HALF_LIFE_DAYS)
 
 /**
  * Reciprocal Rank Fusion over 1-based ranks.
- * Missing channel → that term is 0 (single-channel degrades cleanly).
+ * A channel without a rank contributes zero to the fused score.
  */
 export function rrfScore(
   keywordRank: number | null,

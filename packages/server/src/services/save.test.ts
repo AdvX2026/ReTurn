@@ -11,7 +11,6 @@ describe("saveToday", () => {
 
   beforeEach(() => {
     db = openMemoryDb();
-    // LLM keys cleared in test-setup.ts (before config import).
   });
 
   it("seals day and is idempotent on second save", async () => {
@@ -27,7 +26,7 @@ describe("saveToday", () => {
       note_text: "明天把时间轴做完",
     });
     assert.equal(first.already_saved, false);
-    assert.equal(first.degraded, true); // no LLM key
+    assert.equal(first.degraded, false);
     assert.ok(first.summary);
     assert.ok(first.saved_at);
     assert.ok(first.stats);
@@ -57,5 +56,22 @@ describe("saveToday", () => {
     assert.equal(r.already_saved, false);
     assert.ok(r.summary);
     assert.equal(r.streak >= 1, true);
+  });
+
+  it("keeps the day open and does not persist a save note when ferment fails", async () => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response("provider unavailable", { status: 503 });
+    try {
+      await assert.rejects(
+        saveToday(db, { date: "2026-07-19", note_text: "do not partially save" }),
+        /ferment failed after retry/,
+      );
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+
+    const day = getDayByDate(db, "2026-07-19")!;
+    assert.equal(day.saved_at, null);
+    assert.equal(day.save_note_node_id, null);
   });
 });

@@ -25,38 +25,48 @@ export interface StatsInput {
  */
 export function computeStats(input: StatsInput): Stats {
   const commitCount = input.nodes.filter((n) => n.kind === "git_commit").length;
+  const { received, sent } = emailCounts(input.nodes);
   return {
-    intake: scoreIntake(input.nodes),
+    intake: scoreIntake(input.nodes, received),
     focus: scoreFocus(input.sessions, input.nodes),
-    output: scoreOutput(input.todoRate, input.sessions, commitCount),
+    output: scoreOutput(input.todoRate, input.sessions, commitCount, sent),
     continuity: scoreContinuity(input.crossDayEdges),
     energy: scoreEnergy(input),
   };
 }
 
-/** 摄取: active feed count × source-kind diversity. Samples excluded. */
-export function scoreIntake(nodes: NodeRecord[]): number {
+/** Count email nodes by direction (source_meta.direction; default received). */
+function emailCounts(nodes: NodeRecord[]): { received: number; sent: number } {
+  let received = 0;
+  let sent = 0;
+  for (const n of nodes) {
+    if (n.kind !== "email") continue;
+    const dir = (n.source_meta as Record<string, unknown> | null)?.direction;
+    if (dir === "sent") sent++;
+    else received++;
+  }
+  return { received, sent };
+}
+
+/** 摄取: active feed count × source-kind diversity + received-email bonus. */
+export function scoreIntake(nodes: NodeRecord[], emailInCount = 0): number {
   const active = nodes.filter((n) =>
     (ACTIVE_FEED_KINDS as readonly string[]).includes(n.kind),
   );
-  if (active.length === 0) return 0;
+  // 10 received emails → +20 (received mail is passive, so it stays out of the
+  // active-feed diversity math and only adds a bounded bonus).
+  const emailBonus = clamp((emailInCount / 10) * 20, 0, 20);
+  if (active.length === 0) return clamp(emailBonus, 0, 100);
   const kinds = new Set(active.map((n) => n.kind));
   // 8 feeds of 1 kind ≈ 50; 12 feeds across 3 kinds ≈ 90
   const raw = active.length * 6 + kinds.size * 12;
-  return clamp(raw, 0, 100);
+  return clamp(raw + emailBonus, 0, 100);
 }
 
 /** 专注: HHI of session durations + longest session weight. */
 export function scoreFocus(sessions: Session[], nodes: NodeRecord[]): number {
   const usable = sessions.filter((s) => s.durationMin > 0);
-  if (usable.length === 0) {
-    // Fallback: if only samples exist without aggregation edge, mild score from sample count.
-    const samples = nodes.filter(
-      (n) => n.kind === "app_sample" || n.kind === "agent_session",
-    );
-    if (samples.length === 0) return 0;
-    return clamp(samples.length * 2, 0, 40);
-  }
+  if (usable.length === 0) return 0;
 
   const total = usable.reduce((s, x) => s + x.durationMin, 0);
   if (total <= 0) return 0;
@@ -85,14 +95,15 @@ export function scoreFocus(sessions: Session[], nodes: NodeRecord[]): number {
 }
 
 /**
- * 产出: reminder completion + agent duration + git commit count.
- * todoRate param is now reminderCompletionRate (real checklist = Reminders).
+ * 产出: reminder completion + agent duration + git commit count + sent-email count.
+ * todoRate is the real Apple Reminders completion rate.
  * Coefficients are initial; tunable before T+40h.
  */
 export function scoreOutput(
   todoRate: number,
   sessions: Session[],
   commitCount = 0,
+  emailOutCount = 0,
 ): number {
   // reminder completion rate → max 60
   const todoScore = clamp(todoRate * 60, 0, 60);
@@ -103,7 +114,9 @@ export function scoreOutput(
   const agentBonus = clamp((agentMin / 120) * 20, 0, 20);
   // 5 commits → +20
   const commitBonus = clamp((commitCount / 5) * 20, 0, 20);
-  return clamp(Math.round(todoScore + agentBonus + commitBonus), 0, 100);
+  // 10 sent emails → +20
+  const emailBonus = clamp((emailOutCount / 10) * 20, 0, 20);
+  return clamp(Math.round(todoScore + agentBonus + commitBonus + emailBonus), 0, 100);
 }
 
 /** 连贯: cross-day edges capped to 0..100. */
@@ -184,35 +197,20 @@ export function extractHealth(nodes: NodeRecord[]): {
   sleepMinutes: number | null;
   steps: number | null;
 } {
-  const health = nodes
+  // Latest VALID row wins; a malformed health_daily row must not poison every
+  // stats/continue endpoint — skip it loudly and fall back to older rows.
+  const candidates = nodes
     .filter((n) => n.kind === "health_daily")
     .slice()
-    .sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-    )[0];
-  if (!health) return { sleepMinutes: null, steps: null };
-  const meta = (health.source_meta ?? {}) as Record<string, unknown>;
-  const sleep =
-    typeof meta.sleep_minutes === "number"
-      ? meta.sleep_minutes
-      : typeof health.content === "string"
-        ? null
-        : null;
-  const steps = typeof meta.steps === "number" ? meta.steps : null;
-  // Prefer meta; also accept top-level fields stored in content JSON.
-  let sleepMinutes = sleep;
-  let stepCount = steps;
-  if (health.content) {
-    try {
-      const c = JSON.parse(health.content) as Record<string, unknown>;
-      if (sleepMinutes == null && typeof c.sleep_minutes === "number")
-        sleepMinutes = c.sleep_minutes;
-      if (stepCount == null && typeof c.steps === "number") stepCount = c.steps;
-    } catch {
-      /* ignore */
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  for (const health of candidates) {
+    const meta = (health.source_meta ?? {}) as Record<string, unknown>;
+    if (typeof meta.sleep_minutes === "number" && typeof meta.steps === "number") {
+      return { sleepMinutes: meta.sleep_minutes, steps: meta.steps };
     }
+    console.warn(`[stats] skipping health_daily with invalid source_meta: ${health.id}`);
   }
-  return { sleepMinutes, steps: stepCount };
+  return { sleepMinutes: null, steps: null };
 }
 
 export { EMPTY_STATS };
