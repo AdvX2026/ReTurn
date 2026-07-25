@@ -172,6 +172,7 @@ enum ReTurnDesign {
         static let composerResponse = 0.32
         static let composerDampingFraction = 0.84
         static let navigationSelectionDuration = 0.25
+        static let bottomChromeTransitionDuration = 0.36
         /// How long the navigation stays at full strength after a page settles.
         static let navigationDimDelay = 1.5
         static let navigationDimDuration = 0.45

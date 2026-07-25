@@ -131,7 +131,12 @@ struct HomeTimelineView: View {
                         .allowsHitTesting(!isNowPage)
                         .accessibilityHidden(isNowPage)
                 }
-                .animation(chromeAnimation, value: isNowPage)
+                .animation(
+                    .easeInOut(
+                        duration: ReTurnDesign.Motion.bottomChromeTransitionDuration
+                    ),
+                    value: isNowPage
+                )
                 #else
                 ComposerBar(isFocused: $isComposerFocused)
                 #endif
