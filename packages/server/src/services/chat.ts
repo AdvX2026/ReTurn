@@ -153,12 +153,8 @@ async function runIdea(
   confidence: number,
 ): Promise<ChatResponse> {
   const body = text.replace(/^(灵感|idea)[:：]\s*/i, "").trim() || text;
-  const suggestion = await llmChat({
-    system: "用一句中文简短回应用户的灵感记录，可给一点轻量建议。不超过40字。",
-    user: body,
-    temperature: 0.4,
-    timeoutMs: Math.min(config.llm.timeoutMs, 15_000),
-  });
+  // Persist the idea BEFORE any provider call — an LLM outage must never lose
+  // user input (same principle as meeting-notes: preserve raw, report failure).
   const { node } = insertNode(db, {
     client_uuid: uuid(),
     kind: "idea",
@@ -177,6 +173,19 @@ async function runIdea(
       provenance: "user",
     },
   });
+  let suggestion: string;
+  try {
+    suggestion = await llmChat({
+      system: "用一句中文简短回应用户的灵感记录，可给一点轻量建议。不超过40字。",
+      user: body,
+      temperature: 0.4,
+      timeoutMs: Math.min(config.llm.timeoutMs, 15_000),
+    });
+  } catch (err) {
+    // Idea is already saved; tell the truth about the missing AI response.
+    console.error("[chat] idea suggestion failed:", err);
+    suggestion = "灵感已记录。AI 回应暂时不可用。";
+  }
   const agent = insertMessage(db, {
     role: "agent",
     content: suggestion,

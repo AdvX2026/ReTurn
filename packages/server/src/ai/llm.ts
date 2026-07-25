@@ -2,7 +2,7 @@
  * Shared OpenAI-compatible chat/completions helper.
  * All server LLM call sites go through here (ferment / ask / chat / resume).
  */
-import { config } from "../config.js";
+import { NotConfiguredError, config, isLlmConfigured } from "../config.js";
 
 export class LlmError extends Error {
   constructor(
@@ -26,6 +26,9 @@ export interface LlmChatOptions {
 }
 
 export async function llmChat(opts: LlmChatOptions): Promise<string> {
+  if (!isLlmConfigured()) {
+    throw new NotConfiguredError("LLM", "set LLM_API_KEY");
+  }
   const timeoutMs = opts.timeoutMs ?? config.llm.timeoutMs;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);

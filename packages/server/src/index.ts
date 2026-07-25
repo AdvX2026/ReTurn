@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { createApp } from "./app.js";
-import { config } from "./config.js";
+import { config, isEmbeddingConfigured } from "./config.js";
 import { openDb } from "./db/schema.js";
 import { drainEmbedQueue, requeueStaleEmbeddings } from "./search/embed.js";
 import { ensureSearchIndex } from "./search/index.js";
@@ -12,21 +12,26 @@ async function main() {
   const db = openDb(config.dataDir);
   ensureSearchIndex(db);
 
-  const n = requeueStaleEmbeddings(db);
-  if (n > 0) console.log(`[embed] re-queued ${n} stale/missing embeddings`);
-
   const app = await createApp(db);
 
   let embedTimer: ReturnType<typeof setInterval> | null = null;
-  const tick = () => {
-    drainEmbedQueue(db).catch((err) => {
-      console.error("[embed] drain error:", err);
-      process.exit(1);
-    });
-  };
-  tick();
-  embedTimer = setInterval(tick, EMBED_DRAIN_MS);
-  embedTimer.unref?.();
+  if (isEmbeddingConfigured()) {
+    const n = requeueStaleEmbeddings(db);
+    if (n > 0) console.log(`[embed] re-queued ${n} stale/missing embeddings`);
+
+    const tick = () => {
+      // Transient provider/network failures must not kill the server;
+      // the queue is durable and the next tick retries.
+      drainEmbedQueue(db).catch((err) => {
+        console.error("[embed] drain error:", err);
+      });
+    };
+    tick();
+    embedTimer = setInterval(tick, EMBED_DRAIN_MS);
+    embedTimer.unref?.();
+  } else {
+    console.log("[embed] EMBEDDING_* not configured — semantic channel off");
+  }
 
   const stop = async () => {
     if (embedTimer) clearInterval(embedTimer);

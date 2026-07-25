@@ -3,7 +3,7 @@
  * No vector DB — Float32 BLOB + brute-force cosine.
  */
 
-import { config } from "../config.js";
+import { NotConfiguredError, config, isEmbeddingConfigured } from "../config.js";
 import type { Db } from "../db/schema.js";
 import { nowIso } from "../util/time.js";
 import {
@@ -56,6 +56,9 @@ export function cosineSimilarity(a: Float32Array, b: Float32Array): number {
 
 export async function embedTexts(texts: string[]): Promise<Float32Array[]> {
   if (texts.length === 0) return [];
+  if (!isEmbeddingConfigured()) {
+    throw new NotConfiguredError("Embedding", "set EMBEDDING_BASE_URL/API_KEY/MODEL");
+  }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), config.embedding.timeoutMs);
@@ -153,6 +156,8 @@ export function textForDayEmbedding(db: Db, date: string): string | null {
 }
 
 export async function drainEmbedQueue(db: Db): Promise<number> {
+  // Queue is durable — leave it untouched until the channel is configured.
+  if (!isEmbeddingConfigured()) return 0;
   const pending = db
     .prepare(
       `SELECT node_id, attempts FROM embed_queue

@@ -197,18 +197,20 @@ export function extractHealth(nodes: NodeRecord[]): {
   sleepMinutes: number | null;
   steps: number | null;
 } {
-  const health = nodes
+  // Latest VALID row wins; a malformed health_daily row must not poison every
+  // stats/continue endpoint — skip it loudly and fall back to older rows.
+  const candidates = nodes
     .filter((n) => n.kind === "health_daily")
     .slice()
-    .sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-    )[0];
-  if (!health) return { sleepMinutes: null, steps: null };
-  const meta = (health.source_meta ?? {}) as Record<string, unknown>;
-  if (typeof meta.sleep_minutes !== "number" || typeof meta.steps !== "number") {
-    throw new Error(`invalid health_daily source_meta: ${health.id}`);
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  for (const health of candidates) {
+    const meta = (health.source_meta ?? {}) as Record<string, unknown>;
+    if (typeof meta.sleep_minutes === "number" && typeof meta.steps === "number") {
+      return { sleepMinutes: meta.sleep_minutes, steps: meta.steps };
+    }
+    console.warn(`[stats] skipping health_daily with invalid source_meta: ${health.id}`);
   }
-  return { sleepMinutes: meta.sleep_minutes, steps: meta.steps };
+  return { sleepMinutes: null, steps: null };
 }
 
 export { EMPTY_STATS };

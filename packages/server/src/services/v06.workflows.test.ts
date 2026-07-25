@@ -84,21 +84,21 @@ describe("v0.6 chat / cards / tasks / resume / timeline range", () => {
     assert.ok(r.jump == null || r.jump.date);
   });
 
-  it("does not create an idea node when the provider fails", async () => {
+  it("keeps the idea node and reports the provider failure truthfully", async () => {
     const fetchBefore = globalThis.fetch;
     globalThis.fetch = async () => new Response("provider unavailable", { status: 503 });
+    let r: Awaited<ReturnType<typeof handleChat>>;
     try {
-      await assert.rejects(
-        handleChat(db, { text: "灵感: 不应静默降级", intent: "idea" }),
-        /LLM HTTP 503/,
-      );
+      r = await handleChat(db, { text: "灵感: 不应丢失用户输入", intent: "idea" });
     } finally {
       globalThis.fetch = fetchBefore;
     }
-    assert.equal(
-      listNodesByDate(db, todayDate()).filter((node) => node.kind === "idea").length,
-      0,
-    );
+    // User input survives the outage; the reply says the AI part is unavailable.
+    assert.equal(r.intent, "idea");
+    assert.match(r.reply, /不可用/);
+    const ideas = listNodesByDate(db, todayDate()).filter((node) => node.kind === "idea");
+    assert.equal(ideas.length, 1);
+    assert.equal(ideas[0]!.content, "不应丢失用户输入");
   });
 
   it("meeting notes stay running until async process completes", async () => {

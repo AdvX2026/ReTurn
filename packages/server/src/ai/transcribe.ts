@@ -1,4 +1,4 @@
-import { config } from "../config.js";
+import { NotConfiguredError, config, isWhisperConfigured } from "../config.js";
 
 export class TranscribeError extends Error {
   constructor(
@@ -18,6 +18,9 @@ export async function transcribeAudio(
   filename: string,
   mimeType: string,
 ): Promise<string> {
+  if (!isWhisperConfigured()) {
+    throw new NotConfiguredError("Whisper", "set WHISPER_API_KEY or LLM_API_KEY");
+  }
   const form = new FormData();
   const blob = new Blob([new Uint8Array(buffer)], {
     type: mimeType || "audio/webm",

@@ -41,7 +41,7 @@ import {
 } from "@return/shared";
 import type { FastifyInstance } from "fastify";
 import { TranscribeError, transcribeAudio } from "./ai/transcribe.js";
-import { config } from "./config.js";
+import { NotConfiguredError, config, isHealthTokenConfigured } from "./config.js";
 import {
   type DayRow,
   acceptTodo,
@@ -100,6 +100,32 @@ function notFound(message: string) {
 
 function unauthorized(message: string) {
   return { statusCode: 401 as const, error: "Unauthorized", message };
+}
+
+function unavailable(message: string) {
+  return { statusCode: 503 as const, error: "Service Unavailable", message };
+}
+
+/**
+ * Map handler failures without leaking provider internals: missing config is
+ * an explicit 503 with a setup hint; everything else logs the detail server-side
+ * and returns a generic message.
+ */
+function sendServiceError(
+  reply: { code: (n: number) => { send: (b: unknown) => unknown } },
+  scope: string,
+  err: unknown,
+  generic: string,
+): unknown {
+  if (err instanceof NotConfiguredError) {
+    return reply.code(503).send(unavailable(err.message));
+  }
+  console.error(`[${scope}] error:`, err);
+  return reply.code(500).send({
+    statusCode: 500,
+    error: "Internal Server Error",
+    message: generic,
+  });
 }
 
 function parseLimit(value: string | undefined, defaultValue: number): number {
@@ -262,15 +288,37 @@ export async function registerRoutes(
     const audioPath = join(audioDir, `${audioId}-${safeName}`);
     writeFileSync(audioPath, fileBuf);
 
-    let transcript: string;
+    let transcript: string | null = null;
     try {
       transcript = await transcribeAudio(fileBuf, filename, mimeType);
     } catch (error) {
+      // Audio is already on disk — keep a pending node so the file is reachable
+      // and the client still gets a truthful failure (PRD §9.6: never lose data).
+      insertNode(db, {
+        client_uuid: clientUuid ?? uuid(),
+        kind: "voice",
+        title: title ?? "voice (pending transcript)",
+        content: null,
+        device_id: deviceId,
+        date: date ?? todayDate(),
+        source_meta: {
+          audio_path: audioPath,
+          mime_type: mimeType,
+          filename,
+          pending_transcript: true,
+        },
+      });
+      if (error instanceof NotConfiguredError) {
+        return reply.code(503).send(unavailable(`${error.message}; audio saved`));
+      }
+      console.error("[voice] transcribe failed (audio + pending node saved):", error);
       return reply.code(502).send({
         statusCode: 502,
         error: "Bad Gateway",
         message:
-          error instanceof TranscribeError ? error.message : "transcription failed",
+          error instanceof TranscribeError
+            ? "transcription failed; audio saved for retry"
+            : "transcription failed",
       });
     }
 
@@ -298,6 +346,11 @@ export async function registerRoutes(
 
   // ── health (Shortcuts fixed token) ────────────────────
   app.post("/api/health", async (req, reply) => {
+    if (!isHealthTokenConfigured()) {
+      return reply
+        .code(503)
+        .send(unavailable("HEALTH_TOKEN is not configured on the server"));
+    }
     const token =
       (req.headers["x-return-token"] as string | undefined) ??
       (req.headers.authorization as string | undefined)?.replace(/^Bearer\s+/i, "");
@@ -357,12 +410,7 @@ export async function registerRoutes(
       const result = await saveToday(db, parsed.data);
       return result;
     } catch (err) {
-      console.error("[save] error:", err);
-      return reply.code(500).send({
-        statusCode: 500,
-        error: "Internal Server Error",
-        message: err instanceof Error ? err.message : "save failed",
-      });
+      return sendServiceError(reply, "save", err, "save failed");
     }
   });
 
@@ -567,12 +615,7 @@ export async function registerRoutes(
       });
       return body;
     } catch (err) {
-      console.error("[ask] error:", err);
-      return reply.code(500).send({
-        statusCode: 500,
-        error: "Internal Server Error",
-        message: err instanceof Error ? err.message : "ask failed",
-      });
+      return sendServiceError(reply, "ask", err, "ask failed");
     }
   });
 
@@ -590,12 +633,7 @@ export async function registerRoutes(
       if (err instanceof ChatError) {
         return reply.code(400).send(badRequest(err.message));
       }
-      console.error("[chat] error:", err);
-      return reply.code(500).send({
-        statusCode: 500,
-        error: "Internal Server Error",
-        message: err instanceof Error ? err.message : "chat failed",
-      });
+      return sendServiceError(reply, "chat", err, "chat failed");
     }
   });
 
@@ -631,14 +669,19 @@ export async function registerRoutes(
       existing.role === "user" &&
       parsed.data.intent !== "unknown"
     ) {
-      follow = await handleChat(
-        db,
-        {
-          text: existing.content,
-          intent: parsed.data.intent,
-        },
-        meetingTasks,
-      );
+      try {
+        follow = await handleChat(
+          db,
+          {
+            text: existing.content,
+            intent: parsed.data.intent,
+          },
+          meetingTasks,
+        );
+      } catch (err) {
+        // Intent is already corrected; a failed follow-up run must not 500 the PATCH.
+        console.error("[messages] follow-up chat failed:", err);
+      }
     }
     const body: PatchMessageIntentResponse & { follow_up?: ChatResponse } = {
       message: message!,
@@ -700,10 +743,14 @@ export async function registerRoutes(
       return reply.code(400).send(badRequest(parsed.error.message));
     }
     if (parsed.data.device_id) touchDevice(db, parsed.data.device_id);
-    const body: ResumeResponse = await handleResume(db, {
-      hours: parsed.data.hours,
-    });
-    return body;
+    try {
+      const body: ResumeResponse = await handleResume(db, {
+        hours: parsed.data.hours,
+      });
+      return body;
+    } catch (err) {
+      return sendServiceError(reply, "resume", err, "resume failed");
+    }
   });
 
   // ── todos ─────────────────────────────────────────────

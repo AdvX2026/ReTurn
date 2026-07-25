@@ -3,7 +3,7 @@
  */
 
 import type { DaySummary, NodeRecord, SearchHit, SearchResponse } from "@return/shared";
-import { config } from "../config.js";
+import { config, isEmbeddingConfigured } from "../config.js";
 import { type DayRow, dayStats, getDayByDate, getNodeById } from "../db/repo.js";
 import type { Db } from "../db/schema.js";
 import { todayDate } from "../util/time.js";
@@ -79,7 +79,8 @@ export async function search(db: Db, opts: SearchOptions): Promise<SearchRespons
 
   // ── semantic channel ────────────────────────────────────
   const semanticRanks = new Map<string, number>();
-  if (parsed.text.trim().length > 0) {
+  // Semantic channel is off without EMBEDDING_* — keyword channel still answers.
+  if (parsed.text.trim().length > 0 && isEmbeddingConfigured()) {
     const qVec = await embedQuery(parsed.text);
     let hits = semanticTopK(db, qVec, CHANNEL_TOP, config.embedding.model);
     // Apply date/kind filters post-hoc (embeddings table has no date column).

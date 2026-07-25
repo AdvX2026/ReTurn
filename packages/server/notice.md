@@ -14,7 +14,7 @@
   the Task `failed` without claiming it was organized.
 
 ## Env
-See root `.env.example`. Health, LLM, Whisper, and embedding credentials are required at startup and never ship to clients. Invalid numeric/URL configuration fails startup.
+See root `.env.example`. `LLM_API_KEY` / `HEALTH_TOKEN` never ship to clients. Health, LLM, Whisper, and embedding are optional: unconfigured features answer with an explicit 503 (never a fake success); embedding off → keyword-only search. Invalid numeric/URL configuration fails startup.
 - Image chat uses the configured multimodal `LLM_MODEL`; successful extraction creates a completed high-weight image Task and node.
 
 ## Known
@@ -22,7 +22,7 @@ See root `.env.example`. Health, LLM, Whisper, and embedding credentials are req
 - URL fetch enrichment (title/body summary on `kind=url`) not done; desktop/server can add later.
 - Global search / node layering: see `docs/architecture-nodes-search.md` (PR #8).
 - Swift `Models.swift` mirror for Search/Ask + `git_commit` waits on `apps/ReturnApp`.
-- Voice transcription failure preserves the raw audio file and returns HTTP 502; it does not create a pending voice node.
+- Voice transcription failure preserves the raw audio file and a pending voice node (`pending_transcript: true`), and returns HTTP 502/503 — no fake transcript.
 
 ## Todo preference loop (AI suggestions ↔ Apple Reminders)
 - Real checklist = Mac Reminders. Server `todos` = AI suggestions only (`status`: suggested|accepted|dismissed).
