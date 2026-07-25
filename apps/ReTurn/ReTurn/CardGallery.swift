@@ -3,7 +3,7 @@ import SwiftUI
 /// Visual preview of every card type, on fixed sample data.
 ///
 /// Not wired to the API and not reachable from the product UI — it exists so
-/// the card designs can be reviewed as a set, and so `CardKit`'s shell is
+/// the card designs can be reviewed as a set, and so the shared card shell is
 /// exercised by every variant at once. Delete once the real screens land.
 struct CardGallery: View {
     @ScaledMetric(relativeTo: .largeTitle)
@@ -41,7 +41,7 @@ struct CardGallery: View {
     /// Main visual: the mascot standing in for the assigned profession. The
     /// stats carry no colour of their own — see `Accents`.
     private var professionCard: some View {
-        Card {
+        CardSurface {
             CardHeader(
                 icon: "book.closed.fill",
                 title: "Daily Brief",
@@ -79,7 +79,7 @@ struct CardGallery: View {
 
     /// Main visual: the text itself. No separator — nothing follows it.
     private var summaryCard: some View {
-        Card {
+        CardSurface {
             CardHeader(
                 icon: "book.closed.fill",
                 title: "Daily Brief",
@@ -96,7 +96,7 @@ struct CardGallery: View {
     /// the tone to describe the day rather than grade it. The symbol shape
     /// carries the distinction instead.
     private var reviewCard: some View {
-        Card {
+        CardSurface {
             CardHeader(
                 icon: "checkmark.seal.fill",
                 title: "Review",
@@ -119,7 +119,7 @@ struct CardGallery: View {
     /// Main visual: an action per row -- the only card with a side effect
     /// (accepting writes to Apple Reminders via EventKit).
     private var todoCard: some View {
-        Card {
+        CardSurface {
             CardHeader(
                 icon: "checklist",
                 title: "Tomorrow",
@@ -150,7 +150,7 @@ struct CardGallery: View {
     /// Main visual: a short advice line over the two real readings. F12 keeps
     /// this card deliberately thin -- real data, minimal copy.
     private var healthCard: some View {
-        Card {
+        CardSurface {
             CardHeader(
                 icon: "heart.fill",
                 title: "Health",
@@ -185,7 +185,7 @@ struct CardGallery: View {
     /// Main visual: the idea itself, with provenance as a quiet trailing label
     /// -- F9 requires user-recorded and auto-extracted ideas to be distinct.
     private func ideaCard(provenance: SampleData.Provenance) -> some View {
-        Card {
+        CardSurface {
             CardHeader(
                 icon: "lightbulb.fill",
                 title: "Idea",
@@ -205,7 +205,7 @@ struct CardGallery: View {
     /// Client-side only, driven by `saved` from /api/stats/today. Follows the
     /// shape of Health's onboarding cards: illustration, headline, body, action.
     private var unsavedPromptCard: some View {
-        Card {
+        CardSurface {
             VStack(spacing: ReTurnDesign.Spacing.medium) {
                 MascotImage()
                     .frame(width: mascotWidth)
@@ -237,7 +237,7 @@ struct CardGallery: View {
     /// ships a card an older build does not know. Tolerant decoding keeps it
     /// from crashing; this is what it shows instead.
     private var unknownCard: some View {
-        Card {
+        CardSurface {
             CardHeader(
                 icon: "questionmark.circle.fill",
                 title: "Unsupported",

@@ -33,14 +33,6 @@ enum ReTurnDesign {
             #endif
         }
 
-        static var cardNestedBackground: Color {
-            #if os(iOS)
-            Color(uiColor: .secondarySystemBackground)
-            #elseif os(macOS)
-            Color(nsColor: .underPageBackgroundColor)
-            #endif
-        }
-
         static let cardSeparator = Color.primary.opacity(0.08)
 
         /// PLACEHOLDER accent palette — the product side has not allocated the
@@ -166,7 +158,6 @@ enum ReTurnDesign {
         static let spacing: CGFloat = 12
         /// Between card groups.
         static let groupSpacing: CGFloat = 32
-        static let headerIconSpacing: CGFloat = 5
         /// Vertical breathing room above and below each detail row, so the
         /// separators land in the middle of real whitespace.
         static let rowVerticalPadding: CGFloat = 9
