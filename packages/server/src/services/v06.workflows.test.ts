@@ -130,6 +130,47 @@ describe("v0.6 chat / cards / tasks / resume / timeline range", () => {
     assert.equal(usage.count, 1);
   });
 
+  it("intent correction reuses the original user message (no duplicate)", async () => {
+    const unknown = await handleChat(db, { text: "待分类内容", intent: "unknown" });
+    assert.equal(unknown.intent, "unknown");
+    const userId = unknown.user_message_id;
+
+    for (const intent of ["idea", "retrieval", "question"] as const) {
+      // Fresh DB per path so idea side-effects do not bleed across cases.
+      const pathDb = openMemoryDb();
+      const first = await handleChat(pathDb, { text: "待分类内容", intent: "unknown" });
+      const follow = await handleChat(pathDb, {
+        text: "待分类内容",
+        intent,
+        existing_user_message_id: first.user_message_id,
+      });
+      assert.equal(follow.intent, intent);
+      assert.equal(follow.user_message_id, first.user_message_id);
+      const users = listMessages(pathDb).messages.filter(
+        (m) => m.role === "user" && m.content === "待分类内容",
+      );
+      assert.equal(users.length, 1, `${intent}: still one user row`);
+      assert.ok(
+        listMessages(pathDb).messages.some(
+          (m) => m.role === "agent" && m.intent === intent,
+        ),
+        `${intent}: agent follow-up present`,
+      );
+    }
+
+    // Same correction path with the outer db (idea) for smoke continuity.
+    const follow = await handleChat(db, {
+      text: "待分类内容",
+      intent: "idea",
+      existing_user_message_id: userId,
+    });
+    assert.equal(follow.user_message_id, userId);
+    const users = listMessages(db).messages.filter(
+      (m) => m.role === "user" && m.content === "待分类内容",
+    );
+    assert.equal(users.length, 1);
+  });
+
   it("meeting notes stay running until async process completes", async () => {
     const notes = `会议纪要\n${"1. 讨论第二大脑\n2. 对齐 v0.6 API\n".repeat(30)}`;
     let markStarted!: () => void;

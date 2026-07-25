@@ -292,6 +292,88 @@ describe("index + search integration", () => {
     assert.equal(hits[0]?.doc_id, `node:${n1.node.id}`);
     assert.ok((hits[0]?.score ?? 0) > (hits[1]?.score ?? 0));
   });
+
+  it("semantic filter runs before top-k so in-range hits survive", () => {
+    const db = openMemoryDb();
+    const model = "test-model";
+    const query = Float32Array.from([1, 0, 0]);
+    // 55 out-of-range docs with high cosine; 1 in-range with slightly lower.
+    for (let i = 0; i < 55; i++) {
+      const n = insertNode(db, {
+        client_uuid: crypto.randomUUID(),
+        kind: "text",
+        content: `out-${i}`,
+        date: "2026-06-01",
+      });
+      putEmbedding(db, n.node.id, Float32Array.from([1, 0, 0]), model);
+    }
+    const inRange = insertNode(db, {
+      client_uuid: crypto.randomUUID(),
+      kind: "text",
+      content: "in-range relevant",
+      date: "2026-07-24",
+    });
+    // Weaker than outs — excluded from unfiltered top-50, kept after date filter.
+    putEmbedding(db, inRange.node.id, Float32Array.from([0.9, 0.1, 0]), model);
+
+    const unfiltered = semanticTopK(db, query, 50, model);
+    assert.equal(unfiltered.length, 50);
+    assert.ok(
+      !unfiltered.some((h) => h.doc_id === `node:${inRange.node.id}`),
+      "in-range node is outside global top-50 without filter",
+    );
+
+    const byDate = semanticTopK(db, query, 50, model, (docId) => {
+      const id = docId.startsWith("node:") ? docId.slice(5) : docId;
+      return getNodeById(db, id)?.date === "2026-07-24";
+    });
+    assert.equal(byDate.length, 1);
+    assert.equal(byDate[0]?.doc_id, `node:${inRange.node.id}`);
+  });
+
+  it("search date filter keeps in-range semantic hits past global top-50", async () => {
+    const db = openMemoryDb();
+    const { config } = await import("../config.js");
+    const model = config.embedding.model;
+    // Query token absent from all node text → keyword channel empty; semantic only.
+    const q = "zxqvunique";
+    // test-setup embed mock returns [1, index+1, 0.5] for the sole query → [1,1,0.5]
+    const queryVec = Float32Array.from([1, 1, 0.5]);
+    for (let i = 0; i < 55; i++) {
+      const n = insertNode(db, {
+        client_uuid: crypto.randomUUID(),
+        kind: "text",
+        content: `noise filler ${i}`,
+        date: "2026-01-01",
+      });
+      putEmbedding(db, n.node.id, queryVec, model);
+    }
+    const keep = insertNode(db, {
+      client_uuid: crypto.randomUUID(),
+      kind: "text",
+      content: "signal only",
+      date: "2026-07-24",
+    });
+    // Weaker cosine than outs so unfiltered top-50 are all outs.
+    putEmbedding(db, keep.node.id, Float32Array.from([0.7, 0.7, 0.35]), model);
+
+    const result = await search(db, {
+      q,
+      from: "2026-07-20",
+      to: "2026-07-25",
+      now: new Date(2026, 6, 25),
+    });
+    assert.ok(
+      result.results.some((h) => h.node?.id === keep.node.id),
+      "in-range semantic hit must survive date filter before top-k",
+    );
+    assert.ok(
+      result.results.every((h) => {
+        const d = h.node?.date ?? h.day?.date;
+        return d != null && d >= "2026-07-20" && d <= "2026-07-25";
+      }),
+    );
+  });
 });
 
 describe("ask citation validation", () => {

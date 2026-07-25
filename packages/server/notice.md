@@ -25,6 +25,10 @@ See root `.env.example`. `LLM_API_KEY` / `HEALTH_TOKEN` never ship to clients. H
 - mDNS (`return.local`) not implemented yet — clients use IP for now.
 - URL fetch enrichment (title/body summary on `kind=url`) not done; desktop/server can add later.
 - Global search / node layering: see `docs/architecture-nodes-search.md` (PR #8).
+- Intent correction through `PATCH /api/messages/:id/intent` reuses the original user
+  message id and only re-runs the workflow when the stored intent was `unknown`.
+- Semantic date/kind filters run before `semanticTopK` truncation so matching rows
+  outside the global top-k are not incorrectly discarded.
 - Swift `Models.swift` mirrors the shared API contract, including all sampler node kinds.
 - Voice transcription failure preserves the raw audio file and a pending voice node (`pending_transcript: true`), and returns HTTP 502/503 — no fake transcript.
 - Daily Brief card content includes `profession`, `streak`, and `breakdown` counters

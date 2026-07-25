@@ -424,8 +424,34 @@ describe("http smoke", () => {
       payload: { intent: "idea" },
     });
     assert.equal(corrected.statusCode, 200, corrected.body);
-    const body = corrected.json() as { follow_up?: { intent: string } };
+    const body = corrected.json() as {
+      follow_up?: { intent: string; user_message_id: string };
+    };
     assert.equal(body.follow_up?.intent, "idea");
+    assert.equal(body.follow_up?.user_message_id, userMessageId);
+
+    // One user row for the original text (issue #21 — no duplicate insert).
+    const msgs = await app.inject({ method: "GET", url: "/api/messages" });
+    assert.equal(msgs.statusCode, 200, msgs.body);
+    const users = (
+      msgs.json() as { messages: Array<{ role: string; content: string; id: string }> }
+    ).messages.filter((m) => m.role === "user" && m.content === "待分类内容");
+    assert.equal(users.length, 1);
+    assert.equal(users[0]?.id, userMessageId);
+
+    // Second PATCH must not re-run workflow (intent already non-unknown).
+    const again = await app.inject({
+      method: "PATCH",
+      url: `/api/messages/${userMessageId}/intent`,
+      payload: { intent: "idea" },
+    });
+    assert.equal(again.statusCode, 200, again.body);
+    assert.equal((again.json() as { follow_up?: unknown }).follow_up, undefined);
+    const msgs2 = await app.inject({ method: "GET", url: "/api/messages" });
+    const users2 = (
+      msgs2.json() as { messages: Array<{ role: string; content: string }> }
+    ).messages.filter((m) => m.role === "user" && m.content === "待分类内容");
+    assert.equal(users2.length, 1);
   });
 
   it("POST /api/chat exposes a running meeting Task before completion", async () => {
