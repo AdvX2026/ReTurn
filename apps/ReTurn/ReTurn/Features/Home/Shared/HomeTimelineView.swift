@@ -22,6 +22,7 @@ struct HomeTimelineView: View {
                 ForEach(TimelinePage.allCases) { page in
                     TimelinePageContent(
                         page: page,
+                        isActive: page == currentPage && !isPagerScrolling,
                         isBeforeChromeVisible: isBeforeChromeVisible,
                         onBeforeChromeVisibilityChange: updateBeforeChromeVisibility,
                         onBeforeScrollActivityChange: updateBeforeScrollActivity
@@ -168,8 +169,12 @@ struct HomeTimelineView: View {
         selectedPage != .before || isBeforeChromeVisible
     }
 
+    private var currentPage: TimelinePage {
+        selectedPage ?? .now
+    }
+
     private var isNowPage: Bool {
-        (selectedPage ?? .now) == .now
+        currentPage == .now
     }
 
     private var bottomChromeInactiveBlurRadius: CGFloat {

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct TimelinePageContent: View {
     let page: TimelinePage
+    let isActive: Bool
     let isBeforeChromeVisible: Bool
     let onBeforeChromeVisibilityChange: (Bool) -> Void
     let onBeforeScrollActivityChange: (Bool) -> Void
@@ -34,7 +35,7 @@ struct TimelinePageContent: View {
             Color.clear
             #endif
         case .now:
-            NowPage()
+            NowPage(isActive: isActive)
         }
     }
 }

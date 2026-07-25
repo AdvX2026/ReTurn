@@ -86,6 +86,17 @@ final class ReTurnUITests: XCTestCase {
     }
 
     @MainActor
+    func testNowMascotUsesNativeButton() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let mascot = app.buttons["NowMascot"]
+        XCTAssertTrue(mascot.waitForExistence(timeout: 2))
+        XCTAssertTrue(mascot.isHittable)
+        mascot.tap()
+    }
+
+    @MainActor
     func testLaunchPerformance() throws {
         // This measures how long it takes to launch your application.
         measure(metrics: [XCTApplicationLaunchMetric()]) {
