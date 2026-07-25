@@ -3,8 +3,8 @@ import SwiftUI
 
 /// The active Now conversation. The empty state remains the mascot hero; once
 /// an Input exists, the transcript starts below the navigation and grows down.
-/// Replies blend iMessage-like bubbles with Health-style semantic headers,
-/// while the user's own text stays a compact trailing bubble.
+/// Replies use Health-style raised surfaces while the user's own text stays a
+/// compact trailing bubble. Both keep one tightened corner for directionality.
 struct IOSNowConversationView: View {
     @Environment(APIEnvironment.self) private var api: APIEnvironment
     @Environment(ChatStore.self) private var chat: ChatStore
@@ -28,10 +28,6 @@ struct IOSNowConversationView: View {
 
                 Color.clear
                     .frame(height: ReTurnDesign.Card.pageBottomPadding)
-                    .accessibilityHidden(true)
-
-                Color.clear
-                    .frame(height: 1)
                     .id(Self.bottomID)
                     .accessibilityHidden(true)
             }
@@ -44,7 +40,7 @@ struct IOSNowConversationView: View {
         )
         .contentMargins(
             .top,
-            ReTurnDesign.Metrics.mainContentTopPadding + ReTurnDesign.Spacing.large,
+            ReTurnDesign.Metrics.mainContentTopPadding,
             for: .scrollContent
         )
         .scrollIndicators(.hidden)
@@ -101,97 +97,69 @@ struct IOSNowConversationView: View {
     }
 
     private func assistantSurface(_ entry: ChatStore.Entry) -> some View {
-        VStack(alignment: .leading, spacing: ReTurnDesign.Spacing.small) {
-            HStack(alignment: .bottom, spacing: 0) {
-                VStack(alignment: .leading, spacing: ReTurnDesign.Spacing.medium) {
-                    if let intent = entry.intent,
-                       let presentation = intentPresentation(intent) {
-                        Label(presentation.title, systemImage: presentation.symbol)
-                            .font(ReTurnDesign.Typography.cardHeader)
-                            .foregroundStyle(presentation.color)
-                    }
-
-                    Text(entry.text)
-                        .font(ReTurnDesign.Typography.cardBody)
-                        .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
-                        .textSelection(.enabled)
-                }
-                .padding(ReTurnDesign.Card.padding)
-                .background(
-                    ReTurnDesign.Colors.cardBackground,
-                    in: incomingBubbleShape
-                )
-
-                Spacer(minLength: ReTurnDesign.Card.padding * 2)
+        VStack(alignment: .leading, spacing: ReTurnDesign.Spacing.medium) {
+            if let intent = entry.intent, let presentation = intentPresentation(intent) {
+                Label(presentation.title, systemImage: presentation.symbol)
+                    .font(ReTurnDesign.Typography.cardHeader)
+                    .foregroundStyle(presentation.color)
             }
 
-            if let messageID = entry.correctionMessageID {
-                if let intent = correctedIntent(for: messageID) {
-                    intentCompletion(intent)
-                } else if chat.correctingMessageIDs.contains(messageID) {
-                    sendingSurface
-                } else {
-                    intentQuickReplies(messageID: messageID)
-                }
+            Text(entry.text)
+                .font(ReTurnDesign.Typography.cardBody)
+                .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
+                .textSelection(.enabled)
+
+            if let messageID = entry.correctionMessageID,
+               needsIntentCorrection(messageID) {
+                intentCorrection(messageID: messageID)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(ReTurnDesign.Card.padding)
+        .background(
+            ReTurnDesign.Colors.cardBackground,
+            in: incomingBubbleShape
+        )
     }
 
     private var sendingSurface: some View {
-        HStack(alignment: .bottom, spacing: 0) {
-            ThinkingDots()
-                .padding(.horizontal, ReTurnDesign.Card.padding)
-                .padding(.vertical, ReTurnDesign.Spacing.medium)
-                .background(
-                    ReTurnDesign.Colors.cardBackground,
-                    in: incomingBubbleShape
-                )
-
-            Spacer(minLength: ReTurnDesign.Card.padding * 2)
+        HStack(spacing: ReTurnDesign.Spacing.medium) {
+            ProgressView()
+                .controlSize(.small)
+            Text("Working with your records…")
+                .font(ReTurnDesign.Typography.cardBody)
+                .foregroundStyle(ReTurnDesign.Colors.secondaryLabel)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(ReTurnDesign.Card.padding)
+        .background(
+            ReTurnDesign.Colors.cardBackground,
+            in: RoundedRectangle(
+                cornerRadius: ReTurnDesign.Card.cornerRadius,
+                style: .continuous
+            )
+        )
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("ReTurn is thinking")
+        .accessibilityLabel("ReTurn is working with your records")
     }
 
-    private func intentQuickReplies(messageID: String) -> some View {
-        HStack(alignment: .bottom, spacing: 0) {
-            VStack(spacing: 0) {
-                intentButton(
-                    "Idea",
-                    intent: .idea,
-                    messageID: messageID
-                )
+    private func intentCorrection(messageID: String) -> some View {
+        VStack(alignment: .leading, spacing: ReTurnDesign.Spacing.small) {
+            Text("What did you mean?")
+                .font(.caption)
+                .foregroundStyle(ReTurnDesign.Colors.secondaryLabel)
 
-                Divider()
-                    .padding(.leading, ReTurnDesign.Card.padding)
+            HStack(spacing: ReTurnDesign.Spacing.small) {
+                intentButton("Idea", intent: .idea, messageID: messageID)
+                intentButton("Find", intent: .retrieval, messageID: messageID)
+                intentButton("Ask", intent: .question, messageID: messageID)
 
-                intentButton(
-                    "Find",
-                    intent: .retrieval,
-                    messageID: messageID
-                )
-
-                Divider()
-                    .padding(.leading, ReTurnDesign.Card.padding)
-
-                intentButton(
-                    "Ask",
-                    intent: .question,
-                    messageID: messageID
-                )
+                if chat.correctingMessageIDs.contains(messageID) {
+                    ProgressView()
+                        .controlSize(.small)
+                }
             }
-            .background(
-                ReTurnDesign.Colors.cardBackground,
-                in: incomingBubbleShape
-            )
-
-            Spacer(minLength: ReTurnDesign.Card.padding * 2)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Choose what you meant")
     }
 
     private func intentButton(
@@ -199,65 +167,26 @@ struct IOSNowConversationView: View {
         intent: ChatIntent,
         messageID: String
     ) -> some View {
-        Button {
+        Button(title) {
             Task { await chat.correctIntent(messageID: messageID, to: intent) }
-        } label: {
-            Text(title)
-                .font(ReTurnDesign.Typography.cardBody)
-                .foregroundStyle(Color.accentColor)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, ReTurnDesign.Card.padding)
-                .frame(minHeight: ReTurnDesign.Metrics.composerAccessoryHitSize)
-                .contentShape(.rect)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.capsule)
+        .frame(minHeight: 44)
         .disabled(
             !api.isConnected || chat.correctingMessageIDs.contains(messageID)
         )
-    }
-
-    private func intentCompletion(_ intent: ChatIntent) -> some View {
-        HStack(spacing: ReTurnDesign.Spacing.small) {
-            Image(systemName: "checkmark")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.secondary)
-                .frame(
-                    width: ReTurnDesign.Metrics.composerAccessorySize,
-                    height: ReTurnDesign.Spacing.large
-                )
-                .background(.white, in: Capsule())
-
-            Text("\(intentChoiceTitle(intent)) selected")
-                .font(.caption)
-                .foregroundStyle(ReTurnDesign.Colors.secondaryLabel)
-        }
-        .padding(.leading, ReTurnDesign.Spacing.extraSmall)
-        .accessibilityElement(children: .combine)
     }
 
     private var latestTargetID: String? {
         chat.isSending ? Self.sendingID : chat.entries.last?.id
     }
 
-    private func correctedIntent(for messageID: String) -> ChatIntent? {
-        guard let intent = chat.entries.first(where: { $0.id == messageID })?.intent,
-              intent != .unknown else {
-            return nil
+    private func needsIntentCorrection(_ messageID: String) -> Bool {
+        guard let intent = chat.entries.first(where: { $0.id == messageID })?.intent else {
+            return true
         }
-        return intent
-    }
-
-    private func intentChoiceTitle(_ intent: ChatIntent) -> String {
-        switch intent {
-        case .idea:
-            "Idea"
-        case .retrieval:
-            "Find"
-        case .question:
-            "Ask"
-        case .unknown:
-            "Intent"
-        }
+        return intent == .unknown
     }
 
     private func intentPresentation(
@@ -293,41 +222,6 @@ struct IOSNowConversationView: View {
             topTrailingRadius: ReTurnDesign.Card.cornerRadius,
             style: .continuous
         )
-    }
-}
-
-private struct ThinkingDots: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        if reduceMotion {
-            dots(activeIndex: nil)
-        } else {
-            PhaseAnimator([0, 1, 2]) { phase in
-                dots(activeIndex: phase)
-            } animation: { _ in
-                .easeInOut(duration: 0.35)
-            }
-        }
-    }
-
-    private func dots(activeIndex: Int?) -> some View {
-        HStack(spacing: ReTurnDesign.Spacing.extraSmall) {
-            ForEach(0..<3) { index in
-                Circle()
-                    .fill(ReTurnDesign.Colors.secondaryLabel)
-                    .frame(
-                        width: ReTurnDesign.Spacing.small,
-                        height: ReTurnDesign.Spacing.small
-                    )
-                    .opacity(
-                        activeIndex == nil
-                            ? 0.55
-                            : activeIndex == index ? 1 : 0.3
-                    )
-                    .scaleEffect(activeIndex == index ? 1 : 0.8)
-            }
-        }
     }
 }
 #endif

@@ -20,7 +20,7 @@ final class ChatStore {
         var id: String
         let role: Role
         let text: String
-        var intent: ChatIntent?
+        let intent: ChatIntent?
         let createdAt: Date
         var failed: Bool
         var retryPayload: RetryPayload?
@@ -205,16 +205,7 @@ final class ChatStore {
         correctingMessageIDs.insert(messageID)
         defer { correctingMessageIDs.remove(messageID) }
         do {
-            let response = try await api.makeClient().patchMessageIntent(
-                id: messageID,
-                intent: intent
-            )
-            mutateEntries {
-                guard let index = $0.firstIndex(where: { $0.id == messageID }) else {
-                    return
-                }
-                $0[index].intent = response.message.intent ?? intent
-            }
+            _ = try await api.makeClient().patchMessageIntent(id: messageID, intent: intent)
             api.markReachable()
             await loadHistory(force: true)
         } catch {
