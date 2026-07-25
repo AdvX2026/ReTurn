@@ -1,0 +1,45 @@
+[Unit]
+Description=ReTurn Orange Pi server
+Wants=network-online.target
+After=network-online.target
+# Broken config (e.g. missing required env) must fail visibly, not loop forever.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=return
+Group=return
+WorkingDirectory=/opt/return/current
+EnvironmentFile=/etc/return/return.env
+ExecStart=/usr/local/bin/node packages/server/dist/index.js
+Restart=on-failure
+RestartSec=3s
+TimeoutStartSec=30s
+TimeoutStopSec=30s
+KillSignal=SIGTERM
+UMask=0027
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ReadWritePaths=/var/lib/return
+CapabilityBoundingSet=
+LockPersonality=true
+RemoveIPC=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
