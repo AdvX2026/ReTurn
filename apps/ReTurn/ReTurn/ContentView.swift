@@ -175,16 +175,27 @@ struct ContentView: View {
 }
 
 private struct NowPage: View {
-    /// Placeholder stats and profession until the Now store wires
-    /// `/api/stats/today` and the contract's pending profession field in.
-    private let demoStats = Stats(intake: 72, focus: 64, output: 81, continuity: 45, energy: 88)
+    /// Demo driver until the Now store wires `/api/stats/today` and the
+    /// contract's pending profession field in: every few seconds the next
+    /// profession takes the stage with a stats set that shows off its
+    /// signature wearable.
+    private static let demoLineup: [(profession: MascotProfession, stats: Stats)] = [
+        (.coder, Stats(intake: 60, focus: 90, output: 70, continuity: 50, energy: 75)),
+        (.writer, Stats(intake: 85, focus: 70, output: 55, continuity: 65, energy: 60)),
+        (.designer, Stats(intake: 75, focus: 65, output: 80, continuity: 45, energy: 85)),
+        (.researcher, Stats(intake: 90, focus: 80, output: 50, continuity: 60, energy: 55)),
+        (.manager, Stats(intake: 55, focus: 60, output: 75, continuity: 90, energy: 70)),
+    ]
+
+    @State private var demoIndex = 0
 
     var body: some View {
+        let demo = Self.demoLineup[demoIndex]
         VStack(spacing: ReTurnDesign.Spacing.medium) {
             // Sized from the scroll viewport, which only changes on rotation --
             // the mascot redraws every frame, so it must not track the
             // composer or keyboard animation.
-            MascotView(stats: demoStats, profession: .coder)
+            MascotView(stats: demo.stats, profession: demo.profession)
                 .containerRelativeFrame(.horizontal) { width, _ in
                     MascotView.frameWidth(
                         forMascotWidth: ReTurnDesign.Layout.mascotWidth(in: width)
@@ -195,9 +206,20 @@ private struct NowPage: View {
                 .font(ReTurnDesign.Typography.heroTitle)
                 .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
                 .multilineTextAlignment(.center)
+
+            Text(demo.profession.displayName)
+                .font(ReTurnDesign.Typography.cardTag)
+                .foregroundStyle(ReTurnDesign.Colors.secondaryLabel)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.bottom, ReTurnDesign.Metrics.heroOpticalLift * 2)
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(3))
+                guard !Task.isCancelled else { return }
+                demoIndex = (demoIndex + 1) % Self.demoLineup.count
+            }
+        }
     }
 }
 
