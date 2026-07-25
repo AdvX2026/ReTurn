@@ -1,0 +1,74 @@
+#if os(iOS)
+import SwiftUI
+
+struct BeforeView: View {
+    let days: [TimelineDay]
+    let onOpenInput: (TimelineDisplayItem) -> Void
+    let onOpenDailyBriefing: (TimelineDailyBriefing) -> Void
+
+    init(
+        days: [TimelineDay],
+        onOpenInput: @escaping (TimelineDisplayItem) -> Void = { _ in },
+        onOpenDailyBriefing: @escaping (TimelineDailyBriefing) -> Void = { _ in }
+    ) {
+        self.days = days
+        self.onOpenInput = onOpenInput
+        self.onOpenDailyBriefing = onOpenDailyBriefing
+    }
+
+    var body: some View {
+        ZStack {
+            TimelineDesign.Colors.pageBackground
+                .ignoresSafeArea()
+
+            if days.isEmpty {
+                ContentUnavailableView(
+                    "No timeline yet",
+                    systemImage: "clock.arrow.circlepath",
+                    description: Text("Your activity will appear here after ReTurn starts collecting.")
+                )
+            } else {
+                ScrollView {
+                    LazyVStack(
+                        alignment: .leading,
+                        spacing: TimelineDesign.Layout.daySpacing
+                    ) {
+                        ForEach(days) { day in
+                            TimelineView(
+                                day: day,
+                                onOpenInput: onOpenInput,
+                                onOpenDailyBriefing: onOpenDailyBriefing
+                            )
+                        }
+                    }
+                }
+                .contentMargins(
+                    .horizontal,
+                    TimelineDesign.Layout.contentHorizontalPadding,
+                    for: .scrollContent
+                )
+                .contentMargins(
+                    .top,
+                    TimelineDesign.Layout.contentTopPadding,
+                    for: .scrollContent
+                )
+                .contentMargins(
+                    .bottom,
+                    TimelineDesign.Layout.contentBottomPadding,
+                    for: .scrollContent
+                )
+                .scrollIndicators(.hidden)
+            }
+        }
+    }
+}
+
+#Preview("Before · Light") {
+    BeforeView(days: TimelinePreviewData.days)
+}
+
+#Preview("Before · Dark") {
+    BeforeView(days: TimelinePreviewData.days)
+        .preferredColorScheme(.dark)
+}
+#endif
