@@ -206,9 +206,15 @@ enum ReTurnDesign {
             static let timelineLaneGap: CGFloat = 6
             /// A span bar shows its label only above this width.
             static let timelineSpanLabelMinimumWidth: CGFloat = 72
-            /// Pinch-zoom ceiling for the horizontal timeline; 1 means the
-            /// track fits the viewport exactly (no scrolling).
-            static let timelineMaxZoom: CGFloat = 4
+            /// The track opens zoomed in (about a 12-hour window) so that
+            /// swiping over it always browses the Gantt instead of falling
+            /// through to page turning; 1 fits the whole day exactly.
+            static let timelineDefaultZoom: CGFloat = 2
+            /// Pinch-zoom ceiling for the horizontal timeline.
+            static let timelineMaxZoom: CGFloat = 8
+            /// Hour spacing (pt) above which the axis switches from 3-hour
+            /// to 1-hour ticks.
+            static let timelineDenseTickHourWidth: CGFloat = 90
         }
 
         enum After {

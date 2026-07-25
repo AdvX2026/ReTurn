@@ -11,8 +11,9 @@ struct MacBeforeView: View {
 
     @State private var selectedDate: Date?
     @State private var selectedItemID: String?
-    /// Committed pinch-zoom level; 1 means the track fits the viewport.
-    @State private var zoom: CGFloat = 1
+    /// Committed zoom level; opens at `timelineDefaultZoom` so the track is
+    /// always scrollable — swiping over it browses the day, never the pager.
+    @State private var zoom: CGFloat = ReTurnDesign.Desktop.Before.timelineDefaultZoom
     /// Live pinch multiplier while the gesture is in flight.
     @GestureState private var magnifyDelta: CGFloat = 1
     /// Viewport width the track width (viewport × zoom) is derived from.
@@ -221,26 +222,13 @@ struct MacBeforeView: View {
                     zoom = liveZoomFrom(value.magnification)
                 }
         )
-        .overlay(alignment: .topTrailing) {
-            if zoom > 1 || magnifyDelta != 1 {
-                Button {
-                    withAnimation(.easeOut(duration: 0.2)) { zoom = 1 }
-                } label: {
-                    Text("\(liveZoom, specifier: "%.1f")×")
-                        .font(.caption2.weight(.semibold).monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(.ultraThinMaterial, in: Capsule())
-                }
-                .buttonStyle(.plain)
-                .help("Reset zoom")
+        .overlay(alignment: .bottomTrailing) {
+            zoomControls
                 .padding(.trailing, ReTurnDesign.Spacing.medium)
-                .accessibilityLabel("Reset timeline zoom")
-            }
+                .padding(.bottom, ReTurnDesign.Spacing.small)
         }
         .onChange(of: selectedDate) { _, _ in
-            zoom = 1
+            zoom = ReTurnDesign.Desktop.Before.timelineDefaultZoom
         }
     }
 
@@ -249,6 +237,65 @@ struct MacBeforeView: View {
             max(zoom * magnification, 1),
             ReTurnDesign.Desktop.Before.timelineMaxZoom
         )
+    }
+
+    private static let zoomSteps: [CGFloat] = [1, 1.5, 2, 3, 4, 6, 8]
+
+    /// Always-visible zoom controls: the pinch stays as the shortcut, but
+    /// buttons are the discoverable path and the badge doubles as the reset
+    /// back to the default framing.
+    private var zoomControls: some View {
+        HStack(spacing: ReTurnDesign.Spacing.extraSmall) {
+            Button {
+                stepZoom(toward: -1)
+            } label: {
+                Image(systemName: "minus")
+            }
+            .disabled(liveZoom <= (Self.zoomSteps.first ?? 1))
+            .accessibilityLabel("Zoom timeline out")
+
+            Button {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    zoom = ReTurnDesign.Desktop.Before.timelineDefaultZoom
+                }
+            } label: {
+                Text("\(liveZoom, specifier: "%.1f")×")
+                    .monospacedDigit()
+                    .frame(minWidth: 32)
+            }
+            .help("Reset zoom")
+            .accessibilityLabel("Reset timeline zoom")
+
+            Button {
+                stepZoom(toward: 1)
+            } label: {
+                Image(systemName: "plus")
+            }
+            .disabled(liveZoom >= (Self.zoomSteps.last ?? ReTurnDesign.Desktop.Before.timelineMaxZoom))
+            .accessibilityLabel("Zoom timeline in")
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(.secondary)
+        .buttonStyle(.plain)
+        .padding(.horizontal, ReTurnDesign.Spacing.small)
+        .padding(.vertical, ReTurnDesign.Spacing.extraSmall)
+        .background(.ultraThinMaterial, in: Capsule())
+    }
+
+    /// Buttons walk the discrete steps; a pinch keeps its continuous value
+    /// until the next button press snaps to the nearest step in that
+    /// direction.
+    private func stepZoom(toward direction: Int) {
+        let target =
+            if direction > 0 {
+                Self.zoomSteps.first { $0 > liveZoom + 0.01 }
+            } else {
+                Self.zoomSteps.last { $0 < liveZoom - 0.01 }
+            }
+        guard let target else { return }
+        withAnimation(.easeOut(duration: 0.2)) {
+            zoom = target
+        }
     }
 
     private func eventList(_ day: TimelineDay) -> some View {

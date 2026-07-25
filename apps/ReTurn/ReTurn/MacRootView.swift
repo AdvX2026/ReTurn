@@ -26,7 +26,9 @@ struct MacRootView: View {
         .scrollTargetBehavior(.paging)
         .scrollPosition(id: $selection)
         .background(ReTurnDesign.Colors.screenBackground)
-        .safeAreaInset(edge: .top, spacing: 0) {
+        // `spacing` reserves breathing room below the page-indicator row for
+        // every page at once — the single place the top gap is defined.
+        .safeAreaInset(edge: .top, spacing: ReTurnDesign.Spacing.medium) {
             pageIndicator
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {

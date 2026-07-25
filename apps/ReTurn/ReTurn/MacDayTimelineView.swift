@@ -105,6 +105,12 @@ struct MacDayTimelineView: View {
 
     // ── axis ─────────────────────────────────────────────
 
+    /// Tick density follows zoom: hourly once an hour is wide enough to
+    /// read, otherwise every three hours.
+    private var tickInterval: Int {
+        width / 24 >= Tokens.timelineDenseTickHourWidth ? 1 : 3
+    }
+
     private func x(for date: Date, width: CGFloat) -> CGFloat {
         let dayStart = Calendar.autoupdatingCurrent.startOfDay(for: day.date)
         let minutes = CGFloat(date.timeIntervalSince(dayStart) / 60)
@@ -113,7 +119,7 @@ struct MacDayTimelineView: View {
 
     private func hourLabels(width: CGFloat) -> some View {
         ZStack(alignment: .topLeading) {
-            ForEach(Array(stride(from: 0, through: 24, by: 3)), id: \.self) { hour in
+            ForEach(Array(stride(from: 0, through: 24, by: tickInterval)), id: \.self) { hour in
                 Text(String(format: "%02d:00", hour))
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
@@ -126,7 +132,7 @@ struct MacDayTimelineView: View {
     }
 
     private func gridLines(width: CGFloat) -> some View {
-        ForEach(Array(stride(from: 0, through: 24, by: 3)), id: \.self) { hour in
+        ForEach(Array(stride(from: 0, through: 24, by: tickInterval)), id: \.self) { hour in
             Rectangle()
                 .fill(Color.primary.opacity(0.06))
                 .frame(width: 1, height: contentHeight)
