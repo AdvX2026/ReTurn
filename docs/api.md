@@ -82,8 +82,8 @@
 | POST | `/api/voice` | 上传语音 → 转写 → 落节点（可触发 chat） |
 | POST | `/api/health` | 健康日数据（token） |
 | POST | `/api/save` | 夜间 Save / 发酵 |
-| GET | `/api/continue` | v0.5 Before/Future（兼容） |
 | GET | `/api/stats/today` | 实时五维 + cadence |
+| GET | `/api/usage` | Provider 调用与 token 聚合 |
 | GET | `/api/timeline` | 时间轴（单日或 from/to） |
 | GET | `/api/days` | 近 N 日总览 |
 | GET | `/api/search` | 全局混合检索 |
@@ -265,7 +265,6 @@
 | 字段 | 说明 |
 |---|---|
 | `already_saved` | 当日已存则 true，直接回已有结算 |
-| `degraded` | 发酵 LLM 失败降级 |
 | `summary`, `opening_line`, `briefing?` | 文本产物 |
 | `review_points` | `{ text, kind: win\|miss\|insight\|other }[]` |
 | `todos` | 次日待办列表 |
@@ -277,33 +276,39 @@
 
 ---
 
-### 3.9 `GET /api/continue`
+### 3.9 `GET /api/usage?from=&to=`
 
-v0.5 兼容：Before（最近已存日）+ Future（今日 todos）+ 实时 stats。  
-v0.6 UI 主路径更偏向 **cards**；本接口仍可用。
+默认聚合最近 30 个本地自然日。记录 LLM、转写、视觉与 embedding 的真实 provider 调用；只保存调用类型、操作、模型、成功/失败和 token 数，不保存 prompt、响应、错误正文或用户内容。
 
 **响应 200**
 
 ```json
 {
-  "before": {
-    "date": "…",
-    "opening_line": "…",
-    "summary": "…",
-    "review_points": [],
-    "stats": {},
-    "character_state": "normal",
-    "stats_delta": null
+  "from": "2026-07-01",
+  "to": "2026-07-25",
+  "totals": {
+    "calls": 12,
+    "succeeded": 11,
+    "failed": 1,
+    "prompt_tokens": 2400,
+    "completion_tokens": 800,
+    "total_tokens": 3200
   },
-  "future": { "date": "…", "todos": [] },
-  "character_state": "normal",
-  "stats": {},
-  "streak": 0,
-  "is_cold_start": false
+  "breakdown": [
+    {
+      "kind": "llm",
+      "operation": "ask",
+      "model": "gpt-4o-mini",
+      "calls": 3,
+      "succeeded": 3,
+      "failed": 0,
+      "prompt_tokens": 900,
+      "completion_tokens": 300,
+      "total_tokens": 1200
+    }
+  ]
 }
 ```
-
-`before` 可为 `null`（冷启动）。
 
 ---
 
@@ -317,6 +322,11 @@ v0.6 UI 主路径更偏向 **cards**；本接口仍可用。
   "stats": { "intake": 0, "focus": 0, "output": 0, "continuity": 0, "energy": 100 },
   "character_state": "normal",
   "saved": false,
+  "collection": {
+    "device_count": 2,
+    "sample_count": 48,
+    "last_seen_at": "2026-07-24T18:35:00.000Z"
+  },
   "cadence": "active"
 }
 ```
@@ -429,22 +439,21 @@ RAG：检索 top-8 → LLM → 校验引用。
       "snippet": "…"
     }
   ],
-  "retrieved": 8,
-  "degraded": false
+  "retrieved": 8
 }
 ```
 
 | 情况 | 行为 |
 |---|---|
 | 无 `LLM_API_KEY` | **503** |
-| LLM 失败 | `degraded: true`，`answer: ""`，citations 为裸检索 |
+| LLM 失败 | **500**；不返回伪答案或裸检索伪装的成功响应 |
 | 无命中 | 固定「没在你的记录里找到…」类文案 |
 
 ---
 
 ### 3.15 `POST /api/chat`
 
-输入分诊 + 工作流（PRD F4）。有 `LLM_API_KEY` 时用 **同一 `LLM_MODEL`** 做意图分类；否则启发式。
+输入分诊 + 工作流（PRD F4）。使用 **同一 `LLM_MODEL`** 做意图分类；provider 未配置时返回 **503**，调用失败时返回明确错误，不启用规则替代。
 
 **请求**
 
@@ -469,8 +478,7 @@ RAG：检索 top-8 → LLM → 校验引用。
   "confidence": 0.9,
   "reply": "…",
   "jump": { "date": "…", "node_ids": [] },
-  "task_id": null,
-  "degraded": false
+  "task_id": null
 }
 ```
 
@@ -481,7 +489,7 @@ RAG：检索 top-8 → LLM → 校验引用。
 | `question` | ask / 检索摘要 |
 | `unknown` | 请用户选择意图 |
 | 长文/「会议纪要」 | Task `meeting_notes`（可异步 running→done） |
-| 仅 image | Task `image_extract`（无视觉时 failed + 提示粘贴文本） |
+| 仅 image | 使用多模态 `LLM_MODEL` 提取；成功后 Task `image_extract` 为 `done` 并落高权重 image 节点 |
 
 ---
 
@@ -574,9 +582,9 @@ Now 对话流，**新→旧**。
 
 **请求** `{ "device_id"?: uuid, "hours"?: 1–24 }`（默认 hours=3）
 
-**响应 200** `{ "message_id", "reply", "degraded" }`  
+**响应 200** `{ "message_id", "reply" }`
 
-基于近几小时会话聚合；无 LLM 时用模板，`degraded: true`。结果写入 agent message。
+基于近几小时会话聚合；无明显会话时返回确定性事实文案，不调用 LLM。存在会话但 provider 未配置或调用失败时明确返回错误。成功结果写入 agent message。
 
 ---
 

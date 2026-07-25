@@ -36,6 +36,20 @@ export const ACTIVE_FEED_KINDS: readonly NodeKind[] = [
   "image",
 ] as const;
 
+/** Passive collection sources reported by the sampler or device integrations. */
+export const SAMPLER_NODE_KINDS: readonly NodeKind[] = [
+  "app_sample",
+  "tab_sample",
+  "agent_session",
+  "git_commit",
+  "email",
+  "reminder",
+  "vscode_recent",
+  "browse_history",
+  "health_daily",
+  "snapshot",
+] as const;
+
 /** Chat triage intents (PRD F4). */
 export const ChatIntent = z.enum(["idea", "retrieval", "question", "unknown"]);
 export type ChatIntent = z.infer<typeof ChatIntent>;

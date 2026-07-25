@@ -1,20 +1,22 @@
-import type {
-  CadenceMode,
-  CardRecord,
-  CardType,
-  CharacterState,
-  ChatIntent,
-  MessageRecord,
-  MessageRole,
-  NodeKind,
-  NodeRecord,
-  ReviewPoint,
-  Stats,
-  TaskRecord,
-  TaskStatus,
-  TaskType,
-  TodoRecord,
-  TodoStatus,
+import {
+  type CadenceMode,
+  type CardRecord,
+  type CardType,
+  type CharacterState,
+  type ChatIntent,
+  type CollectionStatus,
+  type MessageRecord,
+  type MessageRole,
+  type NodeKind,
+  type NodeRecord,
+  type ReviewPoint,
+  SAMPLER_NODE_KINDS,
+  type Stats,
+  type TaskRecord,
+  type TaskStatus,
+  type TaskType,
+  type TodoRecord,
+  type TodoStatus,
 } from "@return/shared";
 import {
   deleteNodeFts,
@@ -23,7 +25,7 @@ import {
   upsertDayFts,
   upsertNodeFts,
 } from "../search/index.js";
-import { nowIso, todayDate, uuid } from "../util/time.js";
+import { addDays, nowIso, todayDate, uuid } from "../util/time.js";
 import type { Db } from "./schema.js";
 
 // ── row shapes ───────────────────────────────────────────
@@ -587,30 +589,43 @@ export function listTodosByStatus(db: Db, status: TodoStatus, limit = 30): TodoR
   return rows.map(todoToRecord);
 }
 
-/** Legacy todos.done rate — kept for tests; production output uses reminder rate. */
-export function todoCompletionRate(
-  db: Db,
-  dayId: string,
-): {
-  total: number;
-  done: number;
-  rate: number;
-} {
-  const row = db
+export function collectionStatus(db: Db, date: string): CollectionStatus {
+  const devices = db
     .prepare(
-      `SELECT COUNT(*) AS total, COALESCE(SUM(done), 0) AS done FROM todos WHERE day_id = ?`,
+      `SELECT COUNT(*) AS device_count, MAX(last_seen_at) AS last_seen_at FROM devices`,
     )
-    .get(dayId) as { total: number; done: number };
-  const rate = row.total === 0 ? 0 : row.done / row.total;
-  return { total: row.total, done: row.done, rate };
+    .get() as { device_count: number; last_seen_at: string | null };
+  const placeholders = SAMPLER_NODE_KINDS.map(() => "?").join(",");
+  const samples = db
+    .prepare(
+      `SELECT COUNT(*) AS sample_count
+       FROM nodes n
+       JOIN days d ON d.id = n.day_id
+       WHERE d.date = ? AND n.kind IN (${placeholders})`,
+    )
+    .get(date, ...SAMPLER_NODE_KINDS) as { sample_count: number };
+  return {
+    device_count: devices.device_count,
+    sample_count: samples.sample_count,
+    last_seen_at: devices.last_seen_at,
+  };
 }
 
 // ── cadence (sampler rhythm) ─────────────────────────────
 
-/** Night mode if today is already saved; else active. */
-export function currentCadence(db: Db, date = todayDate()): CadenceMode {
+/** Night mode runs from Save until the next local 06:00 boundary. */
+export function currentCadence(
+  db: Db,
+  date = todayDate(),
+  now = new Date(),
+): CadenceMode {
   const day = getDayByDate(db, date);
-  return day?.saved_at ? "night" : "active";
+  if (day?.saved_at) return "night";
+  const currentDate = todayDate(now);
+  if (date === currentDate && now.getHours() < 6) {
+    return getDayByDate(db, addDays(currentDate, -1))?.saved_at ? "night" : "active";
+  }
+  return "active";
 }
 
 // ── messages ─────────────────────────────────────────────

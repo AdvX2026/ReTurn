@@ -24,7 +24,9 @@ export async function handleResume(
   const reply =
     recent.length === 0
       ? `最近 ${hours} 小时没有明显的应用或 Agent 会话记录。`
-      : await llmChat({
+      : await llmChat(db, {
+          operation: "resume",
+          kind: "llm",
           system:
             "用一两句中文告诉用户他刚才在忙什么。口语、简短、不要列表。只根据给定会话。",
           user: `最近${hours}小时会话：\n${recent
@@ -41,5 +43,5 @@ export async function handleResume(
     meta: { kind: "resume", hours },
   });
 
-  return { message_id: msg.id, reply, degraded: false };
+  return { message_id: msg.id, reply };
 }

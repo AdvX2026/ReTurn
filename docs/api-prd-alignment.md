@@ -1,7 +1,7 @@
 # Server API ↔ PRD v0.6 alignment
 
 > Authority: `docs/PRD.md` **v0.6** §6.2 (synced from origin/main on this branch).  
-> Implementation: `packages/server` + `packages/shared` on `feat/global-search`.
+> Implementation: `packages/server` + `packages/shared`.
 
 ## Status vs §6.2
 
@@ -12,7 +12,7 @@
 | `POST /api/voice` (transcript → chat triage) | OK |
 | `POST /api/health` | OK |
 | `GET/DELETE /api/nodes` | OK |
-| `POST /api/chat` | **New** — heuristic triage + idea / retrieval / question / task |
+| `POST /api/chat` | OK — LLM triage + idea / retrieval / question / task |
 | `PATCH /api/messages/:id/intent` | **New** |
 | `GET /api/messages?cursor=` | **New** |
 | `GET /api/cards?direction=before\|future` | **New** |
@@ -22,10 +22,10 @@
 | `GET /api/timeline?from=&to=` (also `?date=`) | **Extended** range |
 | `GET /api/days` | OK |
 | `PATCH /api/todos/:id` | OK |
-| `GET /api/stats/today` (+ cadence) | **Extended** |
+| `GET /api/stats/today` (+ cadence + collection) | **Extended** |
+| `GET /api/usage?from=&to=` | OK |
 | `GET /api/ping` | OK |
 | `GET /api/search` / `POST /api/ask` | Extra (global search); not listed in §6.2 |
-| `GET /api/continue` | Kept (v0.5 back-compat; v0.6 UI prefers cards) |
 
 ## Data model
 
@@ -36,11 +36,11 @@
 
 ## Intentional simplifications (hackathon)
 
-- Intent triage uses the **same `LLM_*` model** as ferment/ask (`response_format: json_object`). Heuristic only when `LLM_API_KEY` is unset (tests/offline). LLM triage failure → `unknown` (user pick), not rule fallback.
-- Image task fails with “paste text” (no vision API yet)
-- Meeting-notes task runs **sync** to `done` (no background worker)
+- Intent triage uses the **same `LLM_*` model** as ferment/ask (`response_format: json_object`); missing or failed providers return explicit errors.
+- Image extraction uses the configured multimodal model and persists a completed high-weight Task/node only after successful extraction.
+- Meeting-notes tasks use the SQLite-backed background runner and survive restarts.
 - `PATCH .../intent` can re-run chat with forced intent
-- Swift `Models.swift` still blocked on ReturnApp
+- Swift `Models.swift` mirrors the shared contract in the same change.
 
 ## Tests
 

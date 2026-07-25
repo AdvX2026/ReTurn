@@ -2,18 +2,20 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>ReTurn records voice input so your home server can transcribe it.</string>
-	<key>NSRemindersFullAccessUsageDescription</key>
-	<string>ReTurn adds accepted suggestions to your Reminders list.</string>
-	<!-- Pi server is plain HTTP on the home LAN (PRD §6.1); scoped exemption, not NSAllowsArbitraryLoads. -->
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsLocalNetworking</key>
-		<true/>
-	</dict>
-	<!-- iOS local-network permission prompt (resolving return.local / LAN IP). Ignored on macOS. -->
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>ReTurn 需要访问本地网络，以连接家中的 Orange Pi 服务器（return.local）读取和同步你的数据。</string>
+<key>NSMicrophoneUsageDescription</key>
+<string>ReTurn records voice input so your home server can transcribe it.</string>
+<key>NSRemindersFullAccessUsageDescription</key>
+<string>ReTurn adds accepted suggestions to your Reminders list.</string>
+<key>NSHealthShareUsageDescription</key>
+<string>ReTurn reads last night's sleep and today's steps to inform your daily health card.</string>
+<!-- Pi server is plain HTTP on the home LAN (PRD §6.1); scoped exemption, not NSAllowsArbitraryLoads. -->
+<key>NSAppTransportSecurity</key>
+<dict>
+<key>NSAllowsLocalNetworking</key>
+<true/>
+</dict>
+<!-- iOS local-network permission prompt (resolving return.local / LAN IP). Ignored on macOS. -->
+<key>NSLocalNetworkUsageDescription</key>
+<string>ReTurn 需要访问本地网络，以连接家中的 Orange Pi 服务器（return.local）读取和同步你的数据。</string>
 </dict>
 </plist>

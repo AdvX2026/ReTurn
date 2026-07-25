@@ -2,6 +2,7 @@
 
 - SwiftUI multiplatform Xcode project (deployment targets iOS 17.0 / macOS 14.0), built with Xcode 26. MVP UI implementation and demo verification prioritize iOS/macOS 26. Prefer native OS-26 SwiftUI behavior over hand-drawn approximations; preserve the older deployment targets with small, localized `#available` branches and standard-system fallbacks unless the user explicitly changes the minimum versions. visionOS removed. macOS App Sandbox is OFF per PRD §6.1 (sandbox without outgoing-network entitlement blocks LAN access to Pi/sampler).
 - `project.pbxproj` uses synchronized folder groups: any file added under `ReTurn/` / `ReTurnTests/` is picked up automatically — never hand-edit the pbxproj to add files.
+- Xcode 26 builds this target as a mergeable library: the ~58 KB `ReTurn` executable is a stub and the real code lives in `ReTurn.app/ReTurn.debug.dylib`. Incremental `xcodebuild build` has silently no-oped over on-disk source changes here and shipped a stale dylib to the simulator — always `xcodebuild clean build` before install-and-verify. `xcodebuild test` runs on a "Clone" device in a separate device set that `xcrun simctl list` cannot see; capture visual evidence via `XCTAttachment` + `xcrun xcresulttool export attachments --path <xcresult> --output-path <dir>` instead of `simctl io screenshot`.
 
 ## iOS/macOS 26 UI policy
 
@@ -14,7 +15,7 @@
 
 - Mirror basis: `origin/feat/global-search` @ `809ec73` (PR #8 — the designated v0.6 API authority; PR #16 was abandoned in its favor). PR #8 is merged to main; keep future `packages/shared` contract changes synchronized here in the same commit (AGENTS.md contract rule).
 - Decode/encode ONLY via `ReTurnAPI.makeDecoder()/makeEncoder()` — snake_case conversion lives in the coder strategy; models deliberately have no per-field CodingKeys.
-- Enum policy: all mirrored string enums are tolerant (`TolerantEnum`) — unknown raw values decode to a fallback, never throw. Backend keeps growing `NodeKind` (open PRs add `email`, `vscode_recent`, `browse_history`), so strict enums would crash old builds on new server data.
+- Enum policy: all mirrored string enums are tolerant (`TolerantEnum`) — unknown raw values decode to a fallback, never throw. `NodeKind` currently mirrors `email`, `vscode_recent`, and `browse_history`; future server values still must not crash older app builds.
 - Card `content` is loose JSON in the contract; the mirror decodes it into typed per-`type` structs (shapes taken from what `services/save.ts` / `services/chat.ts` actually write on the mirror basis) with a `.raw` fallback on unknown type or shape drift. If backend tightens/changes card content, update `BriefingCardContent` & co. and `ModelsTests`.
 - IDs and timestamps are plain `String` (server stamps `created_at`; parse display dates via `ReTurnAPI.parseDate`). `client_uuid` is the idempotency key — never regenerate on retry.
 

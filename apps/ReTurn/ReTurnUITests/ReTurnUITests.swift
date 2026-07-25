@@ -23,14 +23,26 @@ final class ReTurnUITests: XCTestCase {
     }
 
     @MainActor
-    func testExample() throws {
-        // UI tests must launch the application that they test.
+    func testComposerWalkerAppearsWhileTyping() throws {
         let app = XCUIApplication()
         app.launch()
 
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
-        // XCUIAutomation Documentation
-        // https://developer.apple.com/documentation/xcuiautomation
+        let field = app.textFields["Ask Return Anything"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        let walker = app.descendants(matching: .any)["ComposerWalker"]
+        XCTAssertFalse(walker.exists)
+
+        field.tap()
+        XCTAssertTrue(walker.waitForExistence(timeout: 3))
+        // Keep a few frames of the pacing as visual evidence.
+        for index in 0..<3 {
+            if index > 0 { sleep(1) }
+            let frame = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            frame.name = "ComposerWalker-\(index)"
+            frame.lifetime = .keepAlways
+            add(frame)
+        }
+        XCTAssertTrue(walker.exists)
     }
 
     @MainActor

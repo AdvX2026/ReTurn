@@ -81,7 +81,7 @@ export async function search(db: Db, opts: SearchOptions): Promise<SearchRespons
   const semanticRanks = new Map<string, number>();
   // Semantic channel is off without EMBEDDING_* — keyword channel still answers.
   if (parsed.text.trim().length > 0 && isEmbeddingConfigured()) {
-    const qVec = await embedQuery(parsed.text);
+    const qVec = await embedQuery(db, parsed.text);
     let hits = semanticTopK(db, qVec, CHANNEL_TOP, config.embedding.model);
     // Apply date/kind filters post-hoc (embeddings table has no date column).
     hits = hits.filter((h) => {

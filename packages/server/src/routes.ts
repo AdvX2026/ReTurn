@@ -8,7 +8,6 @@ import {
   type CharacterState,
   ChatRequest,
   type ChatResponse,
-  type ContinueResponse,
   CreateNodesRequest,
   type CreateNodesResponse,
   type DaysResponse,
@@ -29,13 +28,12 @@ import {
   type RegisterDeviceResponse,
   ResumeRequest,
   type ResumeResponse,
-  type ReviewPoint,
   SaveRequest,
   type SearchResponse,
-  type Stats,
   type StatsTodayResponse,
   TaskStatus,
   type TimelineResponse,
+  type UsageResponse,
   type VoiceResponse,
   uuidFromSeed,
 } from "@return/shared";
@@ -45,14 +43,12 @@ import { NotConfiguredError, config, isHealthTokenConfigured } from "./config.js
 import {
   type DayRow,
   acceptTodo,
+  collectionStatus,
   currentCadence,
-  dayReviewPoints,
   dayStats,
   deleteNode,
   dismissTodo,
-  ensureDay,
   getDayByDate,
-  getLatestSavedDay,
   getMessage,
   getNodeById,
   getTodo,
@@ -64,7 +60,6 @@ import {
   listNodesByDate,
   listSavedDays,
   listTasks,
-  listTodosByDay,
   reindexNode,
   setMessageIntent,
   setTodoDone,
@@ -81,14 +76,8 @@ import { saveToday } from "./services/save.js";
 import { TimelineRangeError, buildTimeline } from "./services/timeline.js";
 import { computeLiveStats } from "./stats/live.js";
 import { computeStreak, savedDatesFromDays } from "./stats/streak.js";
-import {
-  addDays,
-  lastNDays,
-  nowIso,
-  todayDate,
-  uuid,
-  yesterdayDate,
-} from "./util/time.js";
+import { getProviderUsage } from "./usage.js";
+import { addDays, lastNDays, nowIso, todayDate, uuid } from "./util/time.js";
 
 function badRequest(message: string) {
   return { statusCode: 400 as const, error: "Bad Request", message };
@@ -290,7 +279,7 @@ export async function registerRoutes(
 
     let transcript: string | null = null;
     try {
-      transcript = await transcribeAudio(fileBuf, filename, mimeType);
+      transcript = await transcribeAudio(db, fileBuf, filename, mimeType);
     } catch (error) {
       // Audio is already on disk — keep a pending node so the file is reachable
       // and the client still gets a truthful failure (PRD §9.6: never lose data).
@@ -414,64 +403,6 @@ export async function registerRoutes(
     }
   });
 
-  // ── continue ──────────────────────────────────────────
-  app.get("/api/continue", async () => {
-    const today = todayDate();
-    const yday = yesterdayDate();
-
-    const live = computeLiveStats(db, today);
-    const allSaved = listSavedDays(db, addDays(today, -60));
-    const streak = computeStreak(savedDatesFromDays(allSaved), today);
-
-    // Before = most recent saved day strictly before today (prefer yesterday).
-    let beforeDay = getDayByDate(db, yday);
-    if (!beforeDay?.saved_at) {
-      beforeDay = getLatestSavedDay(db, today);
-    }
-
-    let before: ContinueResponse["before"] = null;
-    if (beforeDay?.saved_at) {
-      const prevStats = dayStats(beforeDay);
-      // delta vs day before that
-      const earlier = getLatestSavedDay(db, beforeDay.date);
-      let stats_delta: Stats | null = null;
-      if (prevStats && earlier) {
-        const earlierStats = dayStats(earlier);
-        if (earlierStats) {
-          stats_delta = {
-            intake: prevStats.intake - earlierStats.intake,
-            focus: prevStats.focus - earlierStats.focus,
-            output: prevStats.output - earlierStats.output,
-            continuity: prevStats.continuity - earlierStats.continuity,
-            energy: prevStats.energy - earlierStats.energy,
-          };
-        }
-      }
-      before = {
-        date: beforeDay.date,
-        opening_line: beforeDay.opening_line,
-        summary: beforeDay.summary,
-        review_points: dayReviewPoints(beforeDay) as ReviewPoint[],
-        stats: prevStats,
-        character_state: (beforeDay.character_state as CharacterState) ?? null,
-        stats_delta,
-      };
-    }
-
-    const todayDay = ensureDay(db, today);
-    const todos = listTodosByDay(db, todayDay.id);
-
-    const body: ContinueResponse = {
-      before,
-      future: { date: today, todos },
-      character_state: live.character_state,
-      stats: live.stats,
-      streak,
-      is_cold_start: before == null,
-    };
-    return body;
-  });
-
   // ── stats/today ───────────────────────────────────────
   app.get("/api/stats/today", async (req, reply) => {
     const q = req.query as { date?: string };
@@ -485,8 +416,26 @@ export async function registerRoutes(
       stats: live.stats,
       character_state: live.character_state,
       saved: live.saved,
+      collection: collectionStatus(db, date),
       cadence: currentCadence(db, date),
     };
+    return body;
+  });
+
+  // ── provider usage ────────────────────────────────────
+  app.get("/api/usage", async (req, reply) => {
+    const q = req.query as { from?: string; to?: string };
+    const today = todayDate();
+    const from = q.from ?? addDays(today, -29);
+    const to = q.to ?? today;
+    const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRe.test(from) || !dateRe.test(to)) {
+      return reply.code(400).send(badRequest("from/to must be YYYY-MM-DD"));
+    }
+    if (from > to) {
+      return reply.code(400).send(badRequest("from must be ≤ to"));
+    }
+    const body: UsageResponse = getProviderUsage(db, from, to);
     return body;
   });
 
