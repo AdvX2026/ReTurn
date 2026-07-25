@@ -62,6 +62,9 @@ enum TimelineDesign {
             #endif
         }
 
+        /// One stable hue per node family so the horizontal track and the
+        /// detail list read as the same legend. Avoid reusing orange/green/teal
+        /// across unrelated kinds — each category gets its own system color.
         static func accent(for item: TimelineDisplayItem) -> Color {
             if item.presentation == .ambient {
                 return ambient
@@ -69,12 +72,10 @@ enum TimelineDesign {
 
             if item.isUserInput {
                 return switch item.category {
-                case "voice":
-                    Color(AccentColor.systemTeal)
-                case "image":
-                    Color(AccentColor.systemCyan)
-                default:
-                    Color(AccentColor.systemGreen)
+                case "voice": Color(AccentColor.systemTeal)
+                case "image": Color(AccentColor.systemCyan)
+                case "url": Color(AccentColor.systemBlue)
+                default: Color(AccentColor.systemMint)
                 }
             }
 
@@ -85,37 +86,28 @@ enum TimelineDesign {
                 Color(AccentColor.systemOrange)
             case .feed:
                 switch item.category {
-                case "voice":
-                    Color(AccentColor.systemTeal)
-                case "idea":
-                    Color(AccentColor.systemOrange)
-                case "image":
-                    Color(AccentColor.systemCyan)
-                case "reminder":
-                    Color(AccentColor.systemGreen)
-                case "text":
-                    Color(AccentColor.systemGreen)
-                default:
-                    Color(AccentColor.systemTeal)
+                case "voice": Color(AccentColor.systemTeal)
+                case "idea": Color(AccentColor.systemYellow)
+                case "image": Color(AccentColor.systemCyan)
+                case "reminder": Color(AccentColor.systemGreen)
+                case "text", "save_note": Color(AccentColor.systemMint)
+                case "url": Color(AccentColor.systemBlue)
+                case "git", "git_commit": Color(AccentColor.systemBrown)
+                case "email": Color(AccentColor.systemBlue)
+                case "browse_history": Color(AccentColor.systemPurple)
+                case "vscode_recent": Color(AccentColor.systemOrange)
+                default: Color(AccentColor.systemTeal)
                 }
             case .app:
                 switch item.category {
-                case "browser":
-                    Color(AccentColor.systemBlue)
-                case "dev":
-                    Color(AccentColor.systemOrange)
-                case "social":
-                    Color(AccentColor.systemGreen)
-                case "design":
-                    Color(AccentColor.systemPurple)
-                case "media":
-                    Color(AccentColor.systemRed)
-                case "notes":
-                    Color(AccentColor.systemOrange)
-                case "system":
-                    Color(AccentColor.systemGray)
-                default:
-                    Color(AccentColor.systemTeal)
+                case "browser": Color(AccentColor.systemBlue)
+                case "dev": Color(AccentColor.systemOrange)
+                case "social": Color(AccentColor.systemPink)
+                case "design": Color(AccentColor.systemPurple)
+                case "media": Color(AccentColor.systemRed)
+                case "notes": Color(AccentColor.systemYellow)
+                case "system": Color(AccentColor.systemGray)
+                default: Color(AccentColor.systemBrown)
                 }
             case .unknown:
                 Color(AccentColor.systemGray)

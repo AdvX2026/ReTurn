@@ -412,17 +412,34 @@ struct MacBeforeView: View {
     private func eventList(_ day: TimelineDay) -> some View {
         let grouped = TimelineGroupedItem.group(items: day.items)
 
-        return ScrollView {
-            LazyVStack(alignment: .leading, spacing: ReTurnDesign.Spacing.extraSmall) {
-                ForEach(grouped) { group in
-                    eventGroupRow(group)
+        return ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: ReTurnDesign.Spacing.extraSmall) {
+                    ForEach(grouped) { group in
+                        eventGroupRow(group)
+                    }
+                }
+                .padding(.horizontal, ReTurnDesign.Spacing.large)
+                .padding(.vertical, ReTurnDesign.Spacing.small)
+            }
+            .scrollIndicators(.hidden)
+            // Track click → expand the owning group (so the row id exists),
+            // then scroll the list to that event.
+            .onChange(of: selectedItemID) { _, itemID in
+                guard let itemID else { return }
+                if let group = grouped.first(where: { $0.events.contains(where: { $0.id == itemID }) }),
+                   group.isGrouped {
+                    expandedGroupIDs.insert(group.id)
+                }
+                Task { @MainActor in
+                    // Let the expanded rows (and day switch) commit before scrolling.
+                    await Task.yield()
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        proxy.scrollTo(itemID, anchor: .center)
+                    }
                 }
             }
-            .padding(.horizontal, ReTurnDesign.Spacing.large)
-            .padding(.vertical, ReTurnDesign.Spacing.small)
         }
-        .scrollIndicators(.hidden)
-        .scrollPosition(id: $selectedItemID, anchor: .center)
     }
 
     /// One row in the event list: a single event or a collapsed/expanded group.
@@ -477,6 +494,13 @@ struct MacBeforeView: View {
                     .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
+                // Collapsed groups still need a scroll target for every member
+                // the horizontal track can select.
+                .background(alignment: .top) {
+                    ForEach(group.events) { item in
+                        Color.clear.frame(height: 0).id(item.id)
+                    }
+                }
 
                 // Expanded: individual events
                 if isExpanded {

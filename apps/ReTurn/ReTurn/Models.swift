@@ -437,7 +437,7 @@ struct ChatRequest: Codable {
     var intent: ChatIntent?
 }
 
-struct ChatJump: Codable {
+struct ChatJump: Codable, Equatable {
     var date: String
     var nodeIds: [String]
 }
