@@ -1,15 +1,18 @@
 #if os(macOS)
+import AppKit
 import SwiftUI
 
 /// macOS root: the same paging `ScrollView` the iOS pager runs on, so a
 /// trackpad two-finger swipe or a Magic Mouse swipe turns pages exactly like
 /// the mobile gesture — the earlier simulated slide transition is gone, and
 /// with it any doubt about directions. Keyboard (arrow keys, Escape,
-/// Cmd-1/2/3), the floating window-edge arrows and the top label row all
+/// Cmd-1/2/3), the floating window-edge arrows and the top segmented control all
 /// drive the same `scrollPosition` binding the gesture drives.
 struct MacRootView: View {
     @State private var selection: TimelinePage? = .now
     @FocusState private var isComposerFocused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(ChatStore.self) private var chat: ChatStore
     @Environment(TimelineStore.self) private var timeline: TimelineStore
     @Environment(StatsStore.self) private var stats: StatsStore
@@ -42,7 +45,15 @@ struct MacRootView: View {
             .scrollTargetBehavior(.paging)
             .scrollPosition(id: $selection)
         }
-        .background(ReTurnDesign.Colors.screenBackground)
+        .ignoresSafeArea(.container, edges: .top)
+        .background {
+            windowBackgroundColor
+                .ignoresSafeArea()
+                .animation(
+                    reduceMotion ? nil : .easeInOut(duration: 0.6),
+                    value: currentPage
+                )
+        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 0) {
                 ConnectionStatusView()
@@ -70,24 +81,7 @@ struct MacRootView: View {
             }
         }
         .background(shortcutButtons)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    Task { await refreshCurrentPage() }
-                } label: {
-                    if isRefreshing {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                }
-                .disabled(isRefreshing)
-                .accessibilityLabel("Refresh")
-                .help("Refresh the current page")
-                .keyboardShortcut("r", modifiers: .command)
-            }
-        }
+        .modifier(MacWindowChromeModifier())
         .onChange(of: chat.pendingJump) { _, jump in
             // Retrieval jump (F10): turn to Before and hand the date/node to
             // the timeline browser, which consumes the focus request.
@@ -100,7 +94,26 @@ struct MacRootView: View {
 
     private var currentPage: TimelinePage { selection ?? .now }
 
-    /// The toolbar refresh (⌘R): no server push exists, so each page pulls
+    private var windowBackgroundColor: Color {
+        guard currentPage == .after else {
+            return ReTurnDesign.Colors.screenBackground
+        }
+        guard colorScheme == .light else { return .black }
+
+        let groupedBackground =
+            NSColor.alternatingContentBackgroundColors.dropFirst().first
+            ?? NSColor.windowBackgroundColor
+        return Color(nsColor: groupedBackground)
+    }
+
+    private var pagePickerSelection: Binding<TimelinePage> {
+        Binding(
+            get: { currentPage },
+            set: { select($0) }
+        )
+    }
+
+    /// Manual refresh (⌘R): no server push exists, so each page pulls
     /// its own stores again — stats on Now, the viewed day + overview on
     /// Before, the card stream on After.
     private func refreshCurrentPage() async {
@@ -122,7 +135,7 @@ struct MacRootView: View {
         case .before:
             MacBeforeView()
         case .now:
-            MacNowPage()
+            MacNowPage(isActive: currentPage == .now)
         case .after:
             MacAfterView()
         }
@@ -132,7 +145,9 @@ struct MacRootView: View {
     /// a swipe updates the selection back. One binding, no direction math.
     private func select(_ page: TimelinePage) {
         withAnimation(
-            .easeInOut(duration: ReTurnDesign.Motion.navigationSelectionDuration)
+            reduceMotion
+                ? nil
+                : .easeInOut(duration: ReTurnDesign.Motion.navigationSelectionDuration)
         ) {
             selection = page
         }
@@ -150,46 +165,32 @@ struct MacRootView: View {
         return TimelinePage.allCases[index]
     }
 
-    /// The same three words the iOS pager navigates with, clickable and kept
-    /// at full strength: on the desktop they are the persistent orientation
-    /// cue that replaces the swipe position.
+    /// The native macOS segmented picker owns Calendar-style hover, selection
+    /// and unselected states while the pager remains the single state source.
     private var pageIndicator: some View {
-        HStack(spacing: ReTurnDesign.Spacing.large) {
+        Picker("Timeline page", selection: pagePickerSelection) {
             ForEach(TimelinePage.allCases) { page in
-                let isSelected = page == currentPage
-
-                Button {
-                    select(page)
-                } label: {
-                    // Every label reserves its selected width, so changing
-                    // weights cannot shove the row's other labels around.
-                    Text(page.rawValue)
-                        .fontWeight(.semibold)
-                        .hidden()
-                        .overlay {
-                            Text(page.rawValue)
-                                .fontWeight(isSelected ? .semibold : .regular)
-                                .foregroundStyle(
-                                    isSelected
-                                        ? ReTurnDesign.Colors.primaryLabel
-                                        : ReTurnDesign.Colors.secondaryLabel
-                                )
-                        }
-                }
-                .font(ReTurnDesign.Typography.navigationItem)
-                .buttonStyle(.plain)
-                .accessibilityLabel(page.rawValue)
-                .accessibilityAddTraits(isSelected ? .isSelected : [])
+                Text(page.rawValue)
+                    .tag(page)
             }
         }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .controlSize(.large)
+        .fixedSize(horizontal: true, vertical: false)
         .padding(.top, ReTurnDesign.Spacing.small)
         // The single definition of the gap between the indicator row and the
         // pages below it.
         .padding(.bottom, ReTurnDesign.Spacing.medium)
-        .animation(
-            .easeInOut(duration: ReTurnDesign.Motion.navigationSelectionDuration),
-            value: currentPage
-        )
+        .frame(maxWidth: .infinity)
+        .background {
+            if #available(macOS 15.0, *) {
+                Color.clear
+                    .contentShape(.rect)
+                    .gesture(WindowDragGesture())
+                    .allowsWindowActivationEvents(true)
+            }
+        }
     }
 
     /// Keyboard navigation. ←/→ step through the flow and Escape returns to
@@ -208,6 +209,12 @@ struct MacRootView: View {
             Button("Back to Now") { select(.now) }
                 .keyboardShortcut(.escape, modifiers: [])
                 .disabled(currentPage == .now)
+
+            Button("Refresh") {
+                Task { await refreshCurrentPage() }
+            }
+            .keyboardShortcut("r", modifiers: .command)
+            .disabled(isRefreshing)
 
             ForEach(Array(TimelinePage.allCases.enumerated()), id: \.element) { index, page in
                 Button(page.rawValue) {
@@ -257,18 +264,16 @@ private extension TimelinePage {
     }
 }
 
-/// The same hero as mobile, at a fixed width: the desktop window is too wide
-/// for the iOS proportional sizing even inside the pager. Once the
-/// conversation starts, the hero collapses to a header over the transcript.
-///
-/// Layout is top-aligned on purpose. The mobile hero uses a bottom optical
-/// lift to sit near vertical center on a phone; on a tall desktop page the
-/// same `.frame(maxHeight: .infinity)` default (center) left a large empty
-/// band under the page indicator. Top-aligning is the root fix — no extra
-/// spacer chrome.
+/// The desktop hero keeps the mobile mascot's motion at a fixed width and
+/// centers the complete idle state in the space between the page picker and
+/// composer. Once chat has entries, the mascot becomes a compact top header
+/// and the conversation receives the remaining height.
 private struct MacNowPage: View {
+    let isActive: Bool
+
     @Environment(ChatStore.self) private var chat: ChatStore
     @Environment(StatsStore.self) private var stats: StatsStore
+    @Environment(\.scenePhase) private var scenePhase
     @Namespace private var mascotSpace
 
     var body: some View {
@@ -284,9 +289,16 @@ private struct MacNowPage: View {
 
     private var heroBody: some View {
         VStack(spacing: ReTurnDesign.Spacing.medium) {
-            MascotImage()
-                .frame(width: ReTurnDesign.Desktop.nowMascotWidth)
-                .matchedGeometryEffect(id: "mascot", in: mascotSpace)
+            MacMascotView(
+                stats: stats.stats ?? .empty,
+                allowsContinuousMotion: isActive && scenePhase == .active
+            )
+            .frame(
+                width: MacMascotView.frameWidth(
+                    forMascotWidth: ReTurnDesign.Desktop.nowMascotWidth
+                )
+            )
+            .matchedGeometryEffect(id: "mascot", in: mascotSpace)
 
             Text(nowGreeting(for: stats.characterState))
                 .font(ReTurnDesign.Typography.heroTitle)
@@ -297,8 +309,7 @@ private struct MacNowPage: View {
             NowActionBar()
             SaveResultLine()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .padding(.top, ReTurnDesign.Desktop.contentPadding)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var conversationBody: some View {
@@ -341,13 +352,10 @@ private struct MacNowPage: View {
                 .padding(.bottom, ReTurnDesign.Spacing.extraSmall)
             }
 
-            // Conversation fills remaining space; anchored to bottom
+            // Conversation fills the remainder; short content starts at top.
             NowConversationView(entries: chat.entries)
                 .frame(maxWidth: ReTurnDesign.Metrics.composerFocusedRegularMaxWidth)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            SaveResultLine()
-                .padding(.bottom, ReTurnDesign.Spacing.extraSmall)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }

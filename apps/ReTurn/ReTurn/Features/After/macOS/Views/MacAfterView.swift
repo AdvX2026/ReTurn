@@ -33,7 +33,6 @@ struct MacAfterView: View {
             .padding(.vertical, ReTurnDesign.Desktop.contentPadding)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(ReTurnDesign.Colors.screenBackground)
         .task { await cards.monitor() }
     }
 
@@ -73,6 +72,17 @@ struct MacAfterView: View {
                         },
                         onTodoDismiss: { id in Task { await cards.dismissTodo(id) } }
                     )
+                    // Keep the card surface outside any disabled child Button;
+                    // macOS otherwise dims the surface along with static cards.
+                    .background(
+                        ReTurnDesign.Colors.cardBackground,
+                        in: RoundedRectangle(cornerRadius: ReTurnDesign.Card.cornerRadius)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: ReTurnDesign.Card.cornerRadius)
+                            .strokeBorder(ReTurnDesign.Colors.cardSeparator, lineWidth: 1)
+                            .allowsHitTesting(false)
+                    }
                 }
             }
 
