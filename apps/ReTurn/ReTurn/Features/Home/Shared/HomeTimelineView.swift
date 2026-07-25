@@ -173,7 +173,7 @@ struct HomeTimelineView: View {
     }
 
     private var bottomChromeInactiveBlurRadius: CGFloat {
-        reduceMotion ? 0 : 8
+        reduceMotion ? 0 : 5
     }
 
     private var isTimelineScrolling: Bool {
