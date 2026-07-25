@@ -125,7 +125,7 @@ struct AfterView: View {
                 )
                 .contentMargins(
                     .top,
-                    ReTurnDesign.Spacing.large,
+                    ReTurnDesign.Metrics.mainContentTopPadding,
                     for: .scrollContent
                 )
                 .contentMargins(

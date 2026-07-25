@@ -19,6 +19,17 @@ enum ReTurnDesign {
             #endif
         }
 
+        /// Opaque color at the top of the navigation readability gradient.
+        /// The system background resolves to white in Light Mode and black in
+        /// Dark Mode without a separate appearance branch in the view.
+        static var navigationBackdrop: Color {
+            #if os(iOS)
+            Color(uiColor: .systemBackground)
+            #elseif os(macOS)
+            Color(nsColor: .windowBackgroundColor)
+            #endif
+        }
+
         static let voiceButtonBackground = Color.black
         static let voiceButtonForeground = Color.white
         static let composerFallbackShadow = Color.black.opacity(0.1)
@@ -87,6 +98,8 @@ enum ReTurnDesign {
         static let focusedScreenHorizontalInset: CGFloat = 12
         static let composerAccessorySize: CGFloat = 30
         static let composerAccessoryHitSize: CGFloat = 44
+        /// Keeps the first scroll-content heading below the Main navigation.
+        static let mainContentTopPadding: CGFloat = 96
 
         /// Padding that grows the attachment button's touch target to
         /// `composerAccessoryHitSize`; cancelled by an equal negative padding so

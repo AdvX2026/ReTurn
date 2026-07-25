@@ -62,21 +62,29 @@ struct HomeTimelineView: View {
             }
 
             #if os(iOS)
-            Rectangle()
-                .fill(.bar)
+            LinearGradient(
+                stops: [
+                    .init(
+                        color: ReTurnDesign.Colors.navigationBackdrop,
+                        location: 0
+                    ),
+                    .init(
+                        color: ReTurnDesign.Colors.navigationBackdrop,
+                        location: 0.48
+                    ),
+                    .init(
+                        color: ReTurnDesign.Colors.navigationBackdrop.opacity(0.72),
+                        location: 0.72
+                    ),
+                    .init(
+                        color: ReTurnDesign.Colors.navigationBackdrop.opacity(0),
+                        location: 1
+                    ),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
                 .frame(height: ReTurnDesign.Metrics.navigationBackdropHeight)
-                .mask {
-                    LinearGradient(
-                        stops: [
-                            .init(color: .white, location: 0),
-                            .init(color: .white, location: 0.48),
-                            .init(color: .white.opacity(0.72), location: 0.72),
-                            .init(color: .clear, location: 1),
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                }
                 .ignoresSafeArea(edges: [.top, .horizontal])
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
