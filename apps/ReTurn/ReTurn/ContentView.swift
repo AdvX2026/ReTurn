@@ -15,6 +15,7 @@ enum TimelinePage: String, CaseIterable, Identifiable {
     var id: Self { self }
 }
 
+#if os(iOS)
 /// What the navigation's dim timer reacts to: it wakes on either a page change
 /// or the pager starting to move, and only counts down once both have settled.
 private struct NavigationActivity: Equatable {
@@ -52,7 +53,7 @@ struct ContentView: View {
             // updates when the settle animation begins, which is too early for both.
             // On older systems `isScrolling` stays false and the navigation falls
             // back to waking on the page change itself.
-            if #available(iOS 18.0, macOS 15.0, *) {
+            if #available(iOS 18.0, *) {
                 pager
                     .onScrollPhaseChange { _, phase in
                         isScrolling = phase != .idle
@@ -65,22 +66,16 @@ struct ContentView: View {
             pageNavigation
         }
 
-        return Group {
-            #if os(iOS)
-            timelineContent
-                .simultaneousGesture(
-                    TapGesture()
-                        .onEnded {
-                            isComposerFocused = false
-                        }
-                )
-            #else
-            timelineContent
-            #endif
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            ComposerBar(isFocused: $isComposerFocused)
-        }
+        return timelineContent
+            .simultaneousGesture(
+                TapGesture()
+                    .onEnded {
+                        isComposerFocused = false
+                    }
+            )
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                ComposerBar(isFocused: $isComposerFocused)
+            }
     }
 
     private var currentPage: TimelinePage { selectedPage ?? .now }
@@ -159,13 +154,9 @@ struct ContentView: View {
     private func pageContent(for page: TimelinePage) -> some View {
         switch page {
         case .before:
-            #if os(iOS)
             // The API-backed timeline store is not wired yet; keep the reviewed
             // fixture visible so the merged Before experience remains testable.
             BeforeView(days: TimelinePreviewData.days)
-            #else
-            Color.clear
-            #endif
         case .after:
             Color.clear
         case .now:
@@ -194,6 +185,13 @@ private struct NowPage: View {
         .padding(.bottom, ReTurnDesign.Metrics.heroOpticalLift * 2)
     }
 }
+#else
+struct ContentView: View {
+    var body: some View {
+        MacRootView()
+    }
+}
+#endif
 
 #Preview {
     ContentView()

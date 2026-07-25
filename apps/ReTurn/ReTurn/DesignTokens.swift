@@ -174,4 +174,28 @@ enum ReTurnDesign {
         static let navigationDimDelay = 1.5
         static let navigationDimDuration = 0.45
     }
+
+    /// macOS shell metrics: sidebar root, two-pane Before, adaptive After grid.
+    /// Desktop-only; iOS layout keeps the pager tokens above.
+    enum Desktop {
+        static let sidebarMinimumWidth: CGFloat = 200
+        static let sidebarIdealWidth: CGFloat = 220
+        static let sidebarMaximumWidth: CGFloat = 260
+        static let windowMinimumWidth: CGFloat = 940
+        static let windowMinimumHeight: CGFloat = 600
+        /// The desktop Now page has no pager, so the mascot takes a fixed
+        /// width instead of a scroll-viewport ratio.
+        static let nowMascotWidth: CGFloat = 220
+        /// Horizontal breathing room around full-width desktop content.
+        static let contentPadding: CGFloat = 32
+
+        enum Before {
+            static let dayListWidth: CGFloat = 280
+        }
+
+        enum After {
+            static let gridMinimumCardWidth: CGFloat = 300
+            static let gridSpacing: CGFloat = 16
+        }
+    }
 }
