@@ -1,4 +1,9 @@
-import { ACTIVE_FEED_KINDS, type ReviewPoint, type SaveResponse } from "@return/shared";
+import {
+  ACTIVE_FEED_KINDS,
+  type BriefingCardContent,
+  type ReviewPoint,
+  type SaveResponse,
+} from "@return/shared";
 import { buildFermentContext, runFerment } from "../ai/ferment.js";
 import { config } from "../config.js";
 import {
@@ -23,9 +28,11 @@ import {
   reminderCompletionRate,
 } from "../db/repo.js";
 import type { Db } from "../db/schema.js";
+import { computeDayBreakdown } from "../stats/breakdown.js";
 import { resolveCharacterState } from "../stats/character.js";
 import { computeStats, extractHealth } from "../stats/compute.js";
 import { computeLiveStats } from "../stats/live.js";
+import { resolveProfession } from "../stats/profession.js";
 import { allSessions } from "../stats/sessions.js";
 import { computeStreak, savedDatesFromDays } from "../stats/streak.js";
 import { addDays, nowIso, uuid } from "../util/time.js";
@@ -236,6 +243,26 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
       steps: health.steps,
     });
     const character_state = resolveCharacterState(stats);
+    const breakdown = computeDayBreakdown({
+      nodes: freshNodes,
+      sessions: freshSessions,
+      todoCompleted: remToday.done,
+      todoTotal: remToday.total,
+      crossDayEdges: cross,
+      sleepMinutes: health.sleepMinutes,
+      steps: health.steps,
+    });
+    const profession = resolveProfession({
+      sessions: freshSessions,
+      gitCommitCount: breakdown.git_commit_count,
+      agentDurationMin: breakdown.agent_duration_min,
+    });
+    // Include today once sealed so streak counts this save.
+    const priorSaved = listSavedDays(db, addDays(input.date, -60));
+    const streak = computeStreak(
+      [...savedDatesFromDays(priorSaved), input.date],
+      input.date,
+    );
 
     markDaySaved(db, day.id, {
       saved_at: nowIso(),
@@ -249,21 +276,25 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
 
     // v0.6 cards (briefing / todo_suggestion / health / auto ideas)
     const briefingBody = ferment.briefing ?? ferment.summary;
+    const briefingContent: BriefingCardContent = {
+      summary: ferment.summary,
+      opening_line: ferment.opening_line,
+      briefing: briefingBody,
+      review_points: ferment.review_points as ReviewPoint[],
+      stats,
+      character_state,
+      node_ids: freshNodes
+        .filter((n) => (ACTIVE_FEED_KINDS as readonly string[]).includes(n.kind))
+        .map((n) => n.id)
+        .slice(0, 40),
+      profession,
+      streak,
+      breakdown,
+    };
     insertCard(db, {
       type: "briefing",
       date: input.date,
-      content: {
-        summary: ferment.summary,
-        opening_line: ferment.opening_line,
-        briefing: briefingBody,
-        review_points: ferment.review_points,
-        stats,
-        character_state,
-        node_ids: freshNodes
-          .filter((n) => (ACTIVE_FEED_KINDS as readonly string[]).includes(n.kind))
-          .map((n) => n.id)
-          .slice(0, 40),
-      },
+      content: briefingContent,
     });
     cardsCreated++;
     if (todoIds.length > 0) {

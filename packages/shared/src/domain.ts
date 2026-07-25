@@ -82,6 +82,20 @@ export const CharacterState = z.enum([
 ]);
 export type CharacterState = z.infer<typeof CharacterState>;
 
+/**
+ * Day-role label for Daily Brief (deterministic from sessions / output signals).
+ * Client should tolerate unknown values (new professions must not crash old apps).
+ */
+export const Profession = z.enum([
+  "coder",
+  "designer",
+  "writer",
+  "communicator",
+  "explorer",
+  "generalist",
+]);
+export type Profession = z.infer<typeof Profession>;
+
 export const Platform = z.enum(["macos", "ios", "linux", "unknown"]);
 export type Platform = z.infer<typeof Platform>;
 
@@ -102,6 +116,59 @@ export const EMPTY_STATS: Stats = {
   continuity: 0,
   energy: 100,
 };
+
+/**
+ * Per-day counters for client attribution templates (PRD drift §5.B).
+ * Pure code at Save; never LLM. Client owns localized copy.
+ */
+export const DayStatsBreakdown = z.object({
+  /** Intake template: idea / image / active feed / received mail. */
+  idea_count: z.number().int().nonnegative(),
+  image_count: z.number().int().nonnegative(),
+  active_feed_count: z.number().int().nonnegative(),
+  email_received: z.number().int().nonnegative(),
+  /** Output template: todos done/total, agent hours, commits, sent mail. */
+  todo_completed: z.number().int().nonnegative(),
+  todo_total: z.number().int().nonnegative(),
+  agent_duration_min: z.number().nonnegative(),
+  git_commit_count: z.number().int().nonnegative(),
+  email_sent: z.number().int().nonnegative(),
+  /** Focus template: longest contiguous work session (minutes). */
+  longest_session_min: z.number().nonnegative(),
+  /** Energy template: optional health signals. */
+  sleep_minutes: z.number().int().nonnegative().nullable(),
+  steps: z.number().int().nonnegative().nullable(),
+  /** Continuity template. */
+  cross_day_edges: z.number().int().nonnegative(),
+});
+export type DayStatsBreakdown = z.infer<typeof DayStatsBreakdown>;
+
+export const EMPTY_BREAKDOWN: DayStatsBreakdown = {
+  idea_count: 0,
+  image_count: 0,
+  active_feed_count: 0,
+  email_received: 0,
+  todo_completed: 0,
+  todo_total: 0,
+  agent_duration_min: 0,
+  git_commit_count: 0,
+  email_sent: 0,
+  longest_session_min: 0,
+  sleep_minutes: null,
+  steps: null,
+  cross_day_edges: 0,
+};
+
+/** Timeline item geometry (PRD §3.2). */
+export const TimelineShape = z.enum(["point", "span"]);
+export type TimelineShape = z.infer<typeof TimelineShape>;
+
+export const TimelineImportance = z.enum(["ambient", "normal", "major"]);
+export type TimelineImportance = z.infer<typeof TimelineImportance>;
+
+/** Who originated the timeline item (sample vs user input vs derived). */
+export const TimelineRole = z.enum(["input", "sample", "derived", "system"]);
+export type TimelineRole = z.infer<typeof TimelineRole>;
 
 /** Aggregated app / agent session. */
 export const SessionSchema = z.object({

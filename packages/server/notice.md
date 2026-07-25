@@ -26,6 +26,10 @@ See root `.env.example`. `LLM_API_KEY` / `HEALTH_TOKEN` never ship to clients. H
 - Global search / node layering: see `docs/architecture-nodes-search.md` (PR #8).
 - Swift `Models.swift` mirrors the shared API contract, including all sampler node kinds.
 - Voice transcription failure preserves the raw audio file and a pending voice node (`pending_transcript: true`), and returns HTTP 502/503 — no fake transcript.
+- Daily Brief card content includes `profession`, `streak`, and `breakdown` counters
+  (client templates; pure code at Save). Timeline segments carry stable `id`,
+  `shape`/`importance`/`role`, cluster children, and typed `destination`
+  (including `daily_briefing` rows from briefing cards).
 
 ## Todo preference loop (AI suggestions ↔ Apple Reminders)
 - Real checklist = Mac Reminders. Server `todos` = AI suggestions only (`status`: suggested|accepted|dismissed).

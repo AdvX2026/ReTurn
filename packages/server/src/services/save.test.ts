@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
-import { ensureDay, getDayByDate, insertNode, listTodosByDay } from "../db/repo.js";
+import type { BriefingCardContent } from "@return/shared";
+import {
+  ensureDay,
+  getDayByDate,
+  insertNode,
+  listCards,
+  listTodosByDay,
+} from "../db/repo.js";
 import { type Db, openMemoryDb } from "../db/schema.js";
 import { addDays } from "../util/time.js";
 import { saveToday } from "./save.js";
@@ -40,6 +47,17 @@ describe("saveToday", () => {
     const todos = listTodosByDay(db, next.id);
     assert.ok(todos.length >= 1);
     assert.ok(todos.some((t) => t.text.includes("时间轴") || t.text.length > 0));
+
+    // Briefing card carries profession + streak + breakdown (client templates).
+    const cards = listCards(db, { direction: "before", limit: 20 });
+    const briefing = cards.cards.find((c) => c.type === "briefing" && c.date === date);
+    assert.ok(briefing);
+    const content = briefing!.content as BriefingCardContent;
+    assert.ok(content.profession);
+    assert.ok(typeof content.streak === "number" && content.streak >= 1);
+    assert.ok(content.breakdown);
+    assert.equal(typeof content.breakdown.idea_count, "number");
+    assert.equal(typeof content.breakdown.active_feed_count, "number");
 
     const second = await saveToday(db, {
       date,

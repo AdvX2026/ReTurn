@@ -4,12 +4,18 @@ import {
   CardType,
   CharacterState,
   ChatIntent,
+  DayStatsBreakdown,
+  IdeaProvenance,
   MessageRole,
   NodeKind,
   Platform,
+  Profession,
   StatsSchema,
   TaskStatus,
   TaskType,
+  TimelineImportance,
+  TimelineRole,
+  TimelineShape,
   TodoStatus,
 } from "./domain.js";
 
@@ -185,8 +191,47 @@ export const StatsTodayResponse = z.object({
 });
 export type StatsTodayResponse = z.infer<typeof StatsTodayResponse>;
 
+/** Typed navigation target for a timeline item (PRD §3.2.7). */
+export const TimelineDestination = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("none") }),
+  z.object({
+    type: z.literal("after"),
+    result_id: z.string().uuid(),
+  }),
+  z.object({
+    type: z.literal("timeline_cluster"),
+    cluster_id: z.string().min(1),
+  }),
+  z.object({
+    type: z.literal("daily_briefing"),
+    briefing_id: z.string().uuid(),
+  }),
+]);
+export type TimelineDestination = z.infer<typeof TimelineDestination>;
+
+/** Compact child row shown inside a cluster segment. */
+export const TimelineClusterChild = z.object({
+  id: z.string().min(1),
+  label: z.string(),
+  start: z.string().datetime(),
+  node_id: z.string().uuid().optional(),
+});
+export type TimelineClusterChild = z.infer<typeof TimelineClusterChild>;
+
+/**
+ * Timeline projection item (PRD F7 / §3.2).
+ * Stable `id` survives refresh; `shape`/`importance` drive density;
+ * clusters and daily_briefing rows carry typed destinations.
+ */
 export const TimelineSegment = z.object({
-  kind: z.enum(["app", "agent", "sleep", "feed"]),
+  /** Stable across refresh/devices for the same underlying event. */
+  id: z.string().min(1),
+  kind: z.enum(["app", "agent", "sleep", "feed", "cluster", "briefing"]),
+  shape: TimelineShape,
+  importance: TimelineImportance,
+  role: TimelineRole.optional(),
+  /** Present when the segment represents an idea (user vs auto). */
+  provenance: IdeaProvenance.optional(),
   start: z.string().datetime(),
   end: z.string().datetime(),
   label: z.string(),
@@ -197,6 +242,14 @@ export const TimelineSegment = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .optional(),
+  /** Cluster identity (kind=cluster or destination). */
+  cluster_id: z.string().optional(),
+  /** All child segment ids in the cluster (for drill-down). */
+  child_ids: z.array(z.string()).optional(),
+  child_count: z.number().int().nonnegative().optional(),
+  /** 2–3 representative children for the collapsed face. */
+  children: z.array(TimelineClusterChild).max(3).optional(),
+  destination: TimelineDestination.optional(),
 });
 export type TimelineSegment = z.infer<typeof TimelineSegment>;
 
@@ -208,6 +261,27 @@ export const TimelineResponse = z.object({
   segments: z.array(TimelineSegment),
 });
 export type TimelineResponse = z.infer<typeof TimelineResponse>;
+
+/**
+ * Typed content of a `briefing` CardRecord (Daily Brief card group payload).
+ * Written by Save; clients decode for Now / historical brief.
+ */
+export const BriefingCardContent = z.object({
+  summary: z.string(),
+  opening_line: z.string(),
+  briefing: z.string().optional(),
+  review_points: z.array(ReviewPoint),
+  stats: StatsSchema,
+  character_state: CharacterState,
+  node_ids: z.array(z.string().uuid()),
+  /** Deterministic day-role label (not LLM). */
+  profession: Profession,
+  /** Consecutive saved-day streak as of this save (PRD §4.3). */
+  streak: z.number().int().nonnegative(),
+  /** Counters for client attribution templates. */
+  breakdown: DayStatsBreakdown,
+});
+export type BriefingCardContent = z.infer<typeof BriefingCardContent>;
 
 export const DaySummary = z.object({
   date: z.string(),

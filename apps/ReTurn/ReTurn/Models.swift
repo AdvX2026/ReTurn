@@ -150,6 +150,12 @@ enum CharacterState: String, TolerantEnum {
     static let fallback = CharacterState.normal
 }
 
+/// Day-role label for Daily Brief (server-deterministic; never LLM).
+enum Profession: String, TolerantEnum {
+    case coder, designer, writer, communicator, explorer, generalist
+    static let fallback = Profession.generalist
+}
+
 enum DevicePlatform: String, TolerantEnum {
     case macos, ios, linux, unknown
     static let fallback = DevicePlatform.unknown
@@ -164,6 +170,23 @@ struct Stats: Codable, Equatable {
     var energy: Double
 
     static let empty = Stats(intake: 0, focus: 0, output: 0, continuity: 0, energy: 100)
+}
+
+/// Per-day counters for client attribution templates (server pure code).
+struct DayStatsBreakdown: Codable, Equatable {
+    var ideaCount: Int
+    var imageCount: Int
+    var activeFeedCount: Int
+    var emailReceived: Int
+    var todoCompleted: Int
+    var todoTotal: Int
+    var agentDurationMin: Double
+    var gitCommitCount: Int
+    var emailSent: Int
+    var longestSessionMin: Double
+    var sleepMinutes: Int?
+    var steps: Int?
+    var crossDayEdges: Int
 }
 
 // ── devices ──────────────────────────────────────────────
@@ -306,12 +329,51 @@ struct StatsTodayResponse: Codable {
 }
 
 enum TimelineSegmentKind: String, TolerantEnum {
-    case app, agent, sleep, feed, unknown
+    case app, agent, sleep, feed, cluster, briefing, unknown
     static let fallback = TimelineSegmentKind.unknown
 }
 
-struct TimelineSegment: Codable {
+enum TimelineShape: String, TolerantEnum {
+    case point, span
+    static let fallback = TimelineShape.point
+}
+
+enum TimelineImportance: String, TolerantEnum {
+    case ambient, normal, major
+    static let fallback = TimelineImportance.normal
+}
+
+enum TimelineRole: String, TolerantEnum {
+    case input, sample, derived, system
+    static let fallback = TimelineRole.sample
+}
+
+enum TimelineDestinationType: String, TolerantEnum {
+    case none, after, timelineCluster = "timeline_cluster", dailyBriefing = "daily_briefing"
+    static let fallback = TimelineDestinationType.none
+}
+
+struct TimelineDestination: Codable, Equatable {
+    var type: TimelineDestinationType
+    var resultId: String?
+    var clusterId: String?
+    var briefingId: String?
+}
+
+struct TimelineClusterChild: Codable, Equatable, Identifiable {
+    var id: String
+    var label: String
+    var start: String
+    var nodeId: String?
+}
+
+struct TimelineSegment: Codable, Identifiable {
+    var id: String
     var kind: TimelineSegmentKind
+    var shape: TimelineShape
+    var importance: TimelineImportance
+    var role: TimelineRole?
+    var provenance: IdeaProvenance?
     var start: String
     var end: String
     var label: String
@@ -319,6 +381,52 @@ struct TimelineSegment: Codable {
     var nodeId: String?
     var meta: [String: JSONValue]?
     var date: String?
+    var clusterId: String?
+    var childIds: [String]?
+    var childCount: Int?
+    var children: [TimelineClusterChild]?
+    var destination: TimelineDestination?
+
+    /// Preview/test convenience — production rows come from JSON decode.
+    init(
+        id: String = UUID().uuidString,
+        kind: TimelineSegmentKind,
+        shape: TimelineShape? = nil,
+        importance: TimelineImportance = .normal,
+        role: TimelineRole? = nil,
+        provenance: IdeaProvenance? = nil,
+        start: String,
+        end: String,
+        label: String,
+        category: String? = nil,
+        nodeId: String? = nil,
+        meta: [String: JSONValue]? = nil,
+        date: String? = nil,
+        clusterId: String? = nil,
+        childIds: [String]? = nil,
+        childCount: Int? = nil,
+        children: [TimelineClusterChild]? = nil,
+        destination: TimelineDestination? = nil
+    ) {
+        self.id = id
+        self.kind = kind
+        self.shape = shape ?? (start == end ? .point : .span)
+        self.importance = importance
+        self.role = role
+        self.provenance = provenance
+        self.start = start
+        self.end = end
+        self.label = label
+        self.category = category
+        self.nodeId = nodeId
+        self.meta = meta
+        self.date = date
+        self.clusterId = clusterId
+        self.childIds = childIds
+        self.childCount = childCount
+        self.children = children
+        self.destination = destination
+    }
 }
 
 struct TimelineResponse: Codable {
@@ -535,11 +643,14 @@ struct ListTasksResponse: Codable {
 struct BriefingCardContent: Codable {
     var summary: String
     var openingLine: String
-    var briefing: String
+    var briefing: String?
     var reviewPoints: [ReviewPoint]
     var stats: Stats
     var characterState: CharacterState
     var nodeIds: [String]
+    var profession: Profession
+    var streak: Int
+    var breakdown: DayStatsBreakdown
 }
 
 struct TodoSuggestionCardContent: Codable {
