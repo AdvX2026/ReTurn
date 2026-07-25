@@ -80,12 +80,17 @@ struct MascotView: View {
         }
         .aspectRatio(Design.width / Design.height, contentMode: .fit)
         .offset(y: hopping ? -Motion.hopHeight : 0)
-        .animation(.spring(response: 0.32, dampingFraction: 0.45), value: hopping)
         .contentShape(.rect)
         .onTapGesture {
-            // Retoggling mid-hop re-triggers the spring, so rapid taps read as
-            // excited bouncing rather than a swallowed gesture.
-            hopping.toggle()
+            // Hop up, then land on the spring's completion -- a bare toggle
+            // left the mascot hanging in the air until the next tap.
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.55)) {
+                hopping = true
+            } completion: {
+                withAnimation(.spring(response: 0.38, dampingFraction: 0.75)) {
+                    hopping = false
+                }
+            }
             onHop?()
         }
         .accessibilityElement()
