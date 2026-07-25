@@ -1,4 +1,3 @@
-#if os(iOS)
 import SwiftUI
 
 struct TimelineAmbientEventView: View {
@@ -28,4 +27,3 @@ struct TimelineAmbientEventView: View {
         .allowsHitTesting(false)
     }
 }
-#endif

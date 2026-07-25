@@ -174,4 +174,52 @@ enum ReTurnDesign {
         static let navigationDimDelay = 1.5
         static let navigationDimDuration = 0.45
     }
+
+    /// macOS shell metrics: directional page navigation, two-pane Before,
+    /// adaptive After grid. Desktop-only; iOS layout keeps the pager tokens.
+    enum Desktop {
+        static let windowMinimumWidth: CGFloat = 940
+        static let windowMinimumHeight: CGFloat = 600
+        /// The desktop window is far wider than a phone screen, so the iOS
+        /// proportional mascot width would blow up; the desktop Now page
+        /// keeps a fixed width even though it lives inside the pager.
+        static let nowMascotWidth: CGFloat = 220
+        /// Horizontal breathing room around full-width desktop content.
+        static let contentPadding: CGFloat = 32
+        /// Diameter of the floating edge-navigation arrows (previous/next
+        /// page, flanking the window like a full-screen photo browser).
+        static let edgeNavigationSize: CGFloat = 36
+        static let edgeNavigationOpacity = 0.55
+
+        enum Before {
+            /// Width of the calendar + briefing column.
+            static let sidebarWidth: CGFloat = 280
+            static let calendarCellHeight: CGFloat = 34
+            static let calendarDotSize: CGFloat = 4
+
+            // Horizontal 24-hour timeline.
+            static let timelineHourLabelHeight: CGFloat = 16
+            static let timelineSpanBarHeight: CGFloat = 22
+            static let timelineSleepBarHeight: CGFloat = 12
+            static let timelineInputDotSize: CGFloat = 20
+            static let timelineAmbientDotSize: CGFloat = 5
+            static let timelineLaneGap: CGFloat = 6
+            /// A span bar shows its label only above this width.
+            static let timelineSpanLabelMinimumWidth: CGFloat = 72
+            /// The track opens zoomed in (about a 12-hour window) so that
+            /// swiping over it always browses the Gantt instead of falling
+            /// through to page turning; 1 fits the whole day exactly.
+            static let timelineDefaultZoom: CGFloat = 2
+            /// Pinch-zoom ceiling for the horizontal timeline.
+            static let timelineMaxZoom: CGFloat = 8
+            /// Hour spacing (pt) above which the axis switches from 3-hour
+            /// to 1-hour ticks.
+            static let timelineDenseTickHourWidth: CGFloat = 90
+        }
+
+        enum After {
+            static let gridMinimumCardWidth: CGFloat = 300
+            static let gridSpacing: CGFloat = 16
+        }
+    }
 }

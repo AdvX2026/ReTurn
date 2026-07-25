@@ -1,4 +1,3 @@
-#if os(iOS)
 import Foundation
 
 struct TimelineDisplayItem: Identifiable, Equatable {
@@ -178,4 +177,3 @@ struct TimelineDisplayItem: Identifiable, Equatable {
         return "\(baseValue), \(clusterPreview.totalCount) related events: \(visibleEvents)"
     }
 }
-#endif

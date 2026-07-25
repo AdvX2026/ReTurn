@@ -1,4 +1,3 @@
-#if os(iOS)
 import SwiftUI
 
 struct TimelineEventDetailsView: View {
@@ -39,4 +38,3 @@ struct TimelineEventDetailsView: View {
         .padding(.trailing, 4)
     }
 }
-#endif
