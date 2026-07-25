@@ -91,6 +91,7 @@ struct ModelsTests {
         #expect(usage.breakdown.first?.operation == "ask")
     }
 
+    @MainActor
     @Test func decodesUserProfileSnakeCase() throws {
         let profile = try decode(
             UserProfile.self,

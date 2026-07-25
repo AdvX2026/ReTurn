@@ -61,6 +61,7 @@ struct ReTurnTests {
     }
 
     #if os(iOS)
+    @MainActor
     @Test func sharedProfessionsMapToMascotPresentationVariants() {
         #expect(
             [Profession.coder, .writer, .designer, .explorer, .communicator, .generalist]
