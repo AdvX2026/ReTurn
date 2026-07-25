@@ -17,6 +17,7 @@ import { agentsSource } from "./sources/agents.js";
 import { chromeHistorySource } from "./sources/chrome-history.js";
 import { envSource, getLastEnv } from "./sources/env.js";
 import { gitSource } from "./sources/git.js";
+import { gmailSource } from "./sources/gmail.js";
 import { remindersSource } from "./sources/reminders.js";
 import { safariHistorySource } from "./sources/safari-history.js";
 import { vscodeSource } from "./sources/vscode.js";
@@ -29,6 +30,7 @@ export const SOURCES: readonly SampleSource[] = [
   envSource,
   agentsSource,
   gitSource,
+  gmailSource,
   remindersSource,
   vscodeSource,
   chromeHistorySource,

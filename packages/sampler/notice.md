@@ -97,3 +97,11 @@ UI closed must not stop sampling. Dev: `pnpm dev:sampler`. Prod later: launchd.
 - The sampler process needs Full Disk Access; denial is reported as `stats.safari_history.error: 1`.
 - Uses the shared `[dayStart, dayEnd)` range and emits the same `browse_history` node structure as Chrome.
 - `SAFARI_HISTORY_PATH` overrides the database; `SAFARI_HISTORY_ENABLED=0` disables it; default limit is 100.
+
+## Gmail IMAP
+- Source: `sources/gmail.ts` + `collect-gmail.ts`; disabled unless both IMAP user and app password are configured.
+- Read-only INBOX + Sent collection. IMAP `SINCE` narrows the server query; the shared `[dayStart, dayEnd)` range performs the exact client-side filter.
+- Missing envelope, RFC Message-ID, or valid message date fails the source explicitly; no message is silently dropped and no UID-based synthetic identity is generated.
+- Partial credentials, invalid connection settings, missing Sent mailbox, and IMAP/parser failures are reported as `stats.gmail.error: 1` with the error in `snapshot.errors.gmail`.
+- Received messages contribute to intake; sent messages contribute to output.
+- Credentials remain environment-only and are never logged.

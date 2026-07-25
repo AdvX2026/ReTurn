@@ -25,25 +25,42 @@ export interface StatsInput {
  */
 export function computeStats(input: StatsInput): Stats {
   const commitCount = input.nodes.filter((n) => n.kind === "git_commit").length;
+  const { received, sent } = emailCounts(input.nodes);
   return {
-    intake: scoreIntake(input.nodes),
+    intake: scoreIntake(input.nodes, received),
     focus: scoreFocus(input.sessions, input.nodes),
-    output: scoreOutput(input.todoRate, input.sessions, commitCount),
+    output: scoreOutput(input.todoRate, input.sessions, commitCount, sent),
     continuity: scoreContinuity(input.crossDayEdges),
     energy: scoreEnergy(input),
   };
 }
 
-/** 摄取: active feed count × source-kind diversity. Samples excluded. */
-export function scoreIntake(nodes: NodeRecord[]): number {
+/** Count email nodes by direction (source_meta.direction; default received). */
+function emailCounts(nodes: NodeRecord[]): { received: number; sent: number } {
+  let received = 0;
+  let sent = 0;
+  for (const n of nodes) {
+    if (n.kind !== "email") continue;
+    const dir = (n.source_meta as Record<string, unknown> | null)?.direction;
+    if (dir === "sent") sent++;
+    else received++;
+  }
+  return { received, sent };
+}
+
+/** 摄取: active feed count × source-kind diversity + received-email bonus. */
+export function scoreIntake(nodes: NodeRecord[], emailInCount = 0): number {
   const active = nodes.filter((n) =>
     (ACTIVE_FEED_KINDS as readonly string[]).includes(n.kind),
   );
-  if (active.length === 0) return 0;
+  // 10 received emails → +20 (received mail is passive, so it stays out of the
+  // active-feed diversity math and only adds a bounded bonus).
+  const emailBonus = clamp((emailInCount / 10) * 20, 0, 20);
+  if (active.length === 0) return clamp(emailBonus, 0, 100);
   const kinds = new Set(active.map((n) => n.kind));
   // 8 feeds of 1 kind ≈ 50; 12 feeds across 3 kinds ≈ 90
   const raw = active.length * 6 + kinds.size * 12;
-  return clamp(raw, 0, 100);
+  return clamp(raw + emailBonus, 0, 100);
 }
 
 /** 专注: HHI of session durations + longest session weight. */
@@ -85,14 +102,15 @@ export function scoreFocus(sessions: Session[], nodes: NodeRecord[]): number {
 }
 
 /**
- * 产出: reminder completion + agent duration + git commit count.
- * todoRate param is now reminderCompletionRate (real checklist = Reminders).
+ * 产出: reminder completion + agent duration + git commit count + sent-email count.
+ * todoRate is the real Apple Reminders completion rate.
  * Coefficients are initial; tunable before T+40h.
  */
 export function scoreOutput(
   todoRate: number,
   sessions: Session[],
   commitCount = 0,
+  emailOutCount = 0,
 ): number {
   // reminder completion rate → max 60
   const todoScore = clamp(todoRate * 60, 0, 60);
@@ -103,7 +121,9 @@ export function scoreOutput(
   const agentBonus = clamp((agentMin / 120) * 20, 0, 20);
   // 5 commits → +20
   const commitBonus = clamp((commitCount / 5) * 20, 0, 20);
-  return clamp(Math.round(todoScore + agentBonus + commitBonus), 0, 100);
+  // 10 sent emails → +20
+  const emailBonus = clamp((emailOutCount / 10) * 20, 0, 20);
+  return clamp(Math.round(todoScore + agentBonus + commitBonus + emailBonus), 0, 100);
 }
 
 /** 连贯: cross-day edges capped to 0..100. */

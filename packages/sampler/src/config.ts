@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { config as loadEnv } from "dotenv";
+import type { GmailConfig } from "./collect-gmail.js";
 
 loadEnv();
 
@@ -94,6 +95,29 @@ function dirs(name: string): string[] {
 
 const dataDir = str("SAMPLER_DATA_DIR", join(homedir(), ".return", "sampler"));
 
+/**
+ * Gmail IMAP config. Requires both user + app password; either empty = off
+ * (no connection ever opened, behaviour identical to current).
+ */
+function gmailConfig(): GmailConfig | null {
+  const user = str("GMAIL_IMAP_USER").trim();
+  const password = str("GMAIL_IMAP_PASSWORD");
+  if (!user && !password) return null;
+  if (!user || !password) {
+    throw new Error(
+      "invalid Gmail configuration: GMAIL_IMAP_USER and GMAIL_IMAP_PASSWORD are both required",
+    );
+  }
+  const host = str("GMAIL_IMAP_HOST", "imap.gmail.com").trim();
+  if (!host) throw new Error("invalid GMAIL_IMAP_HOST: expected a hostname");
+  return {
+    user,
+    password,
+    host,
+    port: port("GMAIL_IMAP_PORT", 993),
+  };
+}
+
 export const config = {
   /** Pi base URL */
   serverUrl: str("RETURN_SERVER_URL", "http://127.0.0.1:8787").replace(/\/$/, ""),
@@ -118,6 +142,11 @@ export const config = {
    * Empty (default) = feature off — no git processes spawned.
    */
   gitScanDirs: dirs("GIT_SCAN_DIRS"),
+  /**
+   * Gmail IMAP account for the email source. null (default) = feature off —
+   * no IMAP connection is opened.
+   */
+  gmail: gmailConfig(),
   /**
    * Apple Reminders sample source. Default on; set "0"/"false" to disable.
    * Source also self-gates on darwin — non-mac always returns empty.

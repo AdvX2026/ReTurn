@@ -7,13 +7,16 @@
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --import tsx --test src/agents.test.ts src/collect.test.ts src/collect-git.test.ts src/collect-reminders.test.ts src/collect-vscode.test.ts src/collect-chrome-history.test.ts src/collect-safari-history.test.ts src/outbox.test.ts src/config.test.ts"
+    "test": "node --import tsx --test src/agents.test.ts src/collect.test.ts src/collect-git.test.ts src/collect-gmail.test.ts src/collect-reminders.test.ts src/collect-vscode.test.ts src/collect-chrome-history.test.ts src/collect-safari-history.test.ts src/outbox.test.ts src/config.test.ts"
   },
   "dependencies": {
     "@return/shared": "workspace:*",
-    "dotenv": "^16.4.7"
+    "dotenv": "^16.4.7",
+    "imapflow": "^1.0.171",
+    "mailparser": "^3.7.2"
   },
   "devDependencies": {
+    "@types/mailparser": "^3.4.5",
     "@types/node": "^22.10.2",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"

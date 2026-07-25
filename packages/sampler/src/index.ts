@@ -68,8 +68,9 @@ async function sampleOnce(opts?: { asSnapshot?: boolean }): Promise<{
   const agentStats = snapshot.stats.agents ?? {};
   const envStats = snapshot.stats.env ?? {};
   const gitStats = snapshot.stats.git ?? {};
+  const gmailStats = snapshot.stats.gmail ?? {};
   console.log(
-    `[sampler] sample app=${snapshot.app?.name ?? "-"} tabs=${envStats.tabs ?? snapshot.tabs.length} agents=${agentStats.intervals ?? 0} commits=${gitStats.commits ?? 0} emitted=${enqueued} flushed=${flush.flushed} outbox=${flush.remaining} pi=${flush.online} cadence=${cadence}`,
+    `[sampler] sample app=${snapshot.app?.name ?? "-"} tabs=${envStats.tabs ?? snapshot.tabs.length} agents=${agentStats.intervals ?? 0} commits=${gitStats.commits ?? 0} mails=${gmailStats.emails ?? 0} emitted=${enqueued} flushed=${flush.flushed} outbox=${flush.remaining} pi=${flush.online} cadence=${cadence}`,
   );
 
   return { snapshot, enqueued };
