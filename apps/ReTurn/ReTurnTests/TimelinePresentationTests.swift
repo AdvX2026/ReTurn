@@ -34,7 +34,8 @@ struct TimelinePresentationTests {
         )
         #expect(point.presentation == .point)
         #expect(span.presentation == .span)
-        #expect(major.presentation == .major)
+        // Agent sessions share span list chrome with app bars (not major cards).
+        #expect(major.presentation == .span)
     }
 
     @Test func acceptsExplicitAmbientAndClusterProjection() throws {

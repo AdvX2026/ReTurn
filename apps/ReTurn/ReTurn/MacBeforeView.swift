@@ -527,13 +527,14 @@ struct MacBeforeView: View {
                     selectedItemID = isSelected ? nil : item.id
                 }
             } label: {
+                // One summary row for every sampler sample — agent / git / browse
+                // share TimelineEventDetailsView so group children stay consistent.
+                // Major (+ cluster) keeps TimelineEventCard; ambient is track-only
+                // salience, not a separate list chrome.
                 Group {
-                    switch item.presentation {
-                    case .ambient:
-                        TimelineAmbientEventView(item: item)
-                    case .major:
+                    if item.presentation == .major {
                         TimelineEventCard(item: item)
-                    case .point, .span:
+                    } else {
                         TimelineEventDetailsView(item: item)
                     }
                 }
@@ -552,7 +553,7 @@ struct MacBeforeView: View {
 
             if isSelected {
                 TimelineSampleDetailView(item: item)
-                    .padding(.leading, item.presentation == .major ? 0 : 4)
+                    .padding(.leading, 4)
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }

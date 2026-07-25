@@ -33,7 +33,7 @@ struct TimelineEventDetailsView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                     .truncationMode(.middle)
-            } else if item.presentation == .span {
+            } else if item.presentation == .span || item.presentation == .major {
                 Text(item.durationDisplay)
                     .font(TimelineDesign.Typography.eventMetadata)
                     .foregroundStyle(.secondary)

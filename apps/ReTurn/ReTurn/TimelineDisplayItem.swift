@@ -72,16 +72,18 @@ struct TimelineDisplayItem: Identifiable, Equatable {
         }
     }
 
-    /// Heuristic salience for the track + list. Sampler context (browse, tabs,
-    /// git, vscode) stays ambient so the rail does not explode; user input and
-    /// reminders stay as points; agent sessions stay major cards.
+    /// Heuristic salience for the track + list.
+    /// - Agent/app/sleep → span bars on the track (same list row chrome as points).
+    /// - Sampler context (browse/tabs/git/vscode) → ambient on the track so density
+    ///   stays low; the list still reuses the shared summary row.
+    /// - Major is reserved for explicit cluster projections only.
     private static func defaultPresentation(
         kind: TimelineSegmentKind,
         category: String?,
         start: Date,
         end: Date
     ) -> Presentation {
-        if kind == .agent { return .major }
+        if kind == .agent { return .span }
         if kind == .sleep { return .span }
         if kind == .app { return .span }
         if kind == .feed {
