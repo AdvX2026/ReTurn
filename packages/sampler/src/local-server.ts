@@ -101,14 +101,15 @@ export function startLocalServer(rt: SamplerRuntime): Promise<void> {
 
       if (req.method === "POST" && url.pathname === "/sample-now") {
         let asSnapshot = false;
-        try {
-          const raw = await readBody(req);
-          if (raw) {
+        const raw = await readBody(req);
+        if (raw) {
+          try {
             const body = JSON.parse(raw) as { as_snapshot?: boolean };
             asSnapshot = Boolean(body.as_snapshot);
+          } catch {
+            send(res, 400, { error: "request body must be valid JSON" });
+            return;
           }
-        } catch {
-          /* empty body ok */
         }
         const result = await rt.sampleNow({ asSnapshot });
         send(res, 200, {
