@@ -1,12 +1,16 @@
 import { z } from "zod";
 
 /**
- * Structured JSON produced by the ferment LLM call (PRD §6.3).
- * Frozen at T+6h — frontend / prompt / data layer contract.
+ * Structured JSON produced by the ferment LLM call (PRD v0.6 §6.3).
+ * briefing/health_advice/ideas are v0.6 card outputs; opening_line kept for
+ * back-compat with Continue/Save response shape.
  */
 export const FermentResultSchema = z.object({
   summary: z.string().min(1).max(2000),
+  /** One warm line for next-morning greeting / briefing headline. */
   opening_line: z.string().min(1).max(280),
+  /** Longer briefing body for the briefing card (may equal summary). */
+  briefing: z.string().min(1).max(4000).optional(),
   review_points: z
     .array(
       z.object({
@@ -23,6 +27,15 @@ export const FermentResultSchema = z.object({
       }),
     )
     .max(20)
+    .default([]),
+  health_advice: z.string().max(800).optional().nullable(),
+  ideas: z
+    .array(
+      z.object({
+        text: z.string().min(1).max(400),
+      }),
+    )
+    .max(12)
     .default([]),
   /** node_id → tags. Keys are server node UUIDs the model was given. */
   node_tags: z.record(z.array(z.string().max(40)).max(8)).default({}),

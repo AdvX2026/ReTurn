@@ -136,20 +136,21 @@ export function uriToPath(uri: string): string {
  * Array order is recent-first; capped at MAX_RECENTS.
  */
 export function parseRecentlyOpened(json: string, editor: string): VscodeRecent[] {
-  if (!json || !json.trim()) return [];
-  let data: unknown;
-  try {
-    data = JSON.parse(json);
-  } catch {
-    return [];
+  if (!json.trim()) throw new Error("invalid VS Code recents: empty JSON");
+  const data: unknown = JSON.parse(json);
+  if (!data || typeof data !== "object") {
+    throw new Error("invalid VS Code recents: expected an object");
   }
-  if (!data || typeof data !== "object") return [];
   const entries = (data as { entries?: unknown }).entries;
-  if (!Array.isArray(entries)) return [];
+  if (!Array.isArray(entries)) {
+    throw new Error("invalid VS Code recents: entries must be an array");
+  }
 
   const out: VscodeRecent[] = [];
   for (const entry of entries) {
-    if (!entry || typeof entry !== "object") continue;
+    if (!entry || typeof entry !== "object") {
+      throw new Error("invalid VS Code recents: entry must be an object");
+    }
     const e = entry as Record<string, unknown>;
     let uri: string | null = null;
     let kind: VscodeRecent["kind"] | null = null;
@@ -225,6 +226,8 @@ export async function collectVscodeRecents(
   editor = "code",
 ): Promise<VscodeRecent[]> {
   const json = readRecentlyOpenedJson(dbPath);
-  if (!json) return [];
+  if (!json) {
+    throw new Error("VS Code database contains no supported recent-projects key");
+  }
   return parseRecentlyOpened(json, editor);
 }

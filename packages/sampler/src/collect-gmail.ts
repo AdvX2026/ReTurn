@@ -53,16 +53,19 @@ export interface RawFetch {
 }
 
 /**
- * Pure mapper: raw fetch → EmailMessage, or null when unusable.
- * Guards Invalid Date (never toISOString() on NaN — it throws RangeError).
+ * Pure mapper: raw fetch → EmailMessage.
+ * Required identity and timestamp fields fail the source instead of silently
+ * dropping messages from the timeline.
  */
-export function toEmailMessage(raw: RawFetch): EmailMessage | null {
+export function toEmailMessage(raw: RawFetch): EmailMessage {
   const env = raw.envelope;
-  if (!env) return null;
+  if (!env) throw new Error("Gmail message envelope is missing");
   const messageId = env.messageId?.trim();
-  if (!messageId) return null;
+  if (!messageId) throw new Error("Gmail message RFC Message-ID is missing");
   const date = env.date ?? null;
-  if (!date || Number.isNaN(date.getTime())) return null;
+  if (!date || Number.isNaN(date.getTime())) {
+    throw new Error(`Gmail message date is invalid: ${messageId}`);
+  }
 
   const from = env.from?.[0];
   const to = env.to?.[0];
@@ -159,8 +162,8 @@ async function fetchMailbox(
         envelope: msg.envelope as RawFetch["envelope"],
         text,
       });
-      const receivedAt = email ? Date.parse(email.receivedAt) : Number.NaN;
-      if (email && receivedAt >= since.getTime() && receivedAt < end) {
+      const receivedAt = Date.parse(email.receivedAt);
+      if (receivedAt >= since.getTime() && receivedAt < end) {
         res.push(email);
       }
     }

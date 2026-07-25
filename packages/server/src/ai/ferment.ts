@@ -1,6 +1,12 @@
-import { type FermentResult, FermentResultSchema } from "@return/shared";
-import type { NodeRecord, Session } from "@return/shared";
+import {
+  ACTIVE_FEED_KINDS,
+  type FermentResult,
+  FermentResultSchema,
+  type NodeRecord,
+  type Session,
+} from "@return/shared";
 import { config } from "../config.js";
+import { extractJson, llmChat } from "./llm.js";
 
 export interface FermentContext {
   date: string;
@@ -98,12 +104,15 @@ Produce a structured JSON review for the user's day. Do NOT invent attributes/sc
 Rules:
 - Output ONLY valid JSON matching the schema below. No markdown fences, no prose outside JSON.
 - summary: 2–5 sentences of what the day was about.
-- opening_line: one warm sentence spoken to the user the next morning (Before section).
+- opening_line: one warm sentence for next-morning greeting / briefing headline.
+- briefing: optional longer briefing body (defaults to summary if omitted).
 - review_points: 2–6 concrete wins/misses/insights. Prefer evidence from nodes.
 - todos: 1–7 actionable AI suggestions for tomorrow (NOT the real checklist — that lives in Apple Reminders).
   * NEVER re-suggest anything already listed under open_reminders (dedupe).
   * Prefer style/topics of accepted_todos; avoid patterns in dismissed_todos.
   * Anchor on the save_note if present; do not invent busywork or life-chores.
+- health_advice: optional one short health tip from sleep/steps if present.
+- ideas: optional auto-extracted ideas (short), provenance will be marked auto.
 - node_tags: map of node id → short tags (1–4 each) for active nodes you were given.
 - edges: links between nodes. Prefer cross-day links using linkable_nodes. relation is a short label (e.g. "continues", "inspired_by", "related").
 
@@ -111,8 +120,11 @@ Schema:
 {
   "summary": string,
   "opening_line": string,
+  "briefing": string,
   "review_points": [{"text": string, "kind": "win"|"miss"|"insight"|"other"}],
   "todos": [{"text": string}],
+  "health_advice": string|null,
+  "ideas": [{"text": string}],
   "node_tags": { "<node_uuid>": string[] },
   "edges": [{"src_node_id": string, "dst_node_id": string, "relation": string}]
 }
@@ -146,51 +158,17 @@ ${dismissed || "(none)"}
 }
 
 async function chatCompletion(userPrompt: string): Promise<string> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), config.llm.timeoutMs);
   try {
-    const res = await fetch(`${config.llm.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${config.llm.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: config.llm.model,
-        temperature: 0.4,
-        response_format: { type: "json_object" },
-        messages: [
-          {
-            role: "system",
-            content:
-              "You output only compact JSON. Never wrap in markdown. Never include scores or attributes.",
-          },
-          { role: "user", content: userPrompt },
-        ],
-      }),
-      signal: controller.signal,
+    return await llmChat({
+      system:
+        "You output only compact JSON. Never wrap in markdown. Never include scores or attributes.",
+      user: userPrompt,
+      temperature: 0.4,
+      json: true,
     });
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      throw new FermentError(`LLM HTTP ${res.status}: ${body.slice(0, 300)}`);
-    }
-    const data = (await res.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) throw new FermentError("empty LLM response");
-    return content;
-  } finally {
-    clearTimeout(timer);
+  } catch (err) {
+    throw new FermentError(err instanceof Error ? err.message : "LLM call failed", err);
   }
-}
-
-function extractJson(raw: string): unknown {
-  const trimmed = raw.trim();
-  // Strip accidental fences
-  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const text = fenced ? fenced[1]!.trim() : trimmed;
-  return JSON.parse(text);
 }
 
 function truncate(s: string | null, n: number): string | null {
@@ -209,7 +187,7 @@ export function buildFermentContext(input: {
   acceptedTodos?: string[];
   dismissedTodos?: string[];
 }): FermentContext {
-  const activeKinds = new Set(["text", "url", "voice", "save_note"]);
+  const activeKinds = new Set<string>(ACTIVE_FEED_KINDS);
   return {
     date: input.date,
     saveNote: input.saveNote,

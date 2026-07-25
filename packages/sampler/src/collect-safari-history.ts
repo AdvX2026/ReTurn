@@ -39,7 +39,7 @@ export async function collectSafariHistory(
   limit: number,
   range: { start: string; end: string },
 ): Promise<BrowseVisit[]> {
-  if (limit <= 0) return [];
+  if (limit <= 0) throw new Error("Safari history limit must be positive");
   const tmpRoot = await mkdtemp(join(tmpdir(), "return-safari-hist-"));
   const tmpPath = join(tmpRoot, "History.db");
 

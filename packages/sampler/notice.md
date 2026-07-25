@@ -5,8 +5,13 @@ Independent Node process (PRD F2). Not part of Tauri UI process.
 UI closed must not stop sampling. Dev: `pnpm dev:sampler`. Prod later: launchd.
 
 ## Local control plane (127.0.0.1 only)
-- GET `/health` `/status`
+- GET `/health` `/status` (includes `cadence` + effective `interval_min`)
 - POST `/sample-now` `{ as_snapshot?: boolean }`
+
+## Cadence (PRD F2)
+- Pi returns `cadence` on `POST /api/nodes` (`active` | `night`).
+- Sampler applies it on every successful flush: `active` → `SAMPLE_INTERVAL_MIN` (default 5), `night` → `SAMPLE_INTERVAL_NIGHT_MIN` (default 30).
+- Next day: server flips back to `active` when today is unsaved; next flush reschedules.
 
 ## Data
 - Main outbox SQLite: `SAMPLER_DATA_DIR` default `~/.return/sampler/outbox.db`
@@ -96,7 +101,7 @@ UI closed must not stop sampling. Dev: `pnpm dev:sampler`. Prod later: launchd.
 ## Gmail IMAP
 - Source: `sources/gmail.ts` + `collect-gmail.ts`; disabled unless both IMAP user and app password are configured.
 - Read-only INBOX + Sent collection. IMAP `SINCE` narrows the server query; the shared `[dayStart, dayEnd)` range performs the exact client-side filter.
-- Messages without an RFC Message-ID are dropped; no UID-based synthetic identity is generated.
-- Partial credentials, invalid connection settings, missing Sent mailbox, and IMAP/parser failures are reported as `stats.gmail.error: 1`.
+- Missing envelope, RFC Message-ID, or valid message date fails the source explicitly; no message is silently dropped and no UID-based synthetic identity is generated.
+- Partial credentials, invalid connection settings, missing Sent mailbox, and IMAP/parser failures are reported as `stats.gmail.error: 1` with the error in `snapshot.errors.gmail`.
 - Received messages contribute to intake; sent messages contribute to output.
 - Credentials remain environment-only and are never logged.

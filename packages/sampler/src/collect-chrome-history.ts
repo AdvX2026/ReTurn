@@ -178,7 +178,8 @@ export async function collectChromeHistory(
   limit: number,
   range: { start: string; end: string },
 ): Promise<BrowseVisit[]> {
-  if (paths.length === 0 || limit <= 0) return [];
+  if (limit <= 0) throw new Error("Chrome history limit must be positive");
+  if (paths.length === 0) return [];
 
   const start = isoToChromeTime(range.start);
   const end = isoToChromeTime(range.end);
@@ -226,7 +227,7 @@ async function readHistoryDb(
 
     return rows.map((r) => ({
       visitId: Number(r.visit_id),
-      url: String(r.url ?? ""),
+      url: r.url,
       title: String(r.title ?? ""),
       visitedAt: chromeTimeToIso(r.visit_time),
       browser: db.browser,

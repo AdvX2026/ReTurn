@@ -23,36 +23,57 @@ describe("toEmailMessage", () => {
         to: [{ address: "me@gmail.com", name: "Me" }],
       },
     });
-    assert.ok(em);
-    assert.equal(em!.direction, "received");
-    assert.equal(em!.messageId, "<abc@mail>");
-    assert.equal(em!.from, "boss@corp.com");
-    assert.equal(em!.fromName, "The Boss");
-    assert.equal(em!.to, "me@gmail.com");
-    assert.equal(em!.subject, "Weekly report");
-    assert.equal(em!.receivedAt, "2026-07-24T02:00:00.000Z");
-    assert.equal(em!.snippet, "hello body");
+    assert.equal(em.direction, "received");
+    assert.equal(em.messageId, "<abc@mail>");
+    assert.equal(em.from, "boss@corp.com");
+    assert.equal(em.fromName, "The Boss");
+    assert.equal(em.to, "me@gmail.com");
+    assert.equal(em.subject, "Weekly report");
+    assert.equal(em.receivedAt, "2026-07-24T02:00:00.000Z");
+    assert.equal(em.snippet, "hello body");
   });
 
-  it("returns null on missing or invalid date without throwing", () => {
-    assert.equal(toEmailMessage({ ...base, envelope: { subject: "no date" } }), null);
-    assert.equal(
-      toEmailMessage({
-        ...base,
-        envelope: { subject: "bad", date: new Date("not-a-date") },
-      }),
-      null,
+  it("throws on missing or invalid envelope dates", () => {
+    assert.throws(
+      () =>
+        toEmailMessage({
+          ...base,
+          envelope: {
+            messageId: "<no-date@x>",
+            subject: "no date",
+          },
+        }),
+      /date is invalid/,
     );
-    assert.equal(toEmailMessage({ ...base, envelope: null }), null);
+    assert.throws(
+      () =>
+        toEmailMessage({
+          ...base,
+          envelope: {
+            messageId: "<bad-date@x>",
+            subject: "bad",
+            date: new Date("not-a-date"),
+          },
+        }),
+      /date is invalid/,
+    );
+    assert.throws(
+      () => toEmailMessage({ ...base, envelope: null }),
+      /envelope is missing/,
+    );
   });
 
-  it("drops messages without a stable RFC Message-ID", () => {
-    assert.equal(
-      toEmailMessage({
-        ...base,
-        envelope: { subject: "x", date: new Date("2026-07-24T02:00:00.000Z") },
-      }),
-      null,
+  it("throws when RFC Message-ID is missing", () => {
+    assert.throws(
+      () =>
+        toEmailMessage({
+          ...base,
+          envelope: {
+            subject: "x",
+            date: new Date("2026-07-24T02:00:00.000Z"),
+          },
+        }),
+      /RFC Message-ID is missing/,
     );
   });
 
@@ -65,9 +86,8 @@ describe("toEmailMessage", () => {
         date: new Date("2026-07-24T10:00:00+08:00"),
       },
     });
-    assert.ok(em);
-    assert.equal(em!.receivedAt, "2026-07-24T02:00:00.000Z");
-    assert.match(em!.receivedAt, /Z$/);
+    assert.equal(em.receivedAt, "2026-07-24T02:00:00.000Z");
+    assert.match(em.receivedAt, /Z$/);
   });
 
   it("collapses whitespace and truncates snippet to 2000 chars", () => {
@@ -81,8 +101,7 @@ describe("toEmailMessage", () => {
         date: new Date("2026-07-24T02:00:00.000Z"),
       },
     });
-    assert.ok(em);
-    assert.equal(em!.snippet.length, 2000);
+    assert.equal(em.snippet.length, 2000);
   });
 });
 

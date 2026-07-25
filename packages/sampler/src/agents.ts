@@ -195,14 +195,22 @@ export async function scanSessionFile(
     crlfDelay: Number.POSITIVE_INFINITY,
   });
 
+  let trailingPartial: SyntaxError | null = null;
   try {
     for await (const line of rl) {
       if (!line.trim()) continue;
+      if (trailingPartial) {
+        throw new Error("malformed JSONL record before the final line", {
+          cause: trailingPartial,
+        });
+      }
       let obj: Record<string, unknown>;
       try {
         obj = JSON.parse(line) as Record<string, unknown>;
-      } catch {
-        continue; // trailing partial line / garbage — skip
+      } catch (error) {
+        trailingPartial =
+          error instanceof SyntaxError ? error : new SyntaxError(String(error));
+        continue;
       }
 
       if (cwd === null) {

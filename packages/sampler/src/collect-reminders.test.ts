@@ -33,16 +33,6 @@ const FIXTURE_JSON = JSON.stringify([
     creationDate: "2026-07-21T12:00:00.000Z",
     modificationDate: "2026-07-22T12:00:00.000Z",
   },
-  {
-    // Missing stable ID: not safe to dedupe across sampler restarts.
-    list: "Inbox",
-    name: "No id item",
-    body: "",
-    completed: false,
-    due: "not-a-date",
-    creationDate: "2026-07-23T00:00:00.000Z",
-    modificationDate: null,
-  },
 ]);
 
 describe("parseRemindersOutput", () => {
@@ -64,12 +54,13 @@ describe("parseRemindersOutput", () => {
     assert.equal(items[1]!.due, null);
   });
 
-  it("drops rows without a stable Reminders id", () => {
-    assert.deepEqual(
-      parseRemindersOutput(
-        JSON.stringify([{ list: "Inbox", name: "No id", completed: false }]),
-      ),
-      [],
+  it("rejects rows without a stable Reminders id", () => {
+    assert.throws(
+      () =>
+        parseRemindersOutput(
+          JSON.stringify([{ list: "Inbox", name: "No id", completed: false }]),
+        ),
+      /stable id is required/,
     );
   });
 
@@ -80,27 +71,25 @@ describe("parseRemindersOutput", () => {
     assert.throws(() => parseRemindersOutput("null"), /expected an array/);
   });
 
-  it("accepts completed as string/number truthy forms", () => {
-    const items = parseRemindersOutput(
-      JSON.stringify([
-        { id: "1", list: "L", name: "a", completed: "true" },
-        { id: "2", list: "L", name: "b", completed: 1 },
-        { id: "3", list: "L", name: "c", completed: "yes" },
-        { id: "4", list: "L", name: "d", completed: false },
-      ]),
+  it("rejects non-boolean completion values", () => {
+    assert.throws(
+      () =>
+        parseRemindersOutput(
+          JSON.stringify([{ id: "1", list: "L", name: "a", completed: "true" }]),
+        ),
+      /completed must be a boolean/,
     );
-    assert.equal(items.map((i) => i.completed).join(","), "true,true,true,false");
   });
 });
 
 describe("parseMaybeIso", () => {
-  it("normalizes parseable dates to Z ISO; null on failure", () => {
+  it("normalizes parseable dates to Z ISO and rejects malformed dates", () => {
     assert.equal(parseMaybeIso("2026-07-24T10:00:00+08:00"), "2026-07-24T02:00:00.000Z");
     assert.equal(parseMaybeIso("2026-07-24T02:00:00.000Z"), "2026-07-24T02:00:00.000Z");
     assert.equal(parseMaybeIso(""), null);
     assert.equal(parseMaybeIso(null), null);
-    assert.equal(parseMaybeIso("not-a-date"), null);
-    assert.equal(parseMaybeIso("due date missing"), null);
+    assert.throws(() => parseMaybeIso("not-a-date"), /invalid reminder date/);
+    assert.throws(() => parseMaybeIso("due date missing"), /invalid reminder date/);
   });
 });
 
