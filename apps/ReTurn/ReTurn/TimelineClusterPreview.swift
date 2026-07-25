@@ -1,4 +1,3 @@
-#if os(iOS)
 import Foundation
 
 struct TimelineClusterPreview: Equatable {
@@ -21,4 +20,3 @@ struct TimelineClusterPreview: Equatable {
         max(totalCount - entries.count, 0)
     }
 }
-#endif

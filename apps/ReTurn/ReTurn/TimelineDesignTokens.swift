@@ -1,14 +1,66 @@
-#if os(iOS)
 import SwiftUI
+
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
+
+/// Named system accent colors share their names across UIKit and AppKit; the
+/// typealias picks the platform wrapper so `accent(for:)` stays single-coded.
+#if os(iOS)
+private typealias AccentColor = UIColor
+#elseif os(macOS)
+private typealias AccentColor = NSColor
+#endif
 
 enum TimelineDesign {
     enum Colors {
-        static let pageBackground = Color(uiColor: .systemGroupedBackground)
-        static let rail = Color(uiColor: .systemGray4)
-        static let eventCardBackground = Color(uiColor: .secondarySystemGroupedBackground)
-        static let clusterPreviewBackground = Color(uiColor: .quaternarySystemFill)
-        static let ambient = Color(uiColor: .systemGray3)
-        static let briefingPressedFill = Color(uiColor: .tertiarySystemFill)
+        // The grouped-background/fill family has no AppKit counterpart, so
+        // these keep per-platform branches: window/control backgrounds play
+        // the same layered roles on macOS, and fills become primary tints.
+        static var pageBackground: Color {
+            #if os(iOS)
+            Color(uiColor: .systemGroupedBackground)
+            #elseif os(macOS)
+            Color(nsColor: .windowBackgroundColor)
+            #endif
+        }
+        static var rail: Color {
+            #if os(iOS)
+            Color(uiColor: .systemGray4)
+            #elseif os(macOS)
+            Color(nsColor: .systemGray)
+            #endif
+        }
+        static var eventCardBackground: Color {
+            #if os(iOS)
+            Color(uiColor: .secondarySystemGroupedBackground)
+            #elseif os(macOS)
+            Color(nsColor: .controlBackgroundColor)
+            #endif
+        }
+        static var clusterPreviewBackground: Color {
+            #if os(iOS)
+            Color(uiColor: .quaternarySystemFill)
+            #elseif os(macOS)
+            Color.primary.opacity(0.05)
+            #endif
+        }
+        static var ambient: Color {
+            #if os(iOS)
+            Color(uiColor: .systemGray3)
+            #elseif os(macOS)
+            Color(nsColor: .systemGray).opacity(0.6)
+            #endif
+        }
+        static var briefingPressedFill: Color {
+            #if os(iOS)
+            Color(uiColor: .tertiarySystemFill)
+            #elseif os(macOS)
+            Color.primary.opacity(0.08)
+            #endif
+        }
 
         static func accent(for item: TimelineDisplayItem) -> Color {
             if item.presentation == .ambient {
@@ -18,55 +70,55 @@ enum TimelineDesign {
             if item.isUserInput {
                 return switch item.category {
                 case "voice":
-                    Color(uiColor: .systemTeal)
+                    Color(AccentColor.systemTeal)
                 case "image":
-                    Color(uiColor: .systemCyan)
+                    Color(AccentColor.systemCyan)
                 default:
-                    Color(uiColor: .systemGreen)
+                    Color(AccentColor.systemGreen)
                 }
             }
 
             return switch item.kind {
             case .sleep:
-                Color(uiColor: .systemIndigo)
+                Color(AccentColor.systemIndigo)
             case .agent:
-                Color(uiColor: .systemOrange)
+                Color(AccentColor.systemOrange)
             case .feed:
                 switch item.category {
                 case "voice":
-                    Color(uiColor: .systemTeal)
+                    Color(AccentColor.systemTeal)
                 case "idea":
-                    Color(uiColor: .systemOrange)
+                    Color(AccentColor.systemOrange)
                 case "image":
-                    Color(uiColor: .systemCyan)
+                    Color(AccentColor.systemCyan)
                 case "reminder":
-                    Color(uiColor: .systemGreen)
+                    Color(AccentColor.systemGreen)
                 case "text":
-                    Color(uiColor: .systemGreen)
+                    Color(AccentColor.systemGreen)
                 default:
-                    Color(uiColor: .systemTeal)
+                    Color(AccentColor.systemTeal)
                 }
             case .app:
                 switch item.category {
                 case "browser":
-                    Color(uiColor: .systemBlue)
+                    Color(AccentColor.systemBlue)
                 case "dev":
-                    Color(uiColor: .systemOrange)
+                    Color(AccentColor.systemOrange)
                 case "social":
-                    Color(uiColor: .systemGreen)
+                    Color(AccentColor.systemGreen)
                 case "design":
-                    Color(uiColor: .systemPurple)
+                    Color(AccentColor.systemPurple)
                 case "media":
-                    Color(uiColor: .systemRed)
+                    Color(AccentColor.systemRed)
                 case "notes":
-                    Color(uiColor: .systemOrange)
+                    Color(AccentColor.systemOrange)
                 case "system":
-                    Color(uiColor: .systemGray)
+                    Color(AccentColor.systemGray)
                 default:
-                    Color(uiColor: .systemTeal)
+                    Color(AccentColor.systemTeal)
                 }
             case .unknown:
-                Color(uiColor: .systemGray)
+                Color(AccentColor.systemGray)
             }
         }
     }
@@ -133,6 +185,10 @@ enum TimelineDesign {
 
     enum Typography {
         static let day = Font.title2.bold()
+        /// Desktop page header (e.g. the Before index column's "Before").
+        static let pageTitle = Font.largeTitle.bold()
+        /// Date line inside the desktop Before index rows.
+        static let dayListDate = Font.body.weight(.medium)
         static let dayMetadata = Font.caption.weight(.semibold)
         static let eventCount = Font.caption.weight(.medium)
         static let eventCategory = Font.caption.weight(.semibold)
@@ -155,4 +211,3 @@ enum TimelineDesign {
         static let pressAnimationDuration = 0.12
     }
 }
-#endif

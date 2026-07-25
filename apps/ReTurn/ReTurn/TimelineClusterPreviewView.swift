@@ -1,4 +1,3 @@
-#if os(iOS)
 import SwiftUI
 
 struct TimelineClusterPreviewView: View {
@@ -59,4 +58,3 @@ struct TimelineClusterPreviewView: View {
         )
     }
 }
-#endif
