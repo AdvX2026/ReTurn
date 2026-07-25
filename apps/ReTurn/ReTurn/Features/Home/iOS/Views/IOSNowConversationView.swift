@@ -14,7 +14,7 @@ struct IOSNowConversationView: View {
     private static let bottomID = "chat-bottom"
 
     var body: some View {
-        ScrollView {
+        let conversation = ScrollView {
             LazyVStack(spacing: ReTurnDesign.Card.spacing) {
                 ForEach(chat.entries) { entry in
                     entryView(entry)
@@ -57,6 +57,13 @@ struct IOSNowConversationView: View {
             }
         }
         .accessibilityIdentifier("now.conversation")
+
+        if #available(iOS 18.0, *) {
+            conversation
+                .defaultScrollAnchor(.bottom, for: .sizeChanges)
+        } else {
+            conversation
+        }
     }
 
     @ViewBuilder
