@@ -7,30 +7,21 @@ struct TimelineDailyBriefingView: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(
-                alignment: .leading,
-                spacing: TimelineDesign.Layout.dailyBriefingContentSpacing
-            ) {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Label("Daily Briefing", systemImage: "sparkles")
-                        .font(TimelineDesign.Typography.dailyBriefingLabel)
-                        .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                Label(
+                    "Daily Briefing · \(briefing.stateLabel)",
+                    systemImage: "sparkles"
+                )
+                .font(TimelineDesign.Typography.dailyBriefingLabel)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
 
-                    Spacer(minLength: 8)
+                Spacer(minLength: 8)
 
-                    Image(systemName: "chevron.forward")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.quaternary)
-                        .accessibilityHidden(true)
-                }
-
-                Text("\(briefing.stateLabel) · \(briefing.summary)")
-                    .font(TimelineDesign.Typography.dailyBriefingSummary)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(3)
-                    .lineSpacing(2)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
+                Image(systemName: "chevron.forward")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.quaternary)
+                    .accessibilityHidden(true)
             }
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .contentShape(.rect)

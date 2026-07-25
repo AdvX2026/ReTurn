@@ -3,15 +3,6 @@ import SwiftUI
 
 struct TimelineEventDetailsView: View {
     let item: TimelineDisplayItem
-    let showsDisclosureIndicator: Bool
-
-    init(
-        item: TimelineDisplayItem,
-        showsDisclosureIndicator: Bool = false
-    ) {
-        self.item = item
-        self.showsDisclosureIndicator = showsDisclosureIndicator
-    }
 
     var body: some View {
         let tint = TimelineDesign.Colors.accent(for: item)
@@ -30,26 +21,10 @@ struct TimelineEventDetailsView: View {
                     .monospacedDigit()
             }
 
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                Text(item.label)
-                    .font(
-                        item.isUserInput
-                            ? TimelineDesign.Typography.inputTitle
-                            : TimelineDesign.Typography.eventTitle
-                    )
-                    .foregroundStyle(.primary)
-                    .lineLimit(item.isUserInput ? 2 : nil)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if showsDisclosureIndicator {
-                    Spacer(minLength: 12)
-
-                    Image(systemName: "chevron.forward")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                        .accessibilityHidden(true)
-                }
-            }
+            Text(item.label)
+                .font(TimelineDesign.Typography.eventTitle)
+                .foregroundStyle(.primary)
+                .fixedSize(horizontal: false, vertical: true)
 
             if item.presentation == .span {
                 Text(item.durationDisplay)

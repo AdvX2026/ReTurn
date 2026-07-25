@@ -77,8 +77,7 @@ enum TimelineDesign {
         static let contentBottomPadding: CGFloat = 36
         static let daySpacing: CGFloat = 38
         static let dayHeaderBottomPadding: CGFloat = 18
-        static let dailyBriefingTopSpacing: CGFloat = 12
-        static let dailyBriefingContentSpacing: CGFloat = 5
+        static let dailyBriefingTopSpacing: CGFloat = 4
 
         static let railWidth: CGFloat = 48
         static let railAxisX: CGFloat = 12
@@ -97,6 +96,11 @@ enum TimelineDesign {
         static let pointMinimumHeight: CGFloat = 72
         static let spanMinimumHeight: CGFloat = 108
         static let majorMinimumHeight: CGFloat = 156
+        static let inputMinimumHeight: CGFloat = 56
+        static let inputTopPadding: CGFloat = 8
+        static let inputBottomSpacing: CGFloat = 4
+        static let inputContentSpacing: CGFloat = 7
+        static let inputIconWidth: CGFloat = 15
         static let eventBottomSpacing: CGFloat = 10
         static let ambientContentSpacing: CGFloat = 5
 
@@ -143,9 +147,9 @@ enum TimelineDesign {
         static let ambientEvent = Font.caption
         static let clusterPreviewEvent = Font.subheadline
         static let clusterPreviewMetadata = Font.caption
-        static let inputTitle = Font.body.weight(.semibold)
-        static let dailyBriefingLabel = Font.caption.weight(.semibold)
-        static let dailyBriefingSummary = Font.subheadline
+        static let inputIcon = Font.caption
+        static let inputTitle = Font.subheadline.weight(.medium)
+        static let dailyBriefingLabel = Font.caption
     }
 
     enum Interaction {

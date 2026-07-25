@@ -26,13 +26,11 @@ struct TimelineEventView: View {
         if item.isUserInput {
             eventLayout(tint: tint) {
                 Button(action: openInput) {
-                    TimelineEventDetailsView(
-                        item: item,
-                        showsDisclosureIndicator: true
-                    )
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .topLeading)
+                    TimelineInputEventView(item: item)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     .contentShape(.rect)
                 }
+                .padding(.top, TimelineDesign.Layout.inputTopPadding)
                 .buttonStyle(
                     TimelinePressableButtonStyle(
                         pressedFill: tint.opacity(
@@ -69,11 +67,15 @@ struct TimelineEventView: View {
         .padding(.leading, TimelineDesign.Layout.railWidth)
         .padding(
             .bottom,
-            TimelineDesign.Layout.bottomSpacing(for: item.presentation)
+            item.isUserInput
+                ? TimelineDesign.Layout.inputBottomSpacing
+                : TimelineDesign.Layout.bottomSpacing(for: item.presentation)
         )
         .frame(
             maxWidth: .infinity,
-            minHeight: TimelineDesign.Layout.minimumHeight(for: item.presentation),
+            minHeight: item.isUserInput
+                ? TimelineDesign.Layout.inputMinimumHeight
+                : TimelineDesign.Layout.minimumHeight(for: item.presentation),
             alignment: item.presentation == .ambient ? .leading : .topLeading
         )
         .background(alignment: .leading) {
