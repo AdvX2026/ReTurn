@@ -9,6 +9,8 @@ import {
   type MessageRole,
   type NodeKind,
   type NodeRecord,
+  type Profession,
+  type ProfessionMode,
   type ReviewPoint,
   SAMPLER_NODE_KINDS,
   type Stats,
@@ -17,6 +19,7 @@ import {
   type TaskType,
   type TodoRecord,
   type TodoStatus,
+  type UserProfile,
 } from "@return/shared";
 import {
   deleteNodeFts,
@@ -617,6 +620,131 @@ export function listTodosByStatus(db: Db, status: TodoStatus, limit = 30): TodoR
     )
     .all(status, limit) as TodoRow[];
   return rows.map(todoToRecord);
+}
+
+// ── user profile (singleton) ─────────────────────────────
+
+interface ProfileRow {
+  id: number;
+  display_name: string | null;
+  profession: string;
+  profession_mode: string;
+  note: string | null;
+  last_inferred_profession: string;
+  updated_at: string;
+}
+
+function profileToRecord(db: Db, row: ProfileRow): UserProfile {
+  return {
+    display_name: row.display_name,
+    profession: row.profession as Profession,
+    profession_mode: row.profession_mode as ProfessionMode,
+    note: row.note,
+    last_inferred_profession: row.last_inferred_profession as Profession,
+    accepted_todos: listTodosByStatus(db, "accepted", 20).map((t) => t.text),
+    dismissed_todos: listTodosByStatus(db, "dismissed", 20).map((t) => t.text),
+    updated_at: row.updated_at,
+  };
+}
+
+function readProfileRow(db: Db): ProfileRow {
+  const row = db
+    .prepare(`SELECT * FROM user_profile WHERE id = 1`)
+    .get() as ProfileRow | undefined;
+  if (row) return row;
+  const at = nowIso();
+  db.prepare(
+    `INSERT INTO user_profile (
+       id, display_name, profession, profession_mode, note,
+       last_inferred_profession, updated_at
+     ) VALUES (1, NULL, 'generalist', 'auto', NULL, 'generalist', ?)`,
+  ).run(at);
+  return {
+    id: 1,
+    display_name: null,
+    profession: "generalist",
+    profession_mode: "auto",
+    note: null,
+    last_inferred_profession: "generalist",
+    updated_at: at,
+  };
+}
+
+/** Full profile for GET /api/profile (includes live todo preference samples). */
+export function getUserProfile(db: Db): UserProfile {
+  return profileToRecord(db, readProfileRow(db));
+}
+
+/**
+ * Apply Save-time profession inference. Always stores last_inferred.
+ * When mode is auto, also overwrites effective profession.
+ */
+export function applyInferredProfession(db: Db, inferred: Profession): UserProfile {
+  const row = readProfileRow(db);
+  const at = nowIso();
+  const nextProfession =
+    row.profession_mode === "manual" ? row.profession : inferred;
+  db.prepare(
+    `UPDATE user_profile SET
+       profession = ?,
+       last_inferred_profession = ?,
+       updated_at = ?
+     WHERE id = 1`,
+  ).run(nextProfession, inferred, at);
+  return getUserProfile(db);
+}
+
+export function patchUserProfile(
+  db: Db,
+  patch: {
+    display_name?: string | null;
+    profession?: Profession;
+    profession_mode?: ProfessionMode;
+    note?: string | null;
+  },
+): UserProfile {
+  const row = readProfileRow(db);
+  const at = nowIso();
+
+  let displayName =
+    patch.display_name !== undefined ? patch.display_name : row.display_name;
+  let note = patch.note !== undefined ? patch.note : row.note;
+  let mode = (patch.profession_mode ?? row.profession_mode) as ProfessionMode;
+  let profession = row.profession as Profession;
+  const lastInferred = row.last_inferred_profession as Profession;
+
+  if (patch.profession !== undefined) {
+    profession = patch.profession;
+    // Explicit profession without mode → lock to manual.
+    if (patch.profession_mode === undefined) mode = "manual";
+  }
+
+  if (patch.profession_mode === "auto") {
+    mode = "auto";
+    profession = lastInferred;
+  } else if (patch.profession_mode === "manual") {
+    mode = "manual";
+    if (patch.profession !== undefined) profession = patch.profession;
+  }
+
+  if (displayName !== null && displayName !== undefined) {
+    displayName = displayName.trim() || null;
+  }
+  if (note !== null && note !== undefined) {
+    note = note.trim() || null;
+  }
+
+  db.prepare(
+    `UPDATE user_profile SET
+       display_name = ?,
+       profession = ?,
+       profession_mode = ?,
+       note = ?,
+       updated_at = ?
+     WHERE id = 1`,
+  ).run(displayName, profession, mode, note, at);
+
+  return getUserProfile(db);
 }
 
 export function collectionStatus(db: Db, date: string): CollectionStatus {

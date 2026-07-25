@@ -7,6 +7,7 @@ import { beforeEach, describe, it } from "node:test";
 import type { Stats } from "@return/shared";
 import {
   acceptTodo,
+  applyInferredProfession,
   countCrossDayEdges,
   currentCadence,
   deleteNode,
@@ -16,6 +17,7 @@ import {
   getDayByDate,
   getNodeById,
   getTodo,
+  getUserProfile,
   insertEdge,
   insertNode,
   insertNodes,
@@ -24,6 +26,7 @@ import {
   listTodosByDay,
   listTodosByStatus,
   markDaySaved,
+  patchUserProfile,
   reminderCompletionRate,
   setTodoDone,
   upsertDevice,
@@ -166,6 +169,43 @@ describe("repo", () => {
     assert.ok(dismissed.dismissed_at);
     assert.equal(listTodosByStatus(db, "accepted").length, 1);
     assert.equal(listTodosByStatus(db, "dismissed").length, 1);
+  });
+
+  it("user profile auto profession tracks inference; manual locks", () => {
+    let profile = getUserProfile(db);
+    assert.equal(profile.profession, "generalist");
+    assert.equal(profile.profession_mode, "auto");
+
+    profile = applyInferredProfession(db, "coder");
+    assert.equal(profile.profession, "coder");
+    assert.equal(profile.last_inferred_profession, "coder");
+    assert.equal(profile.profession_mode, "auto");
+
+    profile = patchUserProfile(db, { profession: "designer" });
+    assert.equal(profile.profession, "designer");
+    assert.equal(profile.profession_mode, "manual");
+    assert.equal(profile.last_inferred_profession, "coder");
+
+    profile = applyInferredProfession(db, "writer");
+    assert.equal(profile.profession, "designer"); // locked
+    assert.equal(profile.last_inferred_profession, "writer");
+
+    profile = patchUserProfile(db, { profession_mode: "auto" });
+    assert.equal(profile.profession_mode, "auto");
+    assert.equal(profile.profession, "writer"); // snaps to last inferred
+
+    profile = patchUserProfile(db, {
+      display_name: "  Teethe  ",
+      note: "prefer deep work todos",
+    });
+    assert.equal(profile.display_name, "Teethe");
+    assert.equal(profile.note, "prefer deep work todos");
+
+    const day = ensureDay(db, "2026-07-24");
+    const t = insertTodo(db, { day_id: day.id, text: "Ship profile" });
+    acceptTodo(db, t.id, "rem-x");
+    profile = getUserProfile(db);
+    assert.deepEqual(profile.accepted_todos, ["Ship profile"]);
   });
 
   it("expireSuggestedTodos auto-dismisses past suggested", () => {

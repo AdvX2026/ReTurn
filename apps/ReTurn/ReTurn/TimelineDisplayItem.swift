@@ -153,6 +153,10 @@ struct TimelineDisplayItem: Identifiable, Equatable {
             default:
                 "app"
             }
+        case .cluster:
+            "square.stack.3d.up"
+        case .briefing:
+            "sun.horizon"
         case .unknown:
             "circle"
         }

@@ -10,6 +10,7 @@ import {
   NodeKind,
   Platform,
   Profession,
+  ProfessionMode,
   StatsSchema,
   TaskStatus,
   TaskType,
@@ -188,8 +189,41 @@ export const StatsTodayResponse = z.object({
   saved: z.boolean(),
   collection: CollectionStatus,
   cadence: CadenceMode.optional(),
+  /** Effective profile profession (auto or manual lock). */
+  profession: Profession,
+  profession_mode: ProfessionMode,
 });
 export type StatsTodayResponse = z.infer<typeof StatsTodayResponse>;
+
+// ── user profile (single-user home space) ────────────────
+
+/**
+ * Cross-day identity for the one ReTurn user. Not a multi-tenant account.
+ * Profession defaults to auto (Save rewrites from day signals); manual locks it.
+ * Todo preference samples are live rows, surfaced here for clients / settings.
+ */
+export const UserProfile = z.object({
+  display_name: z.string().max(80).nullable(),
+  profession: Profession,
+  profession_mode: ProfessionMode,
+  /** Optional free-form note (bio / standing preferences). */
+  note: z.string().max(2000).nullable(),
+  /** Always the latest Save-time resolveProfession result. */
+  last_inferred_profession: Profession,
+  accepted_todos: z.array(z.string()),
+  dismissed_todos: z.array(z.string()),
+  updated_at: z.string().datetime(),
+});
+export type UserProfile = z.infer<typeof UserProfile>;
+
+export const PatchUserProfileRequest = z.object({
+  display_name: z.string().max(80).nullable().optional(),
+  /** Setting profession without profession_mode forces manual lock. */
+  profession: Profession.optional(),
+  profession_mode: ProfessionMode.optional(),
+  note: z.string().max(2000).nullable().optional(),
+});
+export type PatchUserProfileRequest = z.infer<typeof PatchUserProfileRequest>;
 
 /** Typed navigation target for a timeline item (PRD §3.2.7). */
 export const TimelineDestination = z.discriminatedUnion("type", [

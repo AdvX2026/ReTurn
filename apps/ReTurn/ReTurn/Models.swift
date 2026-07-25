@@ -154,6 +154,22 @@ enum CharacterState: String, TolerantEnum {
 enum Profession: String, TolerantEnum {
     case coder, designer, writer, communicator, explorer, generalist
     static let fallback = Profession.generalist
+
+    var displayName: String {
+        switch self {
+        case .coder: "Coder"
+        case .designer: "Designer"
+        case .writer: "Writer"
+        case .communicator: "Communicator"
+        case .explorer: "Explorer"
+        case .generalist: "Generalist"
+        }
+    }
+}
+
+enum ProfessionMode: String, TolerantEnum {
+    case auto, manual
+    static let fallback = ProfessionMode.auto
 }
 
 enum DevicePlatform: String, TolerantEnum {
@@ -326,6 +342,30 @@ struct StatsTodayResponse: Codable {
     var saved: Bool
     var collection: CollectionStatus
     var cadence: CadenceMode?
+    var profession: Profession
+    var professionMode: ProfessionMode
+}
+
+// ── user profile ─────────────────────────────────────────
+
+struct UserProfile: Codable {
+    var displayName: String?
+    var profession: Profession
+    var professionMode: ProfessionMode
+    var note: String?
+    var lastInferredProfession: Profession
+    var acceptedTodos: [String]
+    var dismissedTodos: [String]
+    var updatedAt: String
+}
+
+/// Partial update for PATCH /api/profile. Omitted fields stay unchanged on the Pi.
+/// Empty strings clear `display_name` / `note` (server trims to null).
+struct PatchUserProfileRequest: Codable {
+    var displayName: String?
+    var profession: Profession?
+    var professionMode: ProfessionMode?
+    var note: String?
 }
 
 enum TimelineSegmentKind: String, TolerantEnum {

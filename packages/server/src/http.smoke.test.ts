@@ -191,6 +191,8 @@ describe("http smoke", () => {
     const body = res.json() as {
       stats: { energy: number };
       character_state: string;
+      profession: string;
+      profession_mode: string;
       collection: {
         device_count: number;
         sample_count: number;
@@ -199,9 +201,55 @@ describe("http smoke", () => {
     };
     assert.ok(typeof body.stats.energy === "number");
     assert.ok(body.character_state);
+    assert.ok(body.profession);
+    assert.equal(body.profession_mode, "auto");
     assert.ok(body.collection.device_count >= 1);
     assert.ok(body.collection.sample_count >= 1);
     assert.ok(body.collection.last_seen_at);
+  });
+
+  it("GET/PATCH /api/profile", async () => {
+    const get1 = await app.inject({ method: "GET", url: "/api/profile" });
+    assert.equal(get1.statusCode, 200, get1.body);
+    const empty = get1.json() as {
+      profession: string;
+      profession_mode: string;
+      accepted_todos: string[];
+    };
+    assert.equal(empty.profession_mode, "auto");
+    assert.ok(Array.isArray(empty.accepted_todos));
+
+    const patch = await app.inject({
+      method: "PATCH",
+      url: "/api/profile",
+      payload: {
+        display_name: "Teethe",
+        profession: "coder",
+        note: "ship the profile API",
+      },
+    });
+    assert.equal(patch.statusCode, 200, patch.body);
+    const locked = patch.json() as {
+      display_name: string;
+      profession: string;
+      profession_mode: string;
+      note: string;
+    };
+    assert.equal(locked.display_name, "Teethe");
+    assert.equal(locked.profession, "coder");
+    assert.equal(locked.profession_mode, "manual");
+    assert.equal(locked.note, "ship the profile API");
+
+    const stats = await app.inject({
+      method: "GET",
+      url: `/api/stats/today?date=${date}`,
+    });
+    const statsBody = stats.json() as {
+      profession: string;
+      profession_mode: string;
+    };
+    assert.equal(statsBody.profession, "coder");
+    assert.equal(statsBody.profession_mode, "manual");
   });
 
   it("GET /api/usage aggregates provider calls", async () => {

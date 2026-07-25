@@ -21,6 +21,8 @@ import {
   listEdgesByDay,
   listNodesByDate,
   listSavedDays,
+  applyInferredProfession,
+  getUserProfile,
   listTodosByDay,
   listTodosByStatus,
   markDaySaved,
@@ -139,6 +141,7 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
   const rem = reminderCompletionRate(db, input.date);
   const acceptedTodos = listTodosByStatus(db, "accepted", 20).map((t) => t.text);
   const dismissedTodos = listTodosByStatus(db, "dismissed", 20).map((t) => t.text);
+  const profile = getUserProfile(db);
 
   // ── ferment ───────────────────────────────────────────
   const ctx = buildFermentContext({
@@ -151,6 +154,8 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
     openReminders: rem.openTitles,
     acceptedTodos,
     dismissedTodos,
+    profileNote: profile.note,
+    profileProfession: profile.profession,
   });
   const ferment = await runFerment(db, ctx);
 
@@ -252,11 +257,15 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
       sleepMinutes: health.sleepMinutes,
       steps: health.steps,
     });
-    const profession = resolveProfession({
+    const dayProfession = resolveProfession({
       sessions: freshSessions,
       gitCommitCount: breakdown.git_commit_count,
       agentDurationMin: breakdown.agent_duration_min,
     });
+    // Profile: always record inference; auto mode copies it to effective profession.
+    applyInferredProfession(db, dayProfession);
+    // Briefing snapshots the day-inferred role (historical truth for that day).
+    const profession = dayProfession;
     // Include today once sealed so streak counts this save.
     const priorSaved = listSavedDays(db, addDays(input.date, -60));
     const streak = computeStreak(
