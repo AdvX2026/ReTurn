@@ -4,6 +4,7 @@ struct NowActionBar: View {
     @Environment(APIEnvironment.self) private var api: APIEnvironment
     @Environment(ChatStore.self) private var chat: ChatStore
     @Environment(TasksStore.self) private var tasks: TasksStore
+    @State private var showSearch = false
 
     var body: some View {
         HStack(spacing: ReTurnDesign.Spacing.small) {
@@ -11,6 +12,11 @@ struct NowActionBar: View {
                 Task { await chat.resume() }
             }
             .disabled(!api.isConnected || chat.isResuming)
+
+            Button("Search", systemImage: "magnifyingglass") {
+                showSearch = true
+            }
+            .disabled(!api.isConnected)
 
             if chat.isResuming {
                 ProgressView()
@@ -33,6 +39,9 @@ struct NowActionBar: View {
             }
         }
         .buttonStyle(.bordered)
+        .sheet(isPresented: $showSearch) {
+            SearchSheet()
+        }
     }
 
     private func taskLabel(_ task: TaskRecord) -> String {

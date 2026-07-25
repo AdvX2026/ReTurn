@@ -51,38 +51,60 @@ struct SaveResultLine: View {
     }
 }
 
-/// The F5 action. A successful save regenerates stats, the streak/overview
-/// and the After stream server-side, so all three stores refresh here.
+/// The F5 action. Optional note anchors the ferment prompt. A successful save
+/// regenerates stats, the streak/overview and the After stream server-side.
 struct SaveTodayButton: View {
     @Environment(APIEnvironment.self) private var api: APIEnvironment
     @Environment(StatsStore.self) private var stats: StatsStore
     @Environment(SaveStore.self) private var save: SaveStore
     @Environment(CardsStore.self) private var cards: CardsStore
     @Environment(TimelineStore.self) private var timeline: TimelineStore
+    @State private var note = ""
+    @State private var showNote = false
 
     var body: some View {
-        Button {
-            Task {
-                let saved = await save.save()
-                guard saved else { return }
-                await stats.refresh()
-                await cards.refresh()
-                await timeline.refreshOverview()
+        VStack(spacing: ReTurnDesign.Spacing.small) {
+            if showNote {
+                TextField("Optional note for tonight's ferment…", text: $note)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 320)
             }
-        } label: {
             HStack(spacing: ReTurnDesign.Spacing.small) {
-                if save.isSaving {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Image(systemName: stats.savedToday ? "checkmark.seal.fill" : "moon.stars")
+                Button {
+                    showNote.toggle()
+                } label: {
+                    Image(systemName: showNote ? "text.badge.minus" : "text.badge.plus")
                 }
-                Text(stats.savedToday ? "Saved" : "Save Today")
+                .buttonStyle(.bordered)
+                .disabled(!api.isConnected || save.isSaving || stats.savedToday)
+                .help("Add an optional Save note")
+
+                Button {
+                    Task {
+                        let saved = await save.save(noteText: note)
+                        guard saved else { return }
+                        note = ""
+                        showNote = false
+                        await stats.refresh()
+                        await cards.refresh()
+                        await timeline.refreshOverview()
+                    }
+                } label: {
+                    HStack(spacing: ReTurnDesign.Spacing.small) {
+                        if save.isSaving {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: stats.savedToday ? "checkmark.seal.fill" : "moon.stars")
+                        }
+                        Text(stats.savedToday ? "Saved" : "Save Today")
+                    }
+                    .font(.callout.weight(.medium))
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!api.isConnected || save.isSaving || stats.savedToday)
             }
-            .font(.callout.weight(.medium))
         }
-        .buttonStyle(.borderedProminent)
-        .disabled(!api.isConnected || save.isSaving || stats.savedToday)
     }
 }
 

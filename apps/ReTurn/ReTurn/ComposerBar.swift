@@ -7,6 +7,7 @@ struct ComposerBar: View {
     @FocusState.Binding var isFocused: Bool
     @Environment(ChatStore.self) private var chat: ChatStore
     @Environment(APIEnvironment.self) private var api: APIEnvironment
+    @Environment(NodesStore.self) private var nodes: NodesStore
     @State private var text = ""
     @State private var recorder = VoiceRecorder()
     @State private var isImportingImage = false
@@ -19,11 +20,18 @@ struct ComposerBar: View {
     }
 
     private func send() {
-        guard !trimmedText.isEmpty, !chat.isSending, api.isConnected else { return }
+        guard !trimmedText.isEmpty, !chat.isSending else { return }
         let outgoing = trimmedText
         text = ""
         isFocused = false
-        Task { await chat.send(outgoing) }
+        if api.isConnected {
+            Task { await chat.send(outgoing) }
+        } else {
+            // Offline: PRD §5.2 allows node writes only — queue as idea, flush later.
+            Task {
+                _ = await nodes.enqueue(kind: .idea, content: outgoing, title: "Offline note")
+            }
+        }
     }
 
     var body: some View {
@@ -69,7 +77,7 @@ struct ComposerBar: View {
                 .lineLimit(1...ReTurnDesign.Metrics.composerMaximumLineCount)
                 .focused($isFocused)
                 .onSubmit(send)
-                .disabled(!api.isConnected)
+                .disabled(chat.isSending)
 
             composerAction
         }

@@ -17,17 +17,27 @@ struct ConnectionIssueView: View {
         } description: {
             Text(message)
         } actions: {
-            HStack(spacing: ReTurnDesign.Spacing.small) {
-                TextField("Server address", text: $api.baseURLString)
+            VStack(spacing: ReTurnDesign.Spacing.small) {
+                HStack(spacing: ReTurnDesign.Spacing.small) {
+                    TextField("Server address", text: $api.baseURLString)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 240)
+                        #if os(iOS)
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        #endif
+                        .autocorrectionDisabled()
+                    Button("Retry", action: retry)
+                        .buttonStyle(.borderedProminent)
+                }
+                SecureField("API token (optional)", text: $api.apiToken)
                     .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 240)
-                    #if os(iOS)
-                    .keyboardType(.URL)
-                    .textInputAutocapitalization(.never)
-                    #endif
-                    .autocorrectionDisabled()
-                Button("Retry", action: retry)
-                    .buttonStyle(.borderedProminent)
+                    .frame(maxWidth: 320)
+                #if os(iOS)
+                SecureField("Health token", text: $api.healthToken)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 320)
+                #endif
             }
         }
     }

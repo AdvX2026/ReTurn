@@ -30,6 +30,9 @@ enum APIError: Error, LocalizedError {
 
 struct APIClient {
     var baseURL: URL
+    /// Optional LAN API token (`API_TOKEN` on the Pi). Sent as `X-Return-Token`
+    /// on every call except when a caller supplies its own headers (health).
+    var apiToken: String? = nil
     var session: URLSession = .shared
 
     /// LLM-backed endpoints (save/chat/ask/resume) can be slow; plain reads are not.
@@ -44,7 +47,8 @@ struct APIClient {
         bodyData: Data? = nil,
         contentType: String = "application/json",
         headers: [String: String] = [:],
-        timeout: TimeInterval? = nil
+        timeout: TimeInterval? = nil,
+        skipDefaultToken: Bool = false
     ) async throws -> T {
         var components = URLComponents(
             url: baseURL.appending(path: path),
@@ -58,6 +62,9 @@ struct APIClient {
         if let bodyData {
             request.httpBody = bodyData
             request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        }
+        if !skipDefaultToken, let apiToken, !apiToken.isEmpty {
+            request.setValue(apiToken, forHTTPHeaderField: "X-Return-Token")
         }
         for (key, value) in headers {
             request.setValue(value, forHTTPHeaderField: key)
@@ -177,7 +184,8 @@ struct APIClient {
         try await perform(
             "POST", "/api/health",
             bodyData: try ReTurnAPI.makeEncoder().encode(body),
-            headers: ["x-return-token": token]
+            headers: ["x-return-token": token],
+            skipDefaultToken: true
         )
     }
 

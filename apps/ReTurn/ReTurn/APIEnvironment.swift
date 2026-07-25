@@ -21,11 +21,23 @@ final class APIEnvironment {
     static let defaultBaseURLString = "http://127.0.0.1:8787"
     private static let baseURLDefaultsKey = "piBaseURL"
     private static let deviceIDDefaultsKey = "deviceID"
+    private static let apiTokenDefaultsKey = "piApiToken"
+    private static let healthTokenDefaultsKey = "healthToken"
 
     /// Pi server base URL as typed by the user (Settings on macOS, the inline
     /// recovery editor on connection failure elsewhere). Persisted.
     var baseURLString: String {
         didSet { UserDefaults.standard.set(baseURLString, forKey: Self.baseURLDefaultsKey) }
+    }
+
+    /// Optional `API_TOKEN` for private LAN endpoints (empty = open LAN mode).
+    var apiToken: String {
+        didSet { UserDefaults.standard.set(apiToken, forKey: Self.apiTokenDefaultsKey) }
+    }
+
+    /// Fixed `HEALTH_TOKEN` for POST /api/health only.
+    var healthToken: String {
+        didSet { UserDefaults.standard.set(healthToken, forKey: Self.healthTokenDefaultsKey) }
     }
 
     /// Stable per-install device ID, sent with writes and the register handshake.
@@ -43,6 +55,8 @@ final class APIEnvironment {
     init() {
         let defaults = UserDefaults.standard
         baseURLString = defaults.string(forKey: Self.baseURLDefaultsKey) ?? Self.defaultBaseURLString
+        apiToken = defaults.string(forKey: Self.apiTokenDefaultsKey) ?? ""
+        healthToken = defaults.string(forKey: Self.healthTokenDefaultsKey) ?? ""
         if let existing = defaults.string(forKey: Self.deviceIDDefaultsKey) {
             deviceID = existing
         } else {
@@ -57,7 +71,8 @@ final class APIEnvironment {
     }
 
     func makeClient() -> APIClient {
-        APIClient(baseURL: baseURL)
+        let token = apiToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        return APIClient(baseURL: baseURL, apiToken: token.isEmpty ? nil : token)
     }
 
     /// Register once per launch. Failure is silent: writes carry `deviceID`
@@ -109,8 +124,12 @@ final class APIEnvironment {
     func markReachable() {
         if let lastPing {
             connectionState = .connected(lastPing)
-        } else if case .connected = connectionState {
-            return
+        } else {
+            // A successful API call without a cached ping still means the Pi is up
+            // (composer and Save gate on `isConnected`).
+            connectionState = .connected(
+                PingResponse(ok: true, serverTime: "", version: "unknown", cadence: nil)
+            )
         }
     }
 
@@ -171,6 +190,10 @@ final class AppStores {
     let save: SaveStore
     let cards: CardsStore
     let tasks: TasksStore
+    let nodes: NodesStore
+    let search: SearchStore
+    let health: HealthStore
+    let usage: UsageStore
 
     init() {
         let api = APIEnvironment()
@@ -182,6 +205,10 @@ final class AppStores {
         let reminders = ReminderService()
         cards = CardsStore(api: api, reminders: reminders)
         tasks = TasksStore(api: api, chat: chat)
+        nodes = NodesStore(api: api)
+        search = SearchStore(api: api)
+        health = HealthStore(api: api)
+        usage = UsageStore(api: api)
     }
 }
 
@@ -200,5 +227,9 @@ extension View {
             .environment(stores.save)
             .environment(stores.cards)
             .environment(stores.tasks)
+            .environment(stores.nodes)
+            .environment(stores.search)
+            .environment(stores.health)
+            .environment(stores.usage)
     }
 }

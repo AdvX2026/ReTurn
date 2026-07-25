@@ -9,6 +9,8 @@ final class StatsStore {
     private(set) var stats: Stats?
     private(set) var characterState: CharacterState = .normal
     private(set) var savedToday = false
+    private(set) var collection: CollectionStatus?
+    private(set) var cadence: CadenceMode?
     private(set) var lastError: String?
 
     private let api: APIEnvironment
@@ -23,6 +25,8 @@ final class StatsStore {
             stats = response.stats
             characterState = response.characterState
             savedToday = response.saved
+            collection = response.collection
+            cadence = response.cadence
             lastError = nil
             api.markReachable()
         } catch {

@@ -74,14 +74,14 @@ describe("v0.6 chat / cards / tasks / resume / timeline range", () => {
   });
 
   it("future todo cards only return suggestions still actionable on the Pi", () => {
-    const day = insertNode(db, {
+    const { node } = insertNode(db, {
       client_uuid: crypto.randomUUID(),
       kind: "text",
       content: "seed",
       date: todayDate(),
-    }).day;
-    const keep = insertTodo(db, { day_id: day.id, text: "Keep" });
-    const hide = insertTodo(db, { day_id: day.id, text: "Hide" });
+    });
+    const keep = insertTodo(db, { day_id: node.day_id, text: "Keep" });
+    const hide = insertTodo(db, { day_id: node.day_id, text: "Hide" });
     dismissTodo(db, hide.id);
     insertCard(db, {
       type: "todo_suggestion",

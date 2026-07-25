@@ -19,17 +19,19 @@ final class SaveStore {
 
     /// Returns true when the save went through (including `alreadySaved`), so
     /// the view layer can refresh stats/timeline/cards in one place.
+    /// `noteText` is the optional ferment anchor (PRD F5).
     @discardableResult
-    func save() async -> Bool {
+    func save(noteText: String? = nil) async -> Bool {
         guard !isSaving else { return false }
         isSaving = true
         error = nil
+        let trimmed = noteText?.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
             result = try await api.makeClient().save(
                 .init(
                     date: APIEnvironment.dayKey(for: .now),
                     deviceId: api.deviceID,
-                    noteText: nil,
+                    noteText: (trimmed?.isEmpty == false) ? trimmed : nil,
                     noteVoiceRef: nil
                 )
             )

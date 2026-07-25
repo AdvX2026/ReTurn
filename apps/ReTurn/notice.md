@@ -13,7 +13,7 @@
 
 ## Models.swift (shared-contract mirror)
 
-- Mirror basis: `origin/feat/global-search` @ `809ec73` (PR #8 — the designated v0.6 API authority; PR #16 was abandoned in its favor). PR #8 is merged to main; keep future `packages/shared` contract changes synchronized here in the same commit (AGENTS.md contract rule).
+- Mirror basis: `origin/main` after PR #33 (`feat/prd-api-completion-v2`) — includes `CollectionStatus`, `Usage*`, no `ContinueResponse`/`degraded`. Keep `packages/shared` and this mirror in the same commit (AGENTS.md contract rule).
 - Decode/encode ONLY via `ReTurnAPI.makeDecoder()/makeEncoder()` — snake_case conversion lives in the coder strategy; models deliberately have no per-field CodingKeys.
 - Enum policy: all mirrored string enums are tolerant (`TolerantEnum`) — unknown raw values decode to a fallback, never throw. `NodeKind` currently mirrors `email`, `vscode_recent`, and `browse_history`; future server values still must not crash older app builds.
 - Card `content` is loose JSON in the contract; the mirror decodes it into typed per-`type` structs (shapes taken from what `services/save.ts` / `services/chat.ts` actually write on the mirror basis) with a `.raw` fallback on unknown type or shape drift. If backend tightens/changes card content, update `BriefingCardContent` & co. and `ModelsTests`.
@@ -24,6 +24,13 @@
 - Transport only: typed async methods over URLSession for every Pi endpoint (port 8787). No caching, no outbox, no retries — those belong in the stores (PRD §5.2). LLM-backed calls (save/chat/ask/resume/voice/intent) use a 180 s per-request timeout; plain reads use the URLSession default.
 - Health upload sends the fixed token as `x-return-token`. Fastify error bodies (`{statusCode, error, message}`) surface as `APIError.http`.
 - Networking config lives in `apps/ReTurn/Info.plist` (deliberately OUTSIDE the synchronized `ReTurn/` folder — inside it, the sync group copies it into Copy Bundle Resources and Xcode warns). It merges with `GENERATE_INFOPLIST_FILE=YES` via `INFOPLIST_FILE=Info.plist` and carries `NSAppTransportSecurity.NSAllowsLocalNetworking` (scoped, NOT arbitrary loads) plus iOS `NSLocalNetworkUsageDescription`. Add future plist keys here, not as INFOPLIST_KEY_ build settings for dict-valued keys.
+
+
+## AppStores / live API
+
+- `AppStores` owns `APIEnvironment` + domain stores (`TimelineStore`, `ChatStore`, `CardsStore`, `StatsStore`, `SaveStore`, `TasksStore`, `NodesStore`, `SearchStore`, `HealthStore`, `UsageStore`). Views take only the stores they use via `@Environment`.
+- Every Pi route in `docs/api.md` is reachable from a store method; transport stays in `APIClient`. Optional `API_TOKEN` and `HEALTH_TOKEN` are user-editable (Settings / connection recovery). UI outbox for `POST /api/nodes` is `NodesStore` JSON queue under Application Support.
+- Before/Now/After pages are live (not fixture-only). Fixtures remain for previews/`seedForPreview` / `CardGallery`.
 
 ## Main timeline UI
 
