@@ -35,6 +35,58 @@ struct ChatAndNodesStoreTests {
         #expect(merged.map(\.id) == ["server-message", "local-failed"])
     }
 
+    @Test func historyBootstrapHidesPreexistingMessagesAndShowsLaterOnes() {
+        let old = entry(id: "old", failed: false)
+        let new = entry(id: "new", failed: false)
+        let baseline = ChatStore.historyBaseline(
+            serverEntries: [old],
+            sessionMessageIDs: []
+        )
+
+        #expect(
+            ChatStore.currentSessionHistory(
+                serverEntries: [old],
+                baselineMessageIDs: baseline
+            ).isEmpty
+        )
+        #expect(
+            ChatStore.currentSessionHistory(
+                serverEntries: [old, new],
+                baselineMessageIDs: baseline
+            ).map(\.id) == ["new"]
+        )
+    }
+
+    @Test func historyBootstrapKeepsMessagesSentDuringBootstrap() {
+        let old = entry(id: "old", failed: false)
+        let current = entry(id: "current", failed: false)
+        let baseline = ChatStore.historyBaseline(
+            serverEntries: [old, current],
+            sessionMessageIDs: [current.id]
+        )
+
+        #expect(baseline == [old.id])
+        #expect(
+            ChatStore.currentSessionHistory(
+                serverEntries: [old, current],
+                baselineMessageIDs: baseline
+            ).map(\.id) == [current.id]
+        )
+    }
+
+    @Test func conversationKeepsOnlyLatestResumeEntry() {
+        let chat = entry(id: "chat", failed: false)
+        let firstResume = entry(id: "resume-1", failed: false, source: .resume)
+        let task = entry(id: "task", failed: false, source: .task)
+        let latestResume = entry(id: "resume-2", failed: false, source: .resume)
+
+        let visible = ChatStore.keepingLatestResume(
+            in: [chat, firstResume, task, latestResume]
+        )
+
+        #expect(visible.map(\.id) == [chat.id, task.id, latestResume.id])
+    }
+
     @Test func nodesOutboxReloadKeepsOriginalClientUUID() async {
         let queueURL = FileManager.default.temporaryDirectory
             .appending(path: "return-nodes-\(UUID().uuidString).json")
@@ -51,7 +103,11 @@ struct ChatAndNodesStoreTests {
         #expect(reloaded.pending == store.pending)
     }
 
-    private func entry(id: String, failed: Bool) -> ChatStore.Entry {
+    private func entry(
+        id: String,
+        failed: Bool,
+        source: ChatStore.Entry.Source = .chat
+    ) -> ChatStore.Entry {
         ChatStore.Entry(
             id: id,
             role: .user,
@@ -59,7 +115,8 @@ struct ChatAndNodesStoreTests {
             intent: nil,
             createdAt: Date(timeIntervalSince1970: 0),
             failed: failed,
-            retryPayload: failed ? .chat(text: id, image: nil) : nil
+            retryPayload: failed ? .chat(text: id, image: nil) : nil,
+            source: source
         )
     }
 }

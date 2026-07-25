@@ -107,8 +107,9 @@ struct AfterView: View {
                         }
 
                         if let loadMoreID {
-                            ProgressView()
-                                .frame(maxWidth: .infinity)
+                            Color.clear
+                                .frame(height: 1)
+                                .accessibilityHidden(true)
                                 .task(id: loadMoreID) {
                                     if let onLoadMore {
                                         await onLoadMore()

@@ -1,9 +1,9 @@
+#if os(macOS)
 import SwiftUI
 
-/// Shared pieces of the Now page (iOS + macOS): the greeting, the Save Today
-/// button and its result line. Both platforms compose these into their own
-/// layouts; the save side effects (refreshing stats/cards/timeline after a
-/// successful save) live here exactly once.
+/// macOS Now actions: the greeting, Save Today button and its result line.
+/// iOS deliberately keeps the reviewed mascot-only hero instead of composing
+/// these desktop controls into its page.
 
 func nowGreeting(for state: CharacterState) -> String {
     switch state {
@@ -116,3 +116,4 @@ struct SaveTodayButton: View {
     .padding()
     .previewStores()
 }
+#endif

@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 
 struct NowActionBar: View {
@@ -63,3 +64,4 @@ struct NowActionBar: View {
         }
     }
 }
+#endif

@@ -13,6 +13,10 @@ final class ChatStore {
             case user, assistant
         }
 
+        enum Source: Equatable {
+            case chat, resume, task
+        }
+
         var id: String
         let role: Role
         let text: String
@@ -22,6 +26,7 @@ final class ChatStore {
         var retryPayload: RetryPayload?
         let correctionMessageID: String?
         let taskID: String?
+        let source: Source
 
         init(
             id: String,
@@ -32,7 +37,8 @@ final class ChatStore {
             failed: Bool,
             retryPayload: RetryPayload? = nil,
             correctionMessageID: String? = nil,
-            taskID: String? = nil
+            taskID: String? = nil,
+            source: Source = .chat
         ) {
             self.id = id
             self.role = role
@@ -43,6 +49,7 @@ final class ChatStore {
             self.retryPayload = retryPayload
             self.correctionMessageID = correctionMessageID
             self.taskID = taskID
+            self.source = source
         }
     }
 
@@ -61,6 +68,12 @@ final class ChatStore {
     private let api: APIEnvironment
     private var conversationRevision: UInt = 0
     private var isHistoryRequestInFlight = false
+    // The first successful page each launch is a hidden baseline. Polling stays
+    // live for cross-device and Task replies, but only later messages enter the
+    // current UI conversation.
+    private var didBootstrapHistory = false
+    private var baselineMessageIDs: Set<String> = []
+    private var sessionMessageIDs: Set<String> = []
 
     init(api: APIEnvironment) {
         self.api = api
@@ -76,7 +89,18 @@ final class ChatStore {
         historyState = .loading
         do {
             let response = try await api.makeClient().listMessages(limit: 50)
-            let serverEntries = response.messages.reversed().map(Self.entry(from:))
+            let allServerEntries = response.messages.reversed().map(Self.entry(from:))
+            if !didBootstrapHistory {
+                baselineMessageIDs = Self.historyBaseline(
+                    serverEntries: allServerEntries,
+                    sessionMessageIDs: sessionMessageIDs
+                )
+                didBootstrapHistory = true
+            }
+            let serverEntries = Self.currentSessionHistory(
+                serverEntries: allServerEntries,
+                baselineMessageIDs: baselineMessageIDs
+            )
             guard let mergedEntries = Self.reconciledHistory(
                 serverEntries: serverEntries,
                 currentEntries: entries,
@@ -87,7 +111,7 @@ final class ChatStore {
                 api.markReachable()
                 return
             }
-            entries = mergedEntries
+            entries = Self.keepingLatestResume(in: mergedEntries)
             historyState = .ready
             lastError = nil
             api.markReachable()
@@ -199,7 +223,9 @@ final class ChatStore {
             let response = try await api.makeClient().resume(
                 .init(deviceId: api.deviceID, hours: hours)
             )
+            sessionMessageIDs.insert(response.messageId)
             mutateEntries {
+                $0.removeAll { $0.source == .resume }
                 $0.append(
                     Entry(
                         id: response.messageId,
@@ -210,7 +236,8 @@ final class ChatStore {
                         failed: false,
                         retryPayload: nil,
                         correctionMessageID: nil,
-                        taskID: nil
+                        taskID: nil,
+                        source: .resume
                     )
                 )
             }
@@ -263,6 +290,7 @@ final class ChatStore {
             let response = try await api.makeClient().chat(
                 .init(text: text, image: image, deviceId: api.deviceID, intent: nil)
             )
+            sessionMessageIDs.formUnion([response.userMessageId, response.messageId])
             mutateEntries {
                 if let index = $0.firstIndex(where: { $0.id == localID }) {
                     $0[index].id = response.userMessageId
@@ -277,7 +305,8 @@ final class ChatStore {
                         failed: false,
                         retryPayload: nil,
                         correctionMessageID: response.intent == .unknown ? response.userMessageId : nil,
-                        taskID: response.taskId
+                        taskID: response.taskId,
+                        source: response.taskId == nil ? .chat : .task
                     )
                 )
             }
@@ -316,6 +345,27 @@ final class ChatStore {
         return serverEntries + failedLocals
     }
 
+    static func historyBaseline(
+        serverEntries: [Entry],
+        sessionMessageIDs: Set<String>
+    ) -> Set<String> {
+        Set(serverEntries.map(\.id)).subtracting(sessionMessageIDs)
+    }
+
+    static func currentSessionHistory(
+        serverEntries: [Entry],
+        baselineMessageIDs: Set<String>
+    ) -> [Entry] {
+        serverEntries.filter { !baselineMessageIDs.contains($0.id) }
+    }
+
+    static func keepingLatestResume(in entries: [Entry]) -> [Entry] {
+        guard let latestResumeID = entries.last(where: { $0.source == .resume })?.id else {
+            return entries
+        }
+        return entries.filter { $0.source != .resume || $0.id == latestResumeID }
+    }
+
     private static func entry(from message: MessageRecord) -> Entry {
         let correctionMessageID: String?
         if message.role == .agent, message.intent == .unknown,
@@ -323,6 +373,14 @@ final class ChatStore {
             correctionMessageID = userMessageID
         } else {
             correctionMessageID = nil
+        }
+        let source: Entry.Source
+        if case .string("resume") = message.meta?["kind"] {
+            source = .resume
+        } else if message.taskId != nil {
+            source = .task
+        } else {
+            source = .chat
         }
         return Entry(
             id: message.id,
@@ -333,7 +391,8 @@ final class ChatStore {
             failed: false,
             retryPayload: nil,
             correctionMessageID: correctionMessageID,
-            taskID: message.taskId
+            taskID: message.taskId,
+            source: source
         )
     }
 }

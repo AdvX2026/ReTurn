@@ -1,3 +1,4 @@
+#if os(macOS)
 import SwiftUI
 
 /// The Now transcript: user bubbles on the trailing edge in accent, replies
@@ -123,3 +124,4 @@ struct NowConversationView: View {
     )
     .previewStores()
 }
+#endif

@@ -73,7 +73,14 @@ struct TodoSuggestionCard: View {
     private var visibleItems: [(index: Int, text: String, id: String?)] {
         content.todos.enumerated().compactMap { index, text in
             let id = todoID(at: index)
-            guard id.map({ !dismissedTodoIDs.contains($0) }) ?? true else {
+            let isVisible = id.map {
+                #if os(iOS)
+                !dismissedTodoIDs.contains($0) && !doneTodoIDs.contains($0)
+                #else
+                !dismissedTodoIDs.contains($0)
+                #endif
+            } ?? true
+            guard isVisible else {
                 return nil
             }
             return (index: index, text: text, id: id)
@@ -82,6 +89,34 @@ struct TodoSuggestionCard: View {
 
     @ViewBuilder
     private func row(for item: (index: Int, text: String, id: String?)) -> some View {
+        #if os(iOS)
+        HStack(alignment: .firstTextBaseline, spacing: ReTurnDesign.Spacing.medium) {
+            Text(item.text)
+                .font(ReTurnDesign.Typography.cardBody)
+                .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Spacer(minLength: 0)
+
+            let canAccept = item.id != nil && onAccept != nil
+            Button("采纳") {
+                guard let id = item.id, let onAccept else { return }
+                onAccept(id, item.text)
+            }
+            .font(ReTurnDesign.Typography.cardBody)
+            .buttonStyle(.plain)
+            .foregroundStyle(
+                canAccept
+                    ? ReTurnDesign.Colors.Accents.todo
+                    : ReTurnDesign.Colors.secondaryLabel
+            )
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(.rect)
+            .disabled(!canAccept)
+            .accessibilityLabel("采纳：\(item.text)")
+            .accessibilityIdentifier("after.todo.accept.\(item.index)")
+        }
+        #else
         let isDone = item.id.map(doneTodoIDs.contains) ?? false
 
         VStack(alignment: .leading, spacing: ReTurnDesign.Spacing.extraSmall) {
@@ -138,5 +173,6 @@ struct TodoSuggestionCard: View {
                     .foregroundStyle(.red)
             }
         }
+        #endif
     }
 }

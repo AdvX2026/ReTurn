@@ -86,6 +86,11 @@ struct TimelineDisplayItem: Identifiable, Equatable {
     }
 
     var categoryLabel: String {
+        #if os(iOS)
+        (category ?? kind.rawValue)
+            .replacing("_", with: " ")
+            .localizedCapitalized
+        #elseif os(macOS)
         switch category {
         case "browse_history": "Browse"
         case "tab_sample": "Open tab"
@@ -100,6 +105,7 @@ struct TimelineDisplayItem: Identifiable, Equatable {
         case nil:
             kind.rawValue.localizedCapitalized
         }
+        #endif
     }
 
     /// One-line secondary text under the title (provider, host, duration…).
@@ -195,6 +201,36 @@ struct TimelineDisplayItem: Identifiable, Equatable {
             }
         }
 
+        #if os(iOS)
+        return switch kind {
+        case .agent:
+            "terminal"
+        case .sleep:
+            "moon.zzz"
+        case .feed:
+            switch category {
+            case "voice": "waveform"
+            case "idea": "lightbulb"
+            case "image": "photo"
+            case "reminder": "checkmark.circle"
+            case "git": "arrow.triangle.branch"
+            default: "circle.fill"
+            }
+        case .app:
+            switch category {
+            case "browser": "safari"
+            case "dev": "hammer"
+            case "social": "bubble.left.and.bubble.right"
+            case "design": "pencil.and.outline"
+            case "media": "play.rectangle"
+            case "notes": "note.text"
+            case "system": "gearshape"
+            default: "app"
+            }
+        case .unknown:
+            "circle"
+        }
+        #elseif os(macOS)
         return switch kind {
         case .agent:
             "terminal"
@@ -231,6 +267,7 @@ struct TimelineDisplayItem: Identifiable, Equatable {
         case .unknown:
             "circle"
         }
+        #endif
     }
 
     var accessibilityValue: String {

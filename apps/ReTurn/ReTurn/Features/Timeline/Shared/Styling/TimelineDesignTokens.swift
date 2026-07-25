@@ -62,14 +62,51 @@ enum TimelineDesign {
             #endif
         }
 
-        /// One stable hue per node family so the horizontal track and the
-        /// detail list read as the same legend. Avoid reusing orange/green/teal
-        /// across unrelated kinds — each category gets its own system color.
+        /// iOS preserves its reviewed timeline palette. macOS uses a denser
+        /// one-hue-per-node-family legend for the horizontal track and list.
         static func accent(for item: TimelineDisplayItem) -> Color {
             if item.presentation == .ambient {
                 return ambient
             }
 
+            #if os(iOS)
+            if item.isUserInput {
+                return switch item.category {
+                case "voice": Color(uiColor: .systemTeal)
+                case "image": Color(uiColor: .systemCyan)
+                default: Color(uiColor: .systemGreen)
+                }
+            }
+
+            return switch item.kind {
+            case .sleep:
+                Color(uiColor: .systemIndigo)
+            case .agent:
+                Color(uiColor: .systemOrange)
+            case .feed:
+                switch item.category {
+                case "voice": Color(uiColor: .systemTeal)
+                case "idea": Color(uiColor: .systemOrange)
+                case "image": Color(uiColor: .systemCyan)
+                case "reminder": Color(uiColor: .systemGreen)
+                case "text": Color(uiColor: .systemGreen)
+                default: Color(uiColor: .systemTeal)
+                }
+            case .app:
+                switch item.category {
+                case "browser": Color(uiColor: .systemBlue)
+                case "dev": Color(uiColor: .systemOrange)
+                case "social": Color(uiColor: .systemGreen)
+                case "design": Color(uiColor: .systemPurple)
+                case "media": Color(uiColor: .systemRed)
+                case "notes": Color(uiColor: .systemOrange)
+                case "system": Color(uiColor: .systemGray)
+                default: Color(uiColor: .systemTeal)
+                }
+            case .unknown:
+                Color(uiColor: .systemGray)
+            }
+            #elseif os(macOS)
             if item.isUserInput {
                 return switch item.category {
                 case "voice": Color(AccentColor.systemTeal)
@@ -93,12 +130,7 @@ enum TimelineDesign {
                 case "text", "save_note": Color(AccentColor.systemMint)
                 case "url": Color(AccentColor.systemBlue)
                 case "git", "git_commit": Color(AccentColor.systemBrown)
-                case "email":
-                    #if os(iOS)
-                    Color(AccentColor.systemBlue)
-                    #else
-                    Color(AccentColor.systemIndigo)
-                    #endif
+                case "email": Color(AccentColor.systemIndigo)
                 case "browse_history": Color(AccentColor.systemPurple)
                 case "tab_sample": Color(AccentColor.systemPurple).opacity(0.85)
                 case "vscode_recent": Color(AccentColor.systemOrange)
@@ -120,6 +152,7 @@ enum TimelineDesign {
             case .unknown:
                 Color(AccentColor.systemGray)
             }
+            #endif
         }
     }
 
