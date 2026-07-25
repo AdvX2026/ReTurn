@@ -8,6 +8,9 @@ struct HomeTimelineView: View {
     @State private var isBeforeScrolling = false
     @State private var isBeforeChromeVisible = true
     @FocusState private var isComposerFocused: Bool
+    #if os(iOS)
+    @FocusState private var isSearchFocused: Bool
+    #endif
 
     init(initialPage: TimelinePage = .now) {
         _selectedPage = State(initialValue: initialPage)
@@ -103,6 +106,7 @@ struct HomeTimelineView: View {
                     TapGesture()
                         .onEnded {
                             isComposerFocused = false
+                            isSearchFocused = false
                         }
                 )
             #else
@@ -110,18 +114,41 @@ struct HomeTimelineView: View {
             #endif
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            ComposerBar(isFocused: $isComposerFocused)
-                .opacity(isChromeVisible ? 1 : 0)
-                .offset(
-                    y: isChromeVisible || reduceMotion
-                        ? 0
-                        : ReTurnDesign.Metrics.chromeHiddenOffset
-                )
-                .allowsHitTesting(isChromeVisible)
-                .accessibilityHidden(!isChromeVisible)
-                .animation(chromeAnimation, value: isChromeVisible)
+            Group {
+                #if os(iOS)
+                ZStack {
+                    ComposerBar(isFocused: $isComposerFocused)
+                        .opacity(isNowPage ? 1 : 0)
+                        .allowsHitTesting(isNowPage)
+                        .accessibilityHidden(!isNowPage)
+
+                    TimelineSearchBar(isFocused: $isSearchFocused)
+                        .opacity(isNowPage ? 0 : 1)
+                        .allowsHitTesting(!isNowPage)
+                        .accessibilityHidden(isNowPage)
+                }
+                #else
+                ComposerBar(isFocused: $isComposerFocused)
+                #endif
+            }
+            .opacity(isChromeVisible ? 1 : 0)
+            .offset(
+                y: isChromeVisible || reduceMotion
+                    ? 0
+                    : ReTurnDesign.Metrics.chromeHiddenOffset
+            )
+            .allowsHitTesting(isChromeVisible)
+            .accessibilityHidden(!isChromeVisible)
+            .animation(chromeAnimation, value: isChromeVisible)
         }
         .onChange(of: selectedPage) {
+            #if os(iOS)
+            if isNowPage {
+                isSearchFocused = false
+            } else {
+                isComposerFocused = false
+            }
+            #endif
             isBeforeChromeVisible = true
             isBeforeScrolling = false
         }
@@ -129,6 +156,10 @@ struct HomeTimelineView: View {
 
     private var isChromeVisible: Bool {
         selectedPage != .before || isBeforeChromeVisible
+    }
+
+    private var isNowPage: Bool {
+        (selectedPage ?? .now) == .now
     }
 
     private var isTimelineScrolling: Bool {
@@ -158,6 +189,9 @@ struct HomeTimelineView: View {
 
         if !isVisible {
             isComposerFocused = false
+            #if os(iOS)
+            isSearchFocused = false
+            #endif
         }
         isBeforeChromeVisible = isVisible
     }
