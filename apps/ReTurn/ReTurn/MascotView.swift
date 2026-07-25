@@ -9,12 +9,15 @@ import SwiftUI
 /// coordinates, same #5F87E6); limbs and eyes stay separate shapes precisely
 /// so they can animate on their own.
 ///
-/// Stat mapping (values are 0–100, colours come from the shared accents):
-/// - intake     → sparkles drifting around the body (count)
-/// - focus      → star glints inside the eyes (prominence)
-/// - output     → a little gear spinning beside the right hand (speed)
-/// - continuity → dots travelling an orbit ring (count)
-/// - energy     → aura glow plus the bounce's amplitude and tempo
+/// Stat mapping (values are 0–100, colours come from the shared accents).
+/// Binding-of-Isaac principle: state reads on the body itself, not just as
+/// trinkets around it.
+/// - intake     → sparkles spiral inward and are absorbed by the body
+/// - focus      → star glints and steady pupils; low focus makes the eyes wander
+/// - output     → a spinning gear plus sweat drops flung off the flanks
+/// - continuity → comet dots trailing tails around the orbit ring
+/// - energy     → the face itself: smile vs tired frown, hooded eyelids when
+///   drained, plus the bounce's amplitude/tempo and the aura glow
 ///
 /// All drawing happens in the SVG's own 175×150 coordinate space: the canvas
 /// is `Design.width`×`Design.height` and a single stage transform (pad +
@@ -81,6 +84,7 @@ struct MascotView: View {
                     drawIntakeSparkles(in: &stage, t: t, intake: stats.intake)
                     drawContinuityOrbit(in: &stage, t: t, continuity: stats.continuity)
                     drawOutputGear(in: &stage, t: t, output: stats.output)
+                    drawOutputSweat(in: &stage, t: t, output: stats.output)
                 }
             } symbols: {
                 Image(systemName: "gearshape.fill")
@@ -178,6 +182,7 @@ struct MascotView: View {
         fillBody(&body, color: Design.bodyColor)
         MascotAccessory.drawWorn(profession, in: &body)
         drawEyes(in: &body, t: t)
+        drawMouth(in: &body)
     }
 
     private func drawLimb(
@@ -203,23 +208,47 @@ struct MascotView: View {
             ? 0.08 + 0.92 * abs(cos(cycle / Motion.blinkDuration * .pi / 2))
             : 1
 
+        // Focus: steady pupils when high, a slow distracted wander when low.
+        let focus = stats?.focus ?? 50
+        let wander = (1 - statFraction(focus)) * 2.2 * sin(t * 0.9)
+        // Energy: below ~45 the lids slide down over the eyes -- the fatigue
+        // read. The lid is body-coloured, so the eye simply looks shorter.
+        let energy = stats?.energy ?? 50
+        let droop = Swift.max(0, (45 - energy) / 45) * 0.55
+
         for eyeX in [68.0, 97.0] as [CGFloat] {
             let eyeRect = CGRect(x: eyeX, y: 48, width: 10, height: 17)
             var eye = context
             eye.translateBy(x: eyeRect.midX, y: eyeRect.midY)
             eye.scaleBy(x: 1, y: blinkScale)
-            eye.translateBy(x: -eyeRect.midX, y: -eyeRect.midY)
+            eye.translateBy(x: -eyeRect.midX + wander, y: -eyeRect.midY)
             eye.fill(
                 Path(roundedRect: eyeRect, cornerRadius: 3),
                 with: .color(.black)
             )
+            if droop > 0.01 {
+                let lidHeight = eyeRect.height * droop
+                eye.fill(
+                    Path(roundedRect: CGRect(
+                        x: eyeRect.minX - 0.5,
+                        y: eyeRect.minY - 0.5,
+                        width: eyeRect.width + 1,
+                        height: lidHeight + 0.5
+                    ), cornerRadius: 3),
+                    with: .color(Design.bodyColor)
+                )
+                var crease = Path()
+                crease.move(to: CGPoint(x: eyeRect.minX, y: eyeRect.minY + lidHeight))
+                crease.addLine(to: CGPoint(x: eyeRect.maxX, y: eyeRect.minY + lidHeight))
+                eye.stroke(crease, with: .color(.black.opacity(0.25)), lineWidth: 1)
+            }
 
-            if let focus = stats?.focus {
+            if stats?.focus != nil {
                 let prominence = statFraction(focus, min: 0.35, max: 1)
                 let pulse = 1 + 0.18 * sin(t * 2.4 + eyeX)
                 var glint = context
                 glint.opacity = prominence
-                glint.translateBy(x: eyeRect.midX + 1.5, y: eyeRect.midY - 3.5)
+                glint.translateBy(x: eyeRect.midX + 1.5 + wander, y: eyeRect.midY - 3.5)
                 glint.scaleBy(
                     x: prominence * pulse,
                     y: prominence * pulse * blinkScale
@@ -230,6 +259,24 @@ struct MascotView: View {
                 )
             }
         }
+    }
+
+    /// The energy read on the face: a smile when charged, a tired frown when
+    /// drained, a flat "meh" line in between.
+    private func drawMouth(in context: inout GraphicsContext) {
+        let energy = stats?.energy ?? 50
+        let cheer = (statFraction(energy) - 0.5) * 2
+        var mouth = Path()
+        mouth.move(to: CGPoint(x: 83.5, y: 71))
+        mouth.addQuadCurve(
+            to: CGPoint(x: 92.5, y: 71),
+            control: CGPoint(x: 88, y: 71 + cheer * 4.5)
+        )
+        context.stroke(
+            mouth,
+            with: .color(.black.opacity(0.85)),
+            style: StrokeStyle(lineWidth: 1.8, lineCap: .round)
+        )
     }
 
     // MARK: - Stat wearables
@@ -251,20 +298,27 @@ struct MascotView: View {
         fillBody(&glow, color: ReTurnDesign.Colors.Accents.energy)
     }
 
+    /// Sparkles ride the orbit while spiralling inward, fading as the body
+    /// absorbs them, then respawn on the rim. Intake drives count and pace.
     private func drawIntakeSparkles(in context: inout GraphicsContext, t: TimeInterval, intake: Double) {
-        let count = 1 + Int((statFraction(intake) * 5).rounded())
+        let intensity = statFraction(intake)
+        let count = 2 + Int((intensity * 5).rounded())
         for i in 0..<count {
             let fi = Double(i)
+            let phase = (t * (0.25 + 0.45 * intensity) + fi / Double(count))
+                .truncatingRemainder(dividingBy: 1)
             let angle = t * Motion.sparkleOrbitSpeed + fi * (2 * .pi / Double(count))
+            let shrink = 1 - phase * 0.5
             let twinkle = 0.5 + 0.5 * sin(t * 2.2 + fi * 1.7)
             var sparkle = context
-            sparkle.opacity = 0.35 + 0.65 * twinkle
+            sparkle.opacity = (1 - phase) * (0.45 + 0.55 * twinkle)
             sparkle.translateBy(
-                x: Design.center.x + 92 * cos(angle),
-                y: Design.center.y + 58 * sin(angle)
+                x: Design.center.x + 92 * shrink * cos(angle),
+                y: Design.center.y + 58 * shrink * sin(angle)
             )
             sparkle.rotate(by: .radians(fi))
-            sparkle.scaleBy(x: 0.7 + 0.5 * twinkle, y: 0.7 + 0.5 * twinkle)
+            let scale = (0.7 + 0.5 * twinkle) * (1 - phase * 0.4)
+            sparkle.scaleBy(x: scale, y: scale)
             sparkle.fill(
                 MascotSparkle.path(size: 9),
                 with: .color(ReTurnDesign.Colors.Accents.intake)
@@ -273,6 +327,7 @@ struct MascotView: View {
     }
 
     private func drawContinuityOrbit(in context: inout GraphicsContext, t: TimeInterval, continuity: Double) {
+        let intensity = statFraction(continuity)
         let radius: CGFloat = 76
         var ring = Path()
         ring.addEllipse(in: CGRect(
@@ -282,24 +337,38 @@ struct MascotView: View {
             height: radius * 2
         ))
         var ringContext = context
-        ringContext.opacity = 0.18
+        ringContext.opacity = 0.08 + 0.2 * intensity
         ringContext.stroke(
             ring,
             with: .color(ReTurnDesign.Colors.Accents.continuity),
             style: StrokeStyle(lineWidth: 1.2, dash: [3, 6])
         )
 
-        let count = 1 + Int((statFraction(continuity) * 4).rounded())
+        // Each dot is a comet: a bright head with a short fading trail, so
+        // the streak reads as motion, not decoration.
+        let count = 1 + Int((intensity * 4).rounded())
         for i in 0..<count {
             let angle = t * Motion.dotOrbitSpeed + Double(i) * (2 * .pi / Double(count))
-            let dotCenter = CGPoint(
-                x: Design.center.x + radius * cos(angle),
-                y: Design.center.y + radius * sin(angle)
-            )
-            context.fill(
-                Path(ellipseIn: CGRect(x: dotCenter.x - 2.8, y: dotCenter.y - 2.8, width: 5.6, height: 5.6)),
-                with: .color(ReTurnDesign.Colors.Accents.continuity)
-            )
+            for k in 0..<4 {
+                let fk = Double(k)
+                let trailAngle = angle - fk * 0.16
+                let point = CGPoint(
+                    x: Design.center.x + radius * cos(trailAngle),
+                    y: Design.center.y + radius * sin(trailAngle)
+                )
+                let diameter = 5.6 * (1 - fk * 0.18)
+                var segment = context
+                segment.opacity = (1 - fk / 4) * (0.35 + 0.65 * intensity)
+                segment.fill(
+                    Path(ellipseIn: CGRect(
+                        x: point.x - diameter / 2,
+                        y: point.y - diameter / 2,
+                        width: diameter,
+                        height: diameter
+                    )),
+                    with: .color(ReTurnDesign.Colors.Accents.continuity)
+                )
+            }
         }
     }
 
@@ -311,6 +380,31 @@ struct MascotView: View {
         gear.translateBy(x: 166, y: 82)
         gear.rotate(by: .radians(t * spinSpeed))
         gear.draw(resolved, in: CGRect(x: -7.5, y: -7.5, width: 15, height: 15))
+    }
+
+    /// High output flings sweat drops off the head's flanks -- the grind
+    /// read. Below 50 the mascot works dry.
+    private func drawOutputSweat(in context: inout GraphicsContext, t: TimeInterval, output: Double) {
+        let intensity = statFraction(output)
+        guard intensity > 0.5 else { return }
+        let dropCount = intensity > 0.8 ? 2 : 1
+        for i in 0..<dropCount {
+            let fi = Double(i)
+            let phase = (t * (0.6 + 0.7 * intensity) + fi * 0.5)
+                .truncatingRemainder(dividingBy: 1)
+            let side: CGFloat = i % 2 == 0 ? -1 : 1
+            let x = Design.center.x + side * (22 + phase * 28)
+            let y = 40 + phase * 55 + phase * phase * 25
+            var drop = context
+            drop.opacity = (1 - phase) * 0.9
+            drop.translateBy(x: x, y: y)
+            let scale = 0.8 + 0.4 * phase
+            drop.scaleBy(x: scale, y: scale)
+            drop.fill(
+                MascotSweat.path(size: 7),
+                with: .color(Color(red: 0.55, green: 0.78, blue: 1))
+            )
+        }
     }
 
     // MARK: - Helpers
@@ -332,6 +426,20 @@ struct MascotView: View {
             )
         }
         return Text(parts.joined(separator: ", "))
+    }
+}
+
+/// Teardrop used for output sweat. The path is centred on the origin with
+/// the tip pointing up, so callers can translate and scale it freely.
+enum MascotSweat {
+    static func path(size: CGFloat) -> Path {
+        let r = size / 2
+        var path = Path(ellipseIn: CGRect(x: -r, y: -r * 0.4, width: size, height: size))
+        path.move(to: CGPoint(x: 0, y: -r * 1.5))
+        path.addLine(to: CGPoint(x: r * 0.86, y: r * 0.1))
+        path.addLine(to: CGPoint(x: -r * 0.86, y: r * 0.1))
+        path.closeSubpath()
+        return path
     }
 }
 
