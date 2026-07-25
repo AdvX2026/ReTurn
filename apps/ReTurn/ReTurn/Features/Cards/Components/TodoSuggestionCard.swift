@@ -32,22 +32,29 @@ struct TodoSuggestionCard: View {
 
     var body: some View {
         CardSurface {
-            Button {
-                onOpen?()
-            } label: {
+            if let onOpen {
+                Button(action: onOpen) {
+                    CardHeader(
+                        icon: "checklist",
+                        title: "Tomorrow",
+                        tint: ReTurnDesign.Colors.Accents.todo,
+                        detail: visibleItems.count.formatted()
+                    )
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .frame(minHeight: 44)
+                .accessibilityIdentifier("after.todo.open")
+            } else {
                 CardHeader(
                     icon: "checklist",
                     title: "Tomorrow",
                     tint: ReTurnDesign.Colors.Accents.todo,
                     detail: visibleItems.count.formatted(),
-                    showsChevron: onOpen != nil
+                    showsChevron: false
                 )
-                .contentShape(.rect)
+                .accessibilityIdentifier("after.todo.open")
             }
-            .buttonStyle(.plain)
-            .frame(minHeight: 44)
-            .disabled(onOpen == nil)
-            .accessibilityIdentifier("after.todo.open")
 
             if visibleItems.isEmpty {
                 Text("All handled.")
@@ -103,7 +110,7 @@ struct TodoSuggestionCard: View {
                 guard let id = item.id, let onAccept else { return }
                 onAccept(id, item.text)
             }
-            .font(ReTurnDesign.Typography.cardBody)
+            .font(.subheadline.weight(.regular))
             .buttonStyle(.plain)
             .foregroundStyle(
                 canAccept

@@ -33,6 +33,9 @@ test("generates realistic linked mock data", () => {
     const tomorrowCards = db
       .prepare(`SELECT id FROM cards WHERE type = 'todo_suggestion'`)
       .all();
+    const healthCards = db
+      .prepare(`SELECT date, content_json FROM cards WHERE type = 'health'`)
+      .all() as Array<{ date: string; content_json: string }>;
 
     assert.equal(result.days, 7);
     assert.equal(inspected.counts.days, 7);
@@ -41,6 +44,13 @@ test("generates realistic linked mock data", () => {
     assert.ok(result.savedDays >= 1);
     assert.ok(inspected.counts.cards >= result.savedDays);
     assert.equal(tomorrowCards.length, 1);
+    assert.equal(healthCards.length, 1);
+    const healthContent = JSON.parse(healthCards[0]!.content_json) as Record<
+      string,
+      unknown
+    >;
+    assert.equal(typeof healthContent.sleep_minutes, "number");
+    assert.equal(typeof healthContent.steps, "number");
     assert.deepEqual(foreignKeyErrors, []);
     for (const kind of ["health_daily", "app_sample", "reminder", "text", "email"]) {
       assert.ok(kinds.has(kind), `expected ${kind} mock nodes`);

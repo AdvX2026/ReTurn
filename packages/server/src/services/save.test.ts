@@ -75,6 +75,28 @@ describe("saveToday", () => {
     assert.equal(r.streak >= 1, true);
   });
 
+  it("creates a health card when health data exists and ferment omits advice", async () => {
+    insertNode(db, {
+      client_uuid: crypto.randomUUID(),
+      kind: "health_daily",
+      content: JSON.stringify({ sleep_minutes: 0, steps: 0 }),
+      source_meta: { sleep_minutes: 0, steps: 0 },
+      date,
+    });
+
+    await saveToday(db, { date });
+
+    const cards = listCards(db, { direction: "future", limit: 20 });
+    const health = cards.cards.find((card) => card.type === "health");
+    assert.ok(health);
+    assert.equal(health.date, addDays(date, 1));
+    assert.deepEqual(health.content, {
+      advice: "今天的睡眠与活动数据已记录，明天继续保持规律作息和适量活动。",
+      sleep_minutes: 0,
+      steps: 0,
+    });
+  });
+
   it("keeps the day open and does not persist a save note when ferment fails", async () => {
     const realFetch = globalThis.fetch;
     globalThis.fetch = async () => new Response("provider unavailable", { status: 503 });

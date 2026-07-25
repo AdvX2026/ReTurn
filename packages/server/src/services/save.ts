@@ -321,12 +321,20 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
       });
       cardsCreated++;
     }
-    if (ferment.health_advice) {
+    const healthAdvice = ferment.health_advice?.trim();
+    const hasHealthData = health.sleepMinutes !== null || health.steps !== null;
+    if (healthAdvice || hasHealthData) {
+      const fallbackAdvice =
+        health.sleepMinutes !== null && health.steps !== null
+          ? "今天的睡眠与活动数据已记录，明天继续保持规律作息和适量活动。"
+          : health.sleepMinutes !== null
+            ? "今天的睡眠数据已记录，明天优先保持规律作息，给身体留出恢复空间。"
+            : "今天的活动数据已记录，明天继续安排适量活动，也记得留出恢复时间。";
       insertCard(db, {
         type: "health",
         date: nextDate,
         content: {
-          advice: ferment.health_advice,
+          advice: healthAdvice || fallbackAdvice,
           sleep_minutes: health.sleepMinutes,
           steps: health.steps,
         },

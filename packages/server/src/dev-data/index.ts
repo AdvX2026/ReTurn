@@ -7,10 +7,12 @@ import {
   insertMessage,
   insertNode,
   insertTodo,
+  listNodesByDate,
   markDaySaved,
   upsertDevice,
 } from "../db/repo.js";
 import type { Db } from "../db/schema.js";
+import { extractHealth } from "../stats/compute.js";
 import { computeLiveStats } from "../stats/live.js";
 import { addDays, lastNDays, parseDate, todayDate, uuid } from "../util/time.js";
 
@@ -613,6 +615,25 @@ function finalizeSavedDay(
       content: { todos: todoTexts, todo_ids: todoIds },
     });
     db.prepare(`UPDATE cards SET created_at = ? WHERE id = ?`).run(saveAt, todoCard.id);
+  }
+
+  if (includeTomorrowCard) {
+    const health = extractHealth(listNodesByDate(db, date));
+    if (health.sleepMinutes !== null || health.steps !== null) {
+      const healthCard = insertCard(db, {
+        type: "health",
+        date: addDays(date, 1),
+        content: {
+          advice: "今天的睡眠与活动数据已记录，明天继续保持规律作息和适量活动。",
+          sleep_minutes: health.sleepMinutes,
+          steps: health.steps,
+        },
+      });
+      db.prepare(`UPDATE cards SET created_at = ? WHERE id = ?`).run(
+        saveAt,
+        healthCard.id,
+      );
+    }
   }
 
   if (chance(rng, 0.45)) {

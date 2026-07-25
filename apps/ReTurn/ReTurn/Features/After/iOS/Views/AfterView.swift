@@ -73,6 +73,13 @@ struct AfterView: View {
                     ) {
                         if hasSuggestions {
                             CardGroup("Suggestions") {
+                                ForEach(healthCards.indices, id: \.self) { index in
+                                    HealthAdviceCard(
+                                        content: healthCards[index],
+                                        onOpen: onOpenHealth
+                                    )
+                                }
+
                                 ForEach(todoSuggestions.indices, id: \.self) { index in
                                     TodoSuggestionCard(
                                         content: todoSuggestions[index],
@@ -83,13 +90,6 @@ struct AfterView: View {
                                         onDone: onTodoDone,
                                         onAccept: onTodoAccept,
                                         onDismiss: onTodoDismiss
-                                    )
-                                }
-
-                                ForEach(healthCards.indices, id: \.self) { index in
-                                    HealthAdviceCard(
-                                        content: healthCards[index],
-                                        onOpen: onOpenHealth
                                     )
                                 }
                             }

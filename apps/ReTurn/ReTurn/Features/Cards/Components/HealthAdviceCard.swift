@@ -13,44 +13,52 @@ struct HealthAdviceCard: View {
     }
 
     var body: some View {
-        Button {
-            onOpen?()
-        } label: {
-            CardSurface {
-                CardHeader(
-                    icon: "heart.fill",
-                    title: "Health",
-                    tint: ReTurnDesign.Colors.Accents.health,
-                    showsChevron: onOpen != nil
-                )
-
-                CardHeadline(text: content.advice)
-
-                if content.sleepMinutes != nil || content.steps != nil {
-                    CardDivider()
-
-                    HStack(spacing: 0) {
-                        if let sleepMinutes = content.sleepMinutes {
-                            CardReading(
-                                name: "睡眠",
-                                value: formattedSleep(minutes: sleepMinutes)
-                            )
-                        }
-
-                        if let steps = content.steps {
-                            CardReading(
-                                name: "步数",
-                                value: steps.formatted()
-                            )
-                        }
-                    }
-                    .padding(.top, ReTurnDesign.Spacing.extraSmall)
+        Group {
+            if let onOpen {
+                Button(action: onOpen) {
+                    cardContent
                 }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("after.health.open")
+            } else {
+                cardContent
+                    .accessibilityIdentifier("after.health.open")
             }
         }
-        .buttonStyle(.plain)
-        .disabled(onOpen == nil)
-        .accessibilityIdentifier("after.health.open")
+    }
+
+    private var cardContent: some View {
+        CardSurface {
+            CardHeader(
+                icon: "heart.fill",
+                title: "Health",
+                tint: ReTurnDesign.Colors.Accents.health,
+                showsChevron: onOpen != nil
+            )
+
+            CardHeadline(text: content.advice)
+
+            if content.sleepMinutes != nil || content.steps != nil {
+                CardDivider()
+
+                HStack(spacing: 0) {
+                    if let sleepMinutes = content.sleepMinutes {
+                        CardReading(
+                            name: "睡眠",
+                            value: formattedSleep(minutes: sleepMinutes)
+                        )
+                    }
+
+                    if let steps = content.steps {
+                        CardReading(
+                            name: "步数",
+                            value: steps.formatted()
+                        )
+                    }
+                }
+                .padding(.top, ReTurnDesign.Spacing.extraSmall)
+            }
+        }
     }
 
     private func formattedSleep(minutes: Int) -> String {
