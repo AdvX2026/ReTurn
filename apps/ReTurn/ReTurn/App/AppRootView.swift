@@ -13,3 +13,9 @@ struct AppRootView: View {
 #Preview {
     AppRootView()
 }
+
+#if os(iOS)
+#Preview("Before") {
+    HomeTimelineView(initialPage: .before)
+}
+#endif

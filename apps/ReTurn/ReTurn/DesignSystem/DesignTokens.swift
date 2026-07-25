@@ -74,6 +74,8 @@ enum ReTurnDesign {
         /// dims rather than disappears so the current page stays readable and
         /// the labels stay tappable.
         static let navigationDimmedOpacity: Double = 0.3
+        static let navigationGradientHeight: CGFloat = 72
+        static let chromeHiddenOffset: CGFloat = 14
         static let composerRegularMaxWidth: CGFloat = 640
         static let composerFocusedRegularMaxWidth: CGFloat = 680
         static let composerHeight: CGFloat = 50
@@ -173,5 +175,6 @@ enum ReTurnDesign {
         /// How long the navigation stays at full strength after a page settles.
         static let navigationDimDelay = 1.5
         static let navigationDimDuration = 0.45
+        static let chromeVisibilityDuration = 0.22
     }
 }

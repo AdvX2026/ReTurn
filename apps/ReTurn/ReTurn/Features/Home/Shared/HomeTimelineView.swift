@@ -1,22 +1,34 @@
 import SwiftUI
 
 struct HomeTimelineView: View {
-    @State private var selectedPage: TimelinePage? = .now
-    @State private var isScrolling = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    @State private var selectedPage: TimelinePage?
+    @State private var isPagerScrolling = false
+    @State private var isBeforeScrolling = false
+    @State private var isBeforeChromeVisible = true
     @FocusState private var isComposerFocused: Bool
 
+    init(initialPage: TimelinePage = .now) {
+        _selectedPage = State(initialValue: initialPage)
+    }
+
     var body: some View {
-        let pager = ScrollView(.horizontal) {
+        let pager = ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(spacing: 0) {
                 ForEach(TimelinePage.allCases) { page in
-                    TimelinePageContent(page: page)
+                    TimelinePageContent(
+                        page: page,
+                        isBeforeChromeVisible: isBeforeChromeVisible,
+                        onBeforeChromeVisibilityChange: updateBeforeChromeVisibility,
+                        onBeforeScrollActivityChange: updateBeforeScrollActivity
+                    )
                         .containerRelativeFrame([.horizontal, .vertical])
                         .id(page)
                 }
             }
             .scrollTargetLayout()
         }
-        .scrollIndicators(.hidden)
         .scrollTargetBehavior(.paging)
         .scrollPosition(id: $selectedPage)
 
@@ -27,12 +39,17 @@ struct HomeTimelineView: View {
             // Scroll phases let the navigation wake the moment a drag starts and
             // start its countdown only once the pager truly stops -- `scrollPosition`
             // updates when the settle animation begins, which is too early for both.
-            // On older systems `isScrolling` stays false and the navigation falls
+            // On older systems `isPagerScrolling` stays false and the navigation falls
             // back to waking on the page change itself.
             if #available(iOS 18.0, macOS 15.0, *) {
                 pager
                     .onScrollPhaseChange { _, phase in
-                        isScrolling = phase != .idle
+                        let isScrolling = phase != ScrollPhase.idle
+                        isPagerScrolling = isScrolling
+                        if isScrolling {
+                            isBeforeChromeVisible = true
+                            isBeforeScrolling = false
+                        }
                     }
             } else {
                 pager
@@ -41,9 +58,19 @@ struct HomeTimelineView: View {
         .safeAreaInset(edge: .top, spacing: 0) {
             TimelinePageNavigation(
                 selectedPage: selectedPage,
-                isScrolling: isScrolling,
+                isScrolling: isTimelineScrolling,
+                isVisible: isChromeVisible,
                 onSelect: select
             )
+            .opacity(isChromeVisible ? 1 : 0)
+            .offset(
+                y: isChromeVisible || reduceMotion
+                    ? 0
+                    : -ReTurnDesign.Metrics.chromeHiddenOffset
+            )
+            .allowsHitTesting(isChromeVisible)
+            .accessibilityHidden(!isChromeVisible)
+            .animation(chromeAnimation, value: isChromeVisible)
         }
 
         return Group {
@@ -61,7 +88,32 @@ struct HomeTimelineView: View {
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             ComposerBar(isFocused: $isComposerFocused)
+                .opacity(isChromeVisible ? 1 : 0)
+                .offset(
+                    y: isChromeVisible || reduceMotion
+                        ? 0
+                        : ReTurnDesign.Metrics.chromeHiddenOffset
+                )
+                .allowsHitTesting(isChromeVisible)
+                .accessibilityHidden(!isChromeVisible)
+                .animation(chromeAnimation, value: isChromeVisible)
         }
+        .onChange(of: selectedPage) {
+            isBeforeChromeVisible = true
+            isBeforeScrolling = false
+        }
+    }
+
+    private var isChromeVisible: Bool {
+        selectedPage != .before || isBeforeChromeVisible
+    }
+
+    private var isTimelineScrolling: Bool {
+        isPagerScrolling || (selectedPage == .before && isBeforeScrolling)
+    }
+
+    private var chromeAnimation: Animation {
+        .easeInOut(duration: ReTurnDesign.Motion.chromeVisibilityDuration)
     }
 
     private func select(_ page: TimelinePage) {
@@ -71,8 +123,26 @@ struct HomeTimelineView: View {
             selectedPage = page
         }
     }
-}
 
-#Preview {
-    HomeTimelineView()
+    private func updateBeforeChromeVisibility(_ isVisible: Bool) {
+        guard
+            selectedPage == .before,
+            !isPagerScrolling,
+            isBeforeChromeVisible != isVisible
+        else {
+            return
+        }
+
+        if !isVisible {
+            isComposerFocused = false
+        }
+        isBeforeChromeVisible = isVisible
+    }
+
+    private func updateBeforeScrollActivity(_ isScrolling: Bool) {
+        isBeforeScrolling =
+            selectedPage == .before
+            && !isPagerScrolling
+            && isScrolling
+    }
 }

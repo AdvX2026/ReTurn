@@ -3,6 +3,7 @@ import SwiftUI
 struct TimelinePageNavigation: View {
     let selectedPage: TimelinePage?
     let isScrolling: Bool
+    let isVisible: Bool
     let onSelect: (TimelinePage) -> Void
 
     @State private var isDimmed = false
@@ -50,15 +51,38 @@ struct TimelinePageNavigation: View {
             .easeInOut(duration: ReTurnDesign.Motion.navigationDimDuration),
             value: isDimmed
         )
+        .background(alignment: .top) {
+            #if os(iOS)
+            LinearGradient(
+                colors: [
+                    ReTurnDesign.Colors.screenBackground,
+                    ReTurnDesign.Colors.screenBackground.opacity(0.96),
+                    ReTurnDesign.Colors.screenBackground.opacity(0),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: ReTurnDesign.Metrics.navigationGradientHeight)
+            .allowsHitTesting(false)
+            #else
+            EmptyView()
+            #endif
+        }
         // Restarts whenever the page changes or the pager starts and stops, so
         // the navigation is at full strength for the whole gesture and only
         // recedes once everything settles. Opacity does not affect hit testing,
         // so the labels stay tappable while dimmed.
-        .task(id: Activity(page: selectedPage, isScrolling: isScrolling)) {
+        .task(
+            id: Activity(
+                page: selectedPage,
+                isScrolling: isScrolling,
+                isVisible: isVisible
+            )
+        ) {
             isDimmed = false
             // Hold while the pager is still moving; the countdown belongs to
             // the restart that follows it stopping.
-            guard !isScrolling else { return }
+            guard isVisible, !isScrolling else { return }
 
             try? await Task.sleep(for: .seconds(ReTurnDesign.Motion.navigationDimDelay))
             // `try?` swallows the cancellation error, so a superseded timer
@@ -73,5 +97,6 @@ struct TimelinePageNavigation: View {
     private struct Activity: Equatable {
         let page: TimelinePage?
         let isScrolling: Bool
+        let isVisible: Bool
     }
 }

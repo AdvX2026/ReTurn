@@ -3,7 +3,69 @@ import Foundation
 import Testing
 @testable import ReTurn
 
+@MainActor
 struct TimelinePresentationTests {
+    @Test func timelineChromeHidesOnlyAfterMeaningfulDownwardTravel() {
+        let tracker = TimelineChromeScrollTracker()
+        tracker.setScrolling(true)
+
+        #expect(tracker.update(offset: 0, isChromeVisible: true) == nil)
+        #expect(tracker.update(offset: 12, isChromeVisible: true) == nil)
+        #expect(tracker.update(offset: 23, isChromeVisible: true) == nil)
+        #expect(tracker.update(offset: 24, isChromeVisible: true) == false)
+    }
+
+    @Test func timelineChromeRevealsSoonerWhenScrollingUp() {
+        let tracker = TimelineChromeScrollTracker()
+        tracker.setScrolling(true)
+
+        _ = tracker.update(offset: 0, isChromeVisible: true)
+        _ = tracker.update(offset: 24, isChromeVisible: true)
+
+        #expect(tracker.update(offset: 18, isChromeVisible: false) == nil)
+        #expect(tracker.update(offset: 12, isChromeVisible: false) == true)
+    }
+
+    @Test func timelineChromeDirectionReversalResetsItsTravelAnchor() {
+        let tracker = TimelineChromeScrollTracker()
+        tracker.setScrolling(true)
+
+        _ = tracker.update(offset: 0, isChromeVisible: true)
+        #expect(tracker.update(offset: 18, isChromeVisible: true) == nil)
+        #expect(tracker.update(offset: 10, isChromeVisible: true) == nil)
+        #expect(tracker.update(offset: 33, isChromeVisible: true) == nil)
+        #expect(tracker.update(offset: 34, isChromeVisible: true) == false)
+    }
+
+    @Test func timelineChromeAlwaysRevealsAtTheTop() {
+        let tracker = TimelineChromeScrollTracker()
+        tracker.setScrolling(true)
+
+        #expect(tracker.update(offset: 10, isChromeVisible: false) == nil)
+        #expect(tracker.update(offset: 8, isChromeVisible: false) == true)
+    }
+
+    @Test func timelineChromeIgnoresLayoutOffsetsWhileIdle() {
+        let tracker = TimelineChromeScrollTracker()
+
+        #expect(tracker.update(offset: 120, isChromeVisible: true) == nil)
+    }
+
+    @Test func timelineChromeResetsMotionBetweenScrollPhases() {
+        let tracker = TimelineChromeScrollTracker()
+        tracker.setScrolling(true)
+
+        _ = tracker.update(offset: 0, isChromeVisible: true)
+        #expect(tracker.update(offset: 20, isChromeVisible: true) == nil)
+
+        tracker.setScrolling(false)
+        #expect(tracker.update(offset: 80, isChromeVisible: true) == nil)
+
+        tracker.setScrolling(true)
+        #expect(tracker.update(offset: 80, isChromeVisible: true) == nil)
+        #expect(tracker.update(offset: 84, isChromeVisible: true) == nil)
+    }
+
     @Test func mapsContractKindsToTimelinePresentation() throws {
         let point = try #require(
             TimelineDisplayItem(

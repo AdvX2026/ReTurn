@@ -73,7 +73,7 @@ enum TimelineDesign {
 
     enum Layout {
         static let contentHorizontalPadding: CGFloat = 20
-        static let contentTopPadding: CGFloat = 18
+        static let contentTopPadding: CGFloat = 96
         static let contentBottomPadding: CGFloat = 36
         static let daySpacing: CGFloat = 38
         static let dayHeaderBottomPadding: CGFloat = 18
@@ -153,6 +153,10 @@ enum TimelineDesign {
         static let pressedContentOpacity = 0.88
         static let inputPressedFillOpacity = 0.08
         static let pressAnimationDuration = 0.12
+        static let chromeOffsetSampleDistance: CGFloat = 4
+        static let chromeHideDistance: CGFloat = 24
+        static let chromeRevealDistance: CGFloat = 12
+        static let chromeTopRevealDistance: CGFloat = 8
     }
 }
 #endif
