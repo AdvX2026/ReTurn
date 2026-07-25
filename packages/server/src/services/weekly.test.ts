@@ -11,11 +11,7 @@ import {
 import { type Db, openMemoryDb } from "../db/schema.js";
 import { addDays } from "../util/time.js";
 import { saveToday } from "./save.js";
-import {
-  averageStats,
-  shouldProduceWeekly,
-  weekWindow,
-} from "./weekly.js";
+import { averageStats, shouldProduceWeekly, weekWindow } from "./weekly.js";
 
 describe("weekly helpers", () => {
   let db: Db;

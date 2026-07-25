@@ -211,9 +211,9 @@ function migrate(db: Db): void {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_todos_status ON todos(status)`);
 
   // Ensure singleton profile row exists (CREATE TABLE IF NOT EXISTS is not enough).
-  const profile = db
-    .prepare(`SELECT id FROM user_profile WHERE id = 1`)
-    .get() as { id: number } | undefined;
+  const profile = db.prepare(`SELECT id FROM user_profile WHERE id = 1`).get() as
+    | { id: number }
+    | undefined;
   if (!profile) {
     db.prepare(
       `INSERT INTO user_profile (

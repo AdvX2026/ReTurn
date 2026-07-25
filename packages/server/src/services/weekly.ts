@@ -11,12 +11,7 @@ import type {
 } from "@return/shared";
 import { WeeklyFermentResultSchema } from "@return/shared";
 import { extractJson, llmChat } from "../ai/llm.js";
-import {
-  type DayRow,
-  getCardByTypeDate,
-  insertCard,
-  listSavedDays,
-} from "../db/repo.js";
+import { type DayRow, getCardByTypeDate, insertCard, listSavedDays } from "../db/repo.js";
 import type { Db } from "../db/schema.js";
 import { addDays, parseDate } from "../util/time.js";
 
@@ -138,9 +133,7 @@ function buildWeeklyPrompt(input: {
   daySummaries: Array<{ date: string; summary: string }>;
   profileProfession?: string | null;
 }): string {
-  const days = input.daySummaries
-    .map((d) => `- ${d.date}: ${d.summary}`)
-    .join("\n");
+  const days = input.daySummaries.map((d) => `- ${d.date}: ${d.summary}`).join("\n");
   return `Write a short narrative weekly recap for a personal second-brain user.
 
 Rules:

@@ -8,6 +8,7 @@ import {
 import { buildFermentContext, runFerment } from "../ai/ferment.js";
 import { config } from "../config.js";
 import {
+  applyInferredProfession,
   countCrossDayEdges,
   currentCadence,
   ensureDay,
@@ -15,6 +16,7 @@ import {
   getDayByDate,
   getNodeByClientUuid,
   getNodeById,
+  getUserProfile,
   insertCard,
   insertEdge,
   insertNode,
@@ -22,8 +24,6 @@ import {
   listEdgesByDay,
   listNodesByDate,
   listSavedDays,
-  applyInferredProfession,
-  getUserProfile,
   listTodosByDay,
   listTodosByStatus,
   markDaySaved,
