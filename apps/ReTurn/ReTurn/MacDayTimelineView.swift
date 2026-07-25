@@ -2,56 +2,56 @@
 import Foundation
 import SwiftUI
 
-/// The desktop reading of one timeline day: a horizontal 24-hour track, the
-/// way Screen Time and Health's sleep chart lay time out left to right.
-/// Spans become tinted bars (packed into extra lanes when they overlap),
-/// user inputs become symbol dots underneath, ambient traces stay quiet dots
-/// on the baseline. Same `TimelineDisplayItem` data and the same accent
-/// mapping as the mobile rail — only the projection changes.
+/// Continuous desktop timeline track: a single horizontal Gantt across the
+/// loaded date range (not per-day cards). Spans pack into lanes, inputs are
+/// symbol dots, ambient traces sit on the baseline. Height is fixed from
+/// design tokens so the track never grows with lane count.
 struct MacDayTimelineView: View {
-    let day: TimelineDay
+    let items: [TimelineDisplayItem]
+    /// Start of day for the leftmost edge of the track.
+    let rangeStart: Date
+    let dayCount: Int
     @Binding var selectedItemID: String?
-    /// Explicit instead of a GeometryReader: the track lives in a horizontal
-    /// ScrollView and may be zoomed wider than the viewport, so the parent
-    /// computes the width (viewport × zoom) and hands it down.
+    /// Total track width (viewport × zoom × dayCount).
     let width: CGFloat
 
     private typealias Tokens = ReTurnDesign.Desktop.Before
 
     var body: some View {
         VStack(alignment: .leading, spacing: ReTurnDesign.Spacing.extraSmall) {
-            hourLabels(width: width)
+            axisLabels
 
             ZStack(alignment: .topLeading) {
-                gridLines(width: width)
-                sleepBars(width: width)
-                activityBars(width: width)
-                inputDots(width: width)
-                ambientDots(width: width)
+                gridLines
+                sleepBars
+                activityBars
+                inputDots
+                ambientDots
             }
-            .frame(width: width, height: contentHeight)
+            .frame(width: width, height: Tokens.timelineTrackContentHeight, alignment: .topLeading)
+            .clipped()
         }
-        .frame(width: width)
+        .frame(width: width, height: Tokens.timelineTrackHeight, alignment: .topLeading)
     }
 
     // ── items by lane ────────────────────────────────────
 
     private var sleepItems: [TimelineDisplayItem] {
-        day.items.filter { $0.kind == .sleep }
+        items.filter { $0.kind == .sleep }
     }
 
     private var activityItems: [TimelineDisplayItem] {
-        day.items.filter {
+        items.filter {
             ($0.presentation == .span || $0.presentation == .major) && $0.kind != .sleep
         }
     }
 
     private var inputItems: [TimelineDisplayItem] {
-        day.items.filter { $0.presentation == .point }
+        items.filter { $0.presentation == .point }
     }
 
     private var ambientItems: [TimelineDisplayItem] {
-        day.items.filter { $0.presentation == .ambient }
+        items.filter { $0.presentation == .ambient }
     }
 
     /// Greedy interval packing: overlapping spans spill into a new lane.
@@ -70,108 +70,124 @@ struct MacDayTimelineView: View {
         return lanes
     }
 
-    // ── vertical layout ──────────────────────────────────
+    // ── vertical layout (fixed) ──────────────────────────
 
-    private var sleepSection: CGFloat {
-        sleepItems.isEmpty ? 0 : Tokens.timelineSleepBarHeight + Tokens.timelineLaneGap
+    private var activityLanePitch: CGFloat {
+        Tokens.timelineSpanBarHeight + Tokens.timelineLaneGap
     }
 
-    private var activitySection: CGFloat {
-        activityLanes.isEmpty
-            ? 0
-            : CGFloat(activityLanes.count) * (Tokens.timelineSpanBarHeight + Tokens.timelineLaneGap)
+    private var activityTop: CGFloat {
+        Tokens.timelineSleepBarHeight + Tokens.timelineLaneGap
     }
 
-    private var inputSection: CGFloat {
-        inputItems.isEmpty ? 0 : Tokens.timelineInputDotSize + Tokens.timelineLaneGap
+    private var inputTop: CGFloat {
+        activityTop + CGFloat(Tokens.timelineTrackVisibleLanes) * activityLanePitch
     }
 
-    private var ambientSection: CGFloat {
-        ambientItems.isEmpty ? 0 : Tokens.timelineAmbientDotSize + Tokens.timelineLaneGap
-    }
-
-    private var contentHeight: CGFloat {
-        max(
-            sleepSection + activitySection + inputSection + ambientSection - Tokens.timelineLaneGap,
-            Tokens.timelineSpanBarHeight
-        )
-    }
-
-    private var activityTop: CGFloat { sleepSection }
-    private var inputTop: CGFloat { sleepSection + activitySection }
     private var ambientTop: CGFloat {
-        sleepSection + activitySection + inputSection
+        inputTop + Tokens.timelineInputDotSize + Tokens.timelineLaneGap
     }
 
     // ── axis ─────────────────────────────────────────────
 
+    private var dayWidth: CGFloat {
+        width / CGFloat(max(dayCount, 1))
+    }
+
+    private var totalMinutes: CGFloat {
+        CGFloat(max(dayCount, 1)) * 1440
+    }
+
     /// Tick density follows zoom: hourly once an hour is wide enough to
     /// read, otherwise every three hours.
-    private var tickInterval: Int {
-        width / 24 >= Tokens.timelineDenseTickHourWidth ? 1 : 3
+    private var tickIntervalHours: Int {
+        dayWidth / 24 >= Tokens.timelineDenseTickHourWidth ? 1 : 3
     }
 
-    private func x(for date: Date, width: CGFloat) -> CGFloat {
-        let dayStart = Calendar.autoupdatingCurrent.startOfDay(for: day.date)
-        let minutes = CGFloat(date.timeIntervalSince(dayStart) / 60)
-        return min(max(minutes, 0), 1440) / 1440 * width
+    private func x(for date: Date) -> CGFloat {
+        let minutes = CGFloat(date.timeIntervalSince(rangeStart) / 60)
+        return min(max(minutes, 0), totalMinutes) / totalMinutes * width
     }
 
-    private func hourLabels(width: CGFloat) -> some View {
-        ZStack(alignment: .topLeading) {
-            ForEach(Array(stride(from: 0, through: 24, by: tickInterval)), id: \.self) { hour in
-                Text(String(format: "%02d:00", hour))
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .monospacedDigit()
-                    .offset(x: min(max(width * CGFloat(hour) / 24 - 17, 0), width - 34))
+    private var axisLabels: some View {
+        let calendar = Calendar.autoupdatingCurrent
+        let step = tickIntervalHours
+        let totalHours = max(dayCount, 1) * 24
+
+        return ZStack(alignment: .topLeading) {
+            ForEach(Array(stride(from: 0, through: totalHours, by: step)), id: \.self) { hourOffset in
+                let xPos = width * CGFloat(hourOffset) / CGFloat(totalHours)
+                let hourOfDay = hourOffset % 24
+                let isMidnight = hourOfDay == 0 && hourOffset != totalHours
+
+                if isMidnight, let day = calendar.date(byAdding: .hour, value: hourOffset, to: rangeStart) {
+                    Text(day, format: .dateTime.month(.abbreviated).day())
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                        .offset(x: min(max(xPos, 0), width - 40))
+                } else if hourOffset < totalHours {
+                    Text(String(format: "%02d:00", hourOfDay))
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .monospacedDigit()
+                        .offset(x: min(max(xPos - 14, 0), width - 34))
+                }
             }
         }
-        .frame(height: Tokens.timelineHourLabelHeight)
+        .frame(width: width, height: Tokens.timelineHourLabelHeight, alignment: .topLeading)
         .accessibilityHidden(true)
     }
 
-    private func gridLines(width: CGFloat) -> some View {
-        ForEach(Array(stride(from: 0, through: 24, by: tickInterval)), id: \.self) { hour in
+    private var gridLines: some View {
+        let step = tickIntervalHours
+        let totalHours = max(dayCount, 1) * 24
+
+        return ForEach(Array(stride(from: 0, through: totalHours, by: step)), id: \.self) { hourOffset in
+            let xPos = width * CGFloat(hourOffset) / CGFloat(totalHours)
+            let isMidnight = hourOffset % 24 == 0
             Rectangle()
-                .fill(Color.primary.opacity(0.06))
-                .frame(width: 1, height: contentHeight)
-                .offset(x: min(width * CGFloat(hour) / 24, width - 1))
+                .fill(Color.primary.opacity(isMidnight ? 0.12 : 0.06))
+                .frame(width: 1, height: Tokens.timelineTrackContentHeight)
+                .offset(x: min(xPos, width - 1))
         }
         .allowsHitTesting(false)
     }
 
     // ── lanes ────────────────────────────────────────────
 
-    private func sleepBars(width: CGFloat) -> some View {
+    private var sleepBars: some View {
         ForEach(sleepItems) { item in
-            spanBar(item: item, width: width, height: Tokens.timelineSleepBarHeight)
-                .offset(x: x(for: item.start, width: width), y: 0)
+            spanBar(item: item, height: Tokens.timelineSleepBarHeight)
+                .offset(x: x(for: item.start), y: 0)
         }
     }
 
-    private func activityBars(width: CGFloat) -> some View {
+    private var activityBars: some View {
         ForEach(Array(activityLanes.enumerated()), id: \.offset) { laneIndex, lane in
+            // Lanes beyond the visible budget share the last visible row so
+            // the track height stays fixed (selection still works).
+            let visualLane = min(laneIndex, Tokens.timelineTrackVisibleLanes - 1)
             ForEach(lane) { item in
-                spanBar(item: item, width: width, height: Tokens.timelineSpanBarHeight)
+                spanBar(item: item, height: Tokens.timelineSpanBarHeight)
                     .offset(
-                        x: x(for: item.start, width: width),
-                        y: activityTop + CGFloat(laneIndex) * (Tokens.timelineSpanBarHeight + Tokens.timelineLaneGap)
+                        x: x(for: item.start),
+                        y: activityTop + CGFloat(visualLane) * activityLanePitch
                     )
             }
         }
     }
 
-    private func spanBar(item: TimelineDisplayItem, width: CGFloat, height: CGFloat) -> some View {
+    private func spanBar(item: TimelineDisplayItem, height: CGFloat) -> some View {
         let tint = TimelineDesign.Colors.accent(for: item)
-        let barWidth = max(x(for: item.end, width: width) - x(for: item.start, width: width), 4)
+        let barWidth = max(x(for: item.end) - x(for: item.start), 4)
         let isSelected = selectedItemID == item.id
 
         return Button {
             selectedItemID = item.id
         } label: {
             ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .fill(tint.opacity(isSelected ? 1 : 0.8))
 
                 if barWidth >= Tokens.timelineSpanLabelMinimumWidth {
@@ -185,8 +201,8 @@ struct MacDayTimelineView: View {
             .frame(width: barWidth, height: height)
             .overlay {
                 if isSelected {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .strokeBorder(tint.opacity(0.4), lineWidth: 3)
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .strokeBorder(tint.opacity(0.4), lineWidth: 2)
                         .blendMode(.multiply)
                 }
             }
@@ -197,7 +213,7 @@ struct MacDayTimelineView: View {
         .accessibilityValue(item.accessibilityValue)
     }
 
-    private func inputDots(width: CGFloat) -> some View {
+    private var inputDots: some View {
         ForEach(inputItems) { item in
             let tint = TimelineDesign.Colors.accent(for: item)
             let isSelected = selectedItemID == item.id
@@ -224,13 +240,13 @@ struct MacDayTimelineView: View {
             .accessibilityLabel(item.label)
             .accessibilityValue(item.accessibilityValue)
             .offset(
-                x: x(for: item.start, width: width) - Tokens.timelineInputDotSize / 2,
+                x: x(for: item.start) - Tokens.timelineInputDotSize / 2,
                 y: inputTop
             )
         }
     }
 
-    private func ambientDots(width: CGFloat) -> some View {
+    private var ambientDots: some View {
         ForEach(ambientItems) { item in
             Circle()
                 .fill(TimelineDesign.Colors.ambient)
@@ -239,20 +255,23 @@ struct MacDayTimelineView: View {
                     height: Tokens.timelineAmbientDotSize
                 )
                 .offset(
-                    x: x(for: item.start, width: width) - Tokens.timelineAmbientDotSize / 2,
+                    x: x(for: item.start) - Tokens.timelineAmbientDotSize / 2,
                     y: ambientTop
                 )
         }
-        // Decorative traces only; their details live in the list below.
         .allowsHitTesting(false)
     }
 }
 
 #Preview {
+    let days = TimelinePreviewData.days.sorted { $0.date < $1.date }
+    let start = Calendar.autoupdatingCurrent.startOfDay(for: days.first?.date ?? .now)
     MacDayTimelineView(
-        day: TimelinePreviewData.days[0],
+        items: days.flatMap(\.items),
+        rangeStart: start,
+        dayCount: max(days.count, 1),
         selectedItemID: .constant(nil),
-        width: 760
+        width: 760 * CGFloat(max(days.count, 1))
     )
     .padding()
 }

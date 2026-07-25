@@ -10,6 +10,11 @@ import SwiftUI
 struct MacRootView: View {
     @State private var selection: TimelinePage? = .now
     @FocusState private var isComposerFocused: Bool
+    @Environment(ChatStore.self) private var chat: ChatStore
+    @Environment(TimelineStore.self) private var timeline: TimelineStore
+    @Environment(StatsStore.self) private var stats: StatsStore
+    @Environment(CardsStore.self) private var cards: CardsStore
+    @State private var isRefreshing = false
 
     var body: some View {
         // A plain VStack, NOT safeAreaInset: scroll content extends into
@@ -21,7 +26,10 @@ struct MacRootView: View {
             pageIndicator
 
             ScrollView(.horizontal) {
-                LazyHStack(spacing: 0) {
+                // Top alignment: if a page's ideal height is shorter than the
+                // viewport, LazyHStack's default .center left a blank band
+                // above Now. Pages still fill via containerRelativeFrame.
+                LazyHStack(alignment: .top, spacing: 0) {
                     ForEach(TimelinePage.allCases) { page in
                         pageContent(for: page)
                             .containerRelativeFrame([.horizontal, .vertical])
@@ -36,7 +44,10 @@ struct MacRootView: View {
         }
         .background(ReTurnDesign.Colors.screenBackground)
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            ComposerBar(isFocused: $isComposerFocused)
+            VStack(spacing: 0) {
+                ConnectionStatusView()
+                ComposerBar(isFocused: $isComposerFocused)
+            }
         }
         .frame(
             minWidth: ReTurnDesign.Desktop.windowMinimumWidth,
@@ -59,15 +70,57 @@ struct MacRootView: View {
             }
         }
         .background(shortcutButtons)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    Task { await refreshCurrentPage() }
+                } label: {
+                    if isRefreshing {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                }
+                .disabled(isRefreshing)
+                .accessibilityLabel("Refresh")
+                .help("Refresh the current page")
+                .keyboardShortcut("r", modifiers: .command)
+            }
+        }
+        .onChange(of: chat.pendingJump) { _, jump in
+            // Retrieval jump (F10): turn to Before and hand the date/node to
+            // the timeline browser, which consumes the focus request.
+            guard let jump else { return }
+            _ = chat.consumePendingJump()
+            timeline.requestFocus(dayKey: jump.date, nodeID: jump.nodeIds.first)
+            select(.before)
+        }
     }
 
     private var currentPage: TimelinePage { selection ?? .now }
+
+    /// The toolbar refresh (⌘R): no server push exists, so each page pulls
+    /// its own stores again — stats on Now, the viewed day + overview on
+    /// Before, the card stream on After.
+    private func refreshCurrentPage() async {
+        isRefreshing = true
+        defer { isRefreshing = false }
+        switch currentPage {
+        case .now:
+            await stats.refresh()
+        case .before:
+            await timeline.refreshViewedDay()
+        case .after:
+            await cards.refresh()
+        }
+    }
 
     @ViewBuilder
     private func pageContent(for page: TimelinePage) -> some View {
         switch page {
         case .before:
-            MacBeforeView(days: TimelinePreviewData.days)
+            MacBeforeView()
         case .now:
             MacNowPage()
         case .after:
@@ -205,29 +258,109 @@ private extension TimelinePage {
 }
 
 /// The same hero as mobile, at a fixed width: the desktop window is too wide
-/// for the iOS proportional sizing even inside the pager.
+/// for the iOS proportional sizing even inside the pager. Once the
+/// conversation starts, the hero collapses to a header over the transcript.
+///
+/// Layout is top-aligned on purpose. The mobile hero uses a bottom optical
+/// lift to sit near vertical center on a phone; on a tall desktop page the
+/// same `.frame(maxHeight: .infinity)` default (center) left a large empty
+/// band under the page indicator. Top-aligning is the root fix — no extra
+/// spacer chrome.
 private struct MacNowPage: View {
+    @Environment(ChatStore.self) private var chat: ChatStore
+    @Environment(StatsStore.self) private var stats: StatsStore
+    @Namespace private var mascotSpace
+
     var body: some View {
+        Group {
+            if chat.entries.isEmpty {
+                heroBody
+            } else {
+                conversationBody
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private var heroBody: some View {
         VStack(spacing: ReTurnDesign.Spacing.medium) {
             MascotImage()
                 .frame(width: ReTurnDesign.Desktop.nowMascotWidth)
+                .matchedGeometryEffect(id: "mascot", in: mascotSpace)
 
-            Text("Teethe is back!")
+            Text(nowGreeting(for: stats.characterState))
                 .font(ReTurnDesign.Typography.heroTitle)
                 .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
                 .multilineTextAlignment(.center)
+
+            SaveTodayButton()
+            NowActionBar()
+            SaveResultLine()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.bottom, ReTurnDesign.Metrics.heroOpticalLift * 2)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .padding(.top, ReTurnDesign.Desktop.contentPadding)
+    }
+
+    private var conversationBody: some View {
+        VStack(spacing: 0) {
+            // Header: mascot shrinks from hero into this position
+            HStack(spacing: ReTurnDesign.Spacing.medium) {
+                MascotImage()
+                    .frame(width: 28, height: 28)
+                    .matchedGeometryEffect(id: "mascot", in: mascotSpace)
+                    .accessibilityHidden(true)
+
+                Text(nowGreeting(for: stats.characterState))
+                    .font(ReTurnDesign.Typography.navigationItem)
+                    .foregroundStyle(ReTurnDesign.Colors.secondaryLabel)
+                    .lineLimit(1)
+
+                Spacer(minLength: 0)
+
+                SaveTodayButton()
+            }
+            .padding(.horizontal, ReTurnDesign.Desktop.contentPadding)
+            .padding(.vertical, ReTurnDesign.Spacing.small)
+
+            NowActionBar()
+                .padding(.horizontal, ReTurnDesign.Desktop.contentPadding)
+                .padding(.bottom, ReTurnDesign.Spacing.extraSmall)
+
+            if case .failed(let message) = chat.historyState {
+                HStack(spacing: ReTurnDesign.Spacing.small) {
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                    Spacer(minLength: 0)
+                    Button("Retry") {
+                        Task { await chat.loadHistory(force: true) }
+                    }
+                    .font(.caption)
+                }
+                .padding(.horizontal, ReTurnDesign.Desktop.contentPadding)
+                .padding(.bottom, ReTurnDesign.Spacing.extraSmall)
+            }
+
+            // Conversation fills remaining space; anchored to bottom
+            NowConversationView(entries: chat.entries)
+                .frame(maxWidth: ReTurnDesign.Metrics.composerFocusedRegularMaxWidth)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            SaveResultLine()
+                .padding(.bottom, ReTurnDesign.Spacing.extraSmall)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 }
 
 #Preview("Now · Light") {
     MacRootView()
+        .previewStores()
 }
 
 #Preview("Now · Dark") {
     MacRootView()
+        .previewStores()
         .preferredColorScheme(.dark)
 }
 #endif

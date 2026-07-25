@@ -197,24 +197,37 @@ enum ReTurnDesign {
             static let calendarCellHeight: CGFloat = 34
             static let calendarDotSize: CGFloat = 4
 
-            // Horizontal 24-hour timeline.
-            static let timelineHourLabelHeight: CGFloat = 16
-            static let timelineSpanBarHeight: CGFloat = 22
-            static let timelineSleepBarHeight: CGFloat = 12
-            static let timelineInputDotSize: CGFloat = 20
-            static let timelineAmbientDotSize: CGFloat = 5
-            static let timelineLaneGap: CGFloat = 6
+            // Continuous horizontal timeline (compact fixed chrome).
+            static let timelineHourLabelHeight: CGFloat = 14
+            static let timelineSpanBarHeight: CGFloat = 14
+            static let timelineSleepBarHeight: CGFloat = 8
+            static let timelineInputDotSize: CGFloat = 16
+            static let timelineAmbientDotSize: CGFloat = 4
+            static let timelineLaneGap: CGFloat = 4
             /// A span bar shows its label only above this width.
-            static let timelineSpanLabelMinimumWidth: CGFloat = 72
+            static let timelineSpanLabelMinimumWidth: CGFloat = 64
             /// The track opens zoomed in (about a 12-hour window) so that
             /// swiping over it always browses the Gantt instead of falling
-            /// through to page turning; 1 fits the whole day exactly.
+            /// through to page turning; 1 fits one day exactly.
             static let timelineDefaultZoom: CGFloat = 2
             /// Pinch-zoom ceiling for the horizontal timeline.
             static let timelineMaxZoom: CGFloat = 8
             /// Hour spacing (pt) above which the axis switches from 3-hour
             /// to 1-hour ticks.
             static let timelineDenseTickHourWidth: CGFloat = 90
+            /// Activity lanes budgeted into the fixed-height track.
+            static let timelineTrackVisibleLanes: Int = 2
+            /// Bars + dots area under the hour labels.
+            static var timelineTrackContentHeight: CGFloat {
+                timelineSleepBarHeight + timelineLaneGap
+                    + CGFloat(timelineTrackVisibleLanes) * (timelineSpanBarHeight + timelineLaneGap)
+                    + timelineInputDotSize + timelineLaneGap
+                    + timelineAmbientDotSize
+            }
+            /// Full track chrome (labels + content + inter-spacing).
+            static var timelineTrackHeight: CGFloat {
+                timelineHourLabelHeight + ReTurnDesign.Spacing.extraSmall + timelineTrackContentHeight
+            }
         }
 
         enum After {
