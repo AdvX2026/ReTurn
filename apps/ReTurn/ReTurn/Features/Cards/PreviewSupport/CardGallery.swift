@@ -19,10 +19,11 @@ struct CardGallery: View {
                 }
 
                 CardGroup("After") {
-                    todoCard
-                    healthCard
-                    ideaCard(provenance: .user)
-                    ideaCard(provenance: .auto)
+                    TodoSuggestionCard(content: AfterPreviewData.todoSuggestion)
+                    HealthAdviceCard(content: AfterPreviewData.health)
+                    ForEach(AfterPreviewData.ideas.indices, id: \.self) { index in
+                        IdeaCard(content: AfterPreviewData.ideas[index])
+                    }
                 }
 
                 CardGroup("States") {
@@ -114,92 +115,6 @@ struct CardGallery: View {
         }
     }
 
-    // ── After group ──────────────────────────────────────
-
-    /// Main visual: an action per row -- the only card with a side effect
-    /// (accepting writes to Apple Reminders via EventKit).
-    private var todoCard: some View {
-        CardSurface {
-            CardHeader(
-                icon: "checklist",
-                title: "Tomorrow",
-                tint: ReTurnDesign.Colors.Accents.todo,
-                detail: "3"
-            )
-
-            CardRows(items: SampleData.todos) { todo in
-                HStack(alignment: .firstTextBaseline, spacing: ReTurnDesign.Spacing.medium) {
-                    Text(todo)
-                        .font(ReTurnDesign.Typography.cardBody)
-                        .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    Spacer(minLength: 0)
-
-                    Button("采纳") {
-                        // TODO: Write to Apple Reminders via EventKit.
-                    }
-                    .font(ReTurnDesign.Typography.cardBody)
-                    .buttonStyle(.plain)
-                    .foregroundStyle(ReTurnDesign.Colors.Accents.todo)
-                }
-            }
-        }
-    }
-
-    /// Main visual: a short advice line over the two real readings. F12 keeps
-    /// this card deliberately thin -- real data, minimal copy.
-    private var healthCard: some View {
-        CardSurface {
-            CardHeader(
-                icon: "heart.fill",
-                title: "Health",
-                tint: ReTurnDesign.Colors.Accents.health
-            )
-
-            CardHeadline(text: SampleData.healthAdvice)
-
-            CardDivider()
-
-            HStack(spacing: 0) {
-                healthReading(name: "睡眠", value: "6 小时 48 分")
-                healthReading(name: "步数", value: "8,832")
-            }
-            .padding(.top, ReTurnDesign.Spacing.extraSmall)
-        }
-    }
-
-    private func healthReading(name: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: ReTurnDesign.Card.rowTextSpacing) {
-            Text(name)
-                .font(ReTurnDesign.Typography.cardRowCaption)
-                .foregroundStyle(ReTurnDesign.Colors.secondaryLabel)
-
-            Text(value)
-                .font(ReTurnDesign.Typography.cardHeadline)
-                .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    /// Main visual: the idea itself, with provenance as a quiet trailing label
-    /// -- F9 requires user-recorded and auto-extracted ideas to be distinct.
-    private func ideaCard(provenance: SampleData.Provenance) -> some View {
-        CardSurface {
-            CardHeader(
-                icon: "lightbulb.fill",
-                title: "Idea",
-                tint: ReTurnDesign.Colors.Accents.idea,
-                detail: provenance.label
-            )
-
-            Text(provenance.text)
-                .font(ReTurnDesign.Typography.cardBody)
-                .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
     // ── States group ─────────────────────────────────────
 
     /// Client-side only, driven by `saved` from /api/stats/today. Follows the
@@ -269,25 +184,6 @@ enum SampleData {
         let symbol: String
     }
 
-    enum Provenance {
-        case user
-        case auto
-
-        var label: String {
-            switch self {
-            case .user: "我记的"
-            case .auto: "它帮我记的"
-            }
-        }
-
-        var text: String {
-            switch self {
-            case .user: "卡片是总结层，时间线是明细层，两者靠「点进去」连接。"
-            case .auto: "连续三天都在下午写代码、晚上做设计，也许可以把设计固定排在晚上。"
-            }
-        }
-    }
-
     static let stats: [Stat] = [
         Stat(
             name: "摄取",
@@ -341,13 +237,6 @@ enum SampleData {
         ),
     ]
 
-    static let todos: [String] = [
-        "跟后端确认职业字段",
-        "定下 Before 时间线的色板",
-        "给卡片外壳补测试",
-    ]
-
-    static let healthAdvice = "昨晚睡了 6 小时 48 分，比平时少 1 小时。"
 }
 
 #Preview {

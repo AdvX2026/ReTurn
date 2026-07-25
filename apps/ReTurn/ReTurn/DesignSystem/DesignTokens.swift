@@ -166,6 +166,10 @@ enum ReTurnDesign {
         static let rowTextSpacing: CGFloat = 3
         static let dotSize: CGFloat = 9
         static let mascotWidth: CGFloat = 132
+        /// Keeps the last card above the persistent bottom chrome.
+        static var pageBottomPadding: CGFloat {
+            Metrics.composerHeight + groupSpacing + Spacing.large
+        }
     }
 
     enum Motion {

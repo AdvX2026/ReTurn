@@ -22,7 +22,17 @@ struct TimelinePageContent: View {
             Color.clear
             #endif
         case .after:
+            #if os(iOS)
+            // The card API store is not wired yet. Nil callbacks keep all
+            // fixture actions visibly disabled instead of implying success.
+            AfterView(
+                todoSuggestion: AfterPreviewData.todoSuggestion,
+                health: AfterPreviewData.health,
+                ideas: AfterPreviewData.ideas
+            )
+            #else
             Color.clear
+            #endif
         case .now:
             NowPage()
         }

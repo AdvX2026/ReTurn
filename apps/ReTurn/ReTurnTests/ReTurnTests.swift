@@ -25,4 +25,28 @@ struct ReTurnTests {
         #expect(ReTurnDesign.Layout.mascotWidth(in: 300) == 150)
         #expect(ReTurnDesign.Layout.mascotWidth(in: 1_024) == 195)
     }
+
+    @Test func afterPreviewCoversEveryAfterCardVariant() {
+        #expect(
+            AfterPreviewData.todoSuggestion.todos.count
+                == AfterPreviewData.todoSuggestion.todoIds.count
+        )
+        #expect(AfterPreviewData.health.sleepMinutes != nil)
+        #expect(AfterPreviewData.health.steps != nil)
+        #expect(AfterPreviewData.ideas.map(\.provenance) == [.user, .auto])
+    }
+
+    @MainActor
+    @Test func todoSuggestionsRequireStableIDsBeforeAcceptance() {
+        let card = TodoSuggestionCard(
+            content: TodoSuggestionCardContent(
+                todos: ["Has ID", "Missing ID", "Empty ID"],
+                todoIds: ["todo-1", ""]
+            )
+        )
+
+        #expect(card.todoID(at: 0) == "todo-1")
+        #expect(card.todoID(at: 1) == nil)
+        #expect(card.todoID(at: 2) == nil)
+    }
 }
