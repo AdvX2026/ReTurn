@@ -13,9 +13,9 @@ enum MascotProfession: String, CaseIterable {
 }
 
 /// Kongkong's profession accessories, drawn natively to match the mascot's
-/// flat geometry. Worn pieces (glasses, pencil, beret, tie) draw inside the
-/// body's squash transform so they deform with it; the researcher's floating
-/// magnifier draws outside it with its own bob.
+/// flat geometry. Worn pieces (glasses, pencil, beret, bow tie) draw inside
+/// the body's squash transform so they deform with it; the researcher's
+/// floating magnifier draws outside it with its own bob.
 ///
 /// Every coordinate lives in the mascot's 175×150 core design space — the
 /// caller's stage transform (pad + scale) maps it onto the canvas, so no
@@ -30,7 +30,7 @@ enum MascotAccessory {
         case .designer:
             drawBeret(in: &context)
         case .manager:
-            drawTie(in: &context)
+            drawBowTie(in: &context)
         case .researcher:
             break // The magnifier floats; see drawFloating.
         }
@@ -163,28 +163,29 @@ enum MascotAccessory {
         )
     }
 
-    /// Manager: a short, chubby tie on the chest — dark knot, red blade with
-    /// softened corners.
-    private static func drawTie(in context: inout GraphicsContext) {
+    /// Manager: a dapper bow tie under the chin — two wings flaring from a
+    /// pinched knot. (A dangling red blade on the chest read as a tongue.)
+    private static func drawBowTie(in context: inout GraphicsContext) {
         let red = Color(red: 0.85, green: 0.25, blue: 0.3)
         let darkRed = Color(red: 0.7, green: 0.17, blue: 0.23)
-        var knot = Path()
-        knot.move(to: CGPoint(x: 85.5, y: 76))
-        knot.addLine(to: CGPoint(x: 90.5, y: 76))
-        knot.addLine(to: CGPoint(x: 89.5, y: 81))
-        knot.addLine(to: CGPoint(x: 86.5, y: 81))
-        knot.closeSubpath()
-        context.fill(knot, with: .color(darkRed))
-        context.stroke(knot, with: .color(darkRed), style: StrokeStyle(lineWidth: 2, lineJoin: .round))
-
-        var blade = Path()
-        blade.move(to: CGPoint(x: 86.3, y: 82))
-        blade.addLine(to: CGPoint(x: 89.7, y: 82))
-        blade.addLine(to: CGPoint(x: 92, y: 96))
-        blade.addLine(to: CGPoint(x: 88, y: 101))
-        blade.addLine(to: CGPoint(x: 84, y: 96))
-        blade.closeSubpath()
-        context.fill(blade, with: .color(red))
-        context.stroke(blade, with: .color(red), style: StrokeStyle(lineWidth: 2, lineJoin: .round))
+        let center = CGPoint(x: 88, y: 80)
+        for side in [-1.0, 1.0] as [CGFloat] {
+            var wing = Path()
+            wing.move(to: CGPoint(x: center.x + side * 2.5, y: center.y - 3.5))
+            wing.addLine(to: CGPoint(x: center.x + side * 14, y: center.y - 8))
+            wing.addLine(to: CGPoint(x: center.x + side * 14, y: center.y + 8))
+            wing.addLine(to: CGPoint(x: center.x + side * 2.5, y: center.y + 3.5))
+            wing.closeSubpath()
+            context.fill(wing, with: .color(red))
+            context.stroke(
+                wing,
+                with: .color(red),
+                style: StrokeStyle(lineWidth: 2.5, lineJoin: .round)
+            )
+        }
+        context.fill(
+            Path(roundedRect: CGRect(x: center.x - 3.5, y: center.y - 4, width: 7, height: 8), cornerRadius: 2.5),
+            with: .color(darkRed)
+        )
     }
 }
