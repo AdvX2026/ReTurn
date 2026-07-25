@@ -27,10 +27,14 @@ final class VoiceRecorder {
     private var recorder: AVAudioRecorder?
     private var recordingURL: URL?
     private var clientUUID: String?
+    private var startGeneration = 0
 
     func start() async throws {
         guard !isRecording else { return }
+        startGeneration &+= 1
+        let generation = startGeneration
         guard await requestPermission() else { throw RecorderError.permissionDenied }
+        guard generation == startGeneration else { return }
 
         #if os(iOS)
         let session = AVAudioSession.sharedInstance()
@@ -60,18 +64,34 @@ final class VoiceRecorder {
             throw RecorderError.recordingFailed
         }
         recorder.stop()
-        isRecording = false
-        self.recorder = nil
-        self.recordingURL = nil
-        self.clientUUID = nil
-        #if os(iOS)
-        try? AVAudioSession.sharedInstance().setActive(false)
-        #endif
+        clearRecordingState()
+        defer { try? FileManager.default.removeItem(at: recordingURL) }
         return Capture(
             data: try Data(contentsOf: recordingURL),
             filename: recordingURL.lastPathComponent,
             clientUUID: clientUUID
         )
+    }
+
+    /// Abandons an active or permission-pending capture when the composer is
+    /// no longer usable. Safe to call repeatedly from lifecycle callbacks.
+    func cancel() {
+        startGeneration &+= 1
+        recorder?.stop()
+        if let recordingURL {
+            try? FileManager.default.removeItem(at: recordingURL)
+        }
+        clearRecordingState()
+    }
+
+    private func clearRecordingState() {
+        isRecording = false
+        recorder = nil
+        recordingURL = nil
+        clientUUID = nil
+        #if os(iOS)
+        try? AVAudioSession.sharedInstance().setActive(false)
+        #endif
     }
 
     private func requestPermission() async -> Bool {

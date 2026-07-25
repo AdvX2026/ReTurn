@@ -326,6 +326,84 @@ describe("v0.6 chat / cards / tasks / resume / timeline range", () => {
     assert.ok(tl.segments.length >= 2);
   });
 
+  it("timeline projects sampler context with thick meta", () => {
+    insertNode(db, {
+      client_uuid: crypto.randomUUID(),
+      kind: "browse_history",
+      title: "ReTurn PRD",
+      content: "https://example.com/prd",
+      source_meta: {
+        url: "https://example.com/prd",
+        title: "ReTurn PRD",
+        browser: "safari",
+        visited_at: "2026-07-24T10:15:00.000Z",
+      },
+      date: "2026-07-24",
+    });
+    insertNode(db, {
+      client_uuid: crypto.randomUUID(),
+      kind: "agent_session",
+      title: "/Users/teethe/Developer/return",
+      content: "claude return 42min",
+      source_meta: {
+        provider: "claude",
+        project: "/Users/teethe/Developer/return",
+        start: "2026-07-24T09:00:00.000Z",
+        end: "2026-07-24T09:42:00.000Z",
+        duration_min: 42,
+        session_id: "sess-1",
+        open: false,
+      },
+      date: "2026-07-24",
+    });
+    insertNode(db, {
+      client_uuid: crypto.randomUUID(),
+      kind: "app_sample",
+      title: "Safari",
+      content: "Safari",
+      source_meta: {
+        app: "Safari",
+        bundle_id: "com.apple.Safari",
+        sampled_at: "2026-07-24T11:00:00.000Z",
+      },
+      date: "2026-07-24",
+    });
+    insertNode(db, {
+      client_uuid: crypto.randomUUID(),
+      kind: "git_commit",
+      title: "thicken timeline projection",
+      source_meta: {
+        repo: "/Users/teethe/Developer/return",
+        sha: "abc1234",
+        committed_at: "2026-07-24T12:00:00.000Z",
+      },
+      date: "2026-07-24",
+    });
+
+    const tl = buildTimeline(db, "2026-07-24");
+    const browse = tl.segments.find((s) => s.category === "browse_history");
+    assert.ok(browse);
+    assert.equal(browse!.label, "ReTurn PRD");
+    assert.equal((browse!.meta as { url?: string }).url, "https://example.com/prd");
+    assert.ok(browse!.node_id);
+
+    const agent = tl.segments.find((s) => s.kind === "agent");
+    assert.ok(agent);
+    assert.match(agent!.label, /claude/i);
+    assert.match(agent!.label, /return/i);
+    assert.equal((agent!.meta as { provider?: string }).provider, "claude");
+    assert.ok(agent!.node_id);
+
+    const app = tl.segments.find((s) => s.kind === "app" && s.label === "Safari");
+    assert.ok(app);
+    assert.equal(app!.category, "browser");
+    assert.equal((app!.meta as { sample_count?: number }).sample_count, 1);
+
+    const git = tl.segments.find((s) => s.category === "git_commit");
+    assert.ok(git);
+    assert.match(git!.label, /thicken timeline projection/);
+  });
+
   it("timeline rejects ranges over 31 days", () => {
     assert.throws(
       () => buildTimeline(db, { from: "2026-01-01", to: "2026-03-01" }),

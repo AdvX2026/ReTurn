@@ -1,5 +1,75 @@
 import Foundation
 
+struct CardsContentState {
+    private(set) var cards: [CardRecord] = []
+    private(set) var doneTodoIDs: Set<String> = []
+    private(set) var dismissedTodoIDs: Set<String> = []
+    private(set) var todoErrors: [String: String] = [:]
+    private(set) var nextCursor: String?
+
+    private var firstPageCardIDs: Set<String> = []
+    private var hasLoadedAdditionalPage = false
+    private var acceptingTodoIDs: Set<String> = []
+
+    mutating func applyRefresh(_ response: ListCardsResponse) {
+        let refreshedIDs = Set(response.cards.map(\.id))
+        if hasLoadedAdditionalPage {
+            let tail = cards.filter {
+                !firstPageCardIDs.contains($0.id) && !refreshedIDs.contains($0.id)
+            }
+            cards = response.cards + tail
+        } else {
+            cards = response.cards
+            nextCursor = response.nextCursor
+        }
+        firstPageCardIDs = refreshedIDs
+        trimLocalOutcomes()
+    }
+
+    mutating func applyNextPage(_ response: ListCardsResponse) {
+        let existingIDs = Set(cards.map(\.id))
+        let additionalCards = response.cards.filter { !existingIDs.contains($0.id) }
+        cards.append(contentsOf: additionalCards)
+        nextCursor = response.nextCursor
+        hasLoadedAdditionalPage = true
+        trimLocalOutcomes()
+    }
+
+    mutating func beginAcceptingTodo(_ id: String) -> Bool {
+        acceptingTodoIDs.insert(id).inserted
+    }
+
+    mutating func endAcceptingTodo(_ id: String) {
+        acceptingTodoIDs.remove(id)
+    }
+
+    mutating func clearTodoError(for id: String) {
+        todoErrors[id] = nil
+    }
+
+    mutating func recordTodoError(_ message: String, for id: String) {
+        todoErrors[id] = message
+    }
+
+    mutating func markTodoDone(_ id: String) {
+        doneTodoIDs.insert(id)
+    }
+
+    mutating func markTodoDismissed(_ id: String) {
+        dismissedTodoIDs.insert(id)
+    }
+
+    private mutating func trimLocalOutcomes() {
+        let liveIDs = Set(cards.flatMap { card in
+            if case .todoSuggestion(let content) = card.content { return content.todoIds }
+            return []
+        })
+        doneTodoIDs.formIntersection(liveIDs)
+        dismissedTodoIDs.formIntersection(liveIDs)
+        todoErrors = todoErrors.filter { liveIDs.contains($0.key) }
+    }
+}
+
 @Observable
 @MainActor
 final class CardsStore {
@@ -8,17 +78,17 @@ final class CardsStore {
     }
 
     private(set) var state: State = .idle
-    private(set) var cards: [CardRecord] = []
-    private(set) var doneTodoIDs: Set<String> = []
-    private(set) var dismissedTodoIDs: Set<String> = []
-    private(set) var todoErrors: [String: String] = [:]
-    private(set) var nextCursor: String?
     private(set) var isLoadingMore = false
 
-    var canLoadMore: Bool { nextCursor != nil }
+    var cards: [CardRecord] { contentState.cards }
+    var doneTodoIDs: Set<String> { contentState.doneTodoIDs }
+    var dismissedTodoIDs: Set<String> { contentState.dismissedTodoIDs }
+    var todoErrors: [String: String] { contentState.todoErrors }
+    var nextCursor: String? { contentState.nextCursor }
 
     private let api: APIEnvironment
     private let reminders: ReminderService
+    private var contentState = CardsContentState()
     private var pendingReminderIDs: [String: String] = [:]
 
     init(api: APIEnvironment, reminders: ReminderService) {
@@ -30,9 +100,7 @@ final class CardsStore {
         state = .loading
         do {
             let response = try await api.makeClient().listCards(direction: .future, limit: 30)
-            cards = response.cards
-            nextCursor = response.nextCursor
-            trimLocalOutcomes()
+            contentState.applyRefresh(response)
             state = .ready
             api.markReachable()
         } catch {
@@ -51,10 +119,7 @@ final class CardsStore {
                 cursor: nextCursor,
                 limit: 30
             )
-            let existingIDs = Set(cards.map(\.id))
-            cards.append(contentsOf: response.cards.filter { !existingIDs.contains($0.id) })
-            self.nextCursor = response.nextCursor
-            trimLocalOutcomes()
+            contentState.applyNextPage(response)
             state = .ready
             api.markReachable()
         } catch {
@@ -79,23 +144,25 @@ final class CardsStore {
 
     func markTodoDone(_ id: String) async {
         guard !doneTodoIDs.contains(id), api.isConnected else { return }
-        todoErrors[id] = nil
+        contentState.clearTodoError(for: id)
         do {
             let response = try await api.makeClient().patchTodo(
                 id: id,
                 .init(done: true, deviceId: api.deviceID)
             )
-            doneTodoIDs.insert(response.todo.id)
+            contentState.markTodoDone(response.todo.id)
             api.markReachable()
         } catch {
-            todoErrors[id] = apiErrorMessage(error)
+            contentState.recordTodoError(apiErrorMessage(error), for: id)
             api.markUnreachable(error)
         }
     }
 
     func acceptTodo(_ id: String, text: String) async {
         guard !doneTodoIDs.contains(id), api.isConnected else { return }
-        todoErrors[id] = nil
+        guard contentState.beginAcceptingTodo(id) else { return }
+        defer { contentState.endAcceptingTodo(id) }
+        contentState.clearTodoError(for: id)
         do {
             let reminderID: String
             if let pending = pendingReminderIDs[id] {
@@ -108,38 +175,28 @@ final class CardsStore {
                 id: id,
                 .init(deviceId: api.deviceID, reminderId: reminderID)
             )
-            doneTodoIDs.insert(response.todo.id)
+            contentState.markTodoDone(response.todo.id)
             pendingReminderIDs[id] = nil
             api.markReachable()
         } catch {
-            todoErrors[id] = apiErrorMessage(error)
+            contentState.recordTodoError(apiErrorMessage(error), for: id)
             if error is URLError { api.markUnreachable(error) }
         }
     }
 
     func dismissTodo(_ id: String) async {
         guard !dismissedTodoIDs.contains(id), api.isConnected else { return }
-        todoErrors[id] = nil
+        contentState.clearTodoError(for: id)
         do {
             let response = try await api.makeClient().dismissTodo(
                 id: id,
                 .init(deviceId: api.deviceID)
             )
-            dismissedTodoIDs.insert(response.todo.id)
+            contentState.markTodoDismissed(response.todo.id)
             api.markReachable()
         } catch {
-            todoErrors[id] = apiErrorMessage(error)
+            contentState.recordTodoError(apiErrorMessage(error), for: id)
             api.markUnreachable(error)
         }
-    }
-
-    private func trimLocalOutcomes() {
-        let liveIDs = Set(cards.flatMap { card in
-            if case .todoSuggestion(let content) = card.content { return content.todoIds }
-            return []
-        })
-        doneTodoIDs.formIntersection(liveIDs)
-        dismissedTodoIDs.formIntersection(liveIDs)
-        todoErrors = todoErrors.filter { liveIDs.contains($0.key) }
     }
 }

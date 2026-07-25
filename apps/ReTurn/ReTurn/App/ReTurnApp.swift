@@ -45,6 +45,7 @@ struct ReTurnApp: App {
                         group.addTask { await stores.chat.monitor() }
                         group.addTask { await stores.tasks.monitor() }
                         group.addTask { await stores.stats.monitor() }
+                        group.addTask { await stores.nodes.monitor() }
                     }
                 }
                 #if os(iOS)

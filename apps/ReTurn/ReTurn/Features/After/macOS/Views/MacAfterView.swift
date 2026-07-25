@@ -76,10 +76,10 @@ struct MacAfterView: View {
                 }
             }
 
-            if cards.canLoadMore {
+            if let nextCursor = cards.nextCursor {
                 ProgressView()
                     .frame(maxWidth: .infinity)
-                    .task { await cards.loadNextPage() }
+                    .task(id: nextCursor) { await cards.loadNextPage() }
             }
         }
     }

@@ -24,14 +24,21 @@ final class NodesStore {
     private let api: APIEnvironment
     private let queueURL: URL
 
-    init(api: APIEnvironment) {
+    init(api: APIEnvironment, queueURL: URL? = nil) {
         self.api = api
-        let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+        if let queueURL {
+            self.queueURL = queueURL
+        } else {
+            let support = FileManager.default.urls(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask
+            )
             .first!
             .appending(path: "ReTurn", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
-        queueURL = support.appending(path: "nodes-outbox.json")
-        pending = Self.load(from: queueURL)
+            try? FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+            self.queueURL = support.appending(path: "nodes-outbox.json")
+        }
+        pending = Self.load(from: self.queueURL)
     }
 
     /// Queue a feed node (text/idea/url). Flushes immediately when online.
@@ -87,6 +94,19 @@ final class NodesStore {
         } catch {
             lastError = apiErrorMessage(error)
             api.markUnreachable(error)
+        }
+    }
+
+    func monitor() async {
+        while !Task.isCancelled {
+            if api.isConnected, !pending.isEmpty {
+                await flushOutbox()
+            }
+            do {
+                try await Task.sleep(for: .seconds(4))
+            } catch {
+                return
+            }
         }
     }
 

@@ -50,6 +50,16 @@ struct ReTurnTests {
         #expect(card.todoID(at: 2) == nil)
     }
 
+    @MainActor
+    @Test func cancellingAnIdleVoiceRecorderIsIdempotent() {
+        let recorder = VoiceRecorder()
+
+        recorder.cancel()
+        recorder.cancel()
+
+        #expect(recorder.isRecording == false)
+    }
+
     #if os(iOS)
     @Test func nowPreviewHighlightsOneStatAtATime() {
         #expect(

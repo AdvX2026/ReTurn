@@ -116,7 +116,7 @@ private struct IOSAfterPage: View {
                     onTodoDismiss: { id in
                         Task { await cards.dismissTodo(id) }
                     },
-                    canLoadMore: cards.canLoadMore,
+                    loadMoreID: cards.nextCursor,
                     onLoadMore: { await cards.loadNextPage() }
                 )
             }

@@ -37,6 +37,15 @@ struct TimelineEventCard: View {
                 .foregroundStyle(.primary)
                 .fixedSize(horizontal: false, vertical: true)
 
+            #if os(macOS)
+            if let subtitle = item.subtitle, subtitle != item.label, subtitle != item.durationDisplay {
+                Text(subtitle)
+                    .font(TimelineDesign.Typography.eventMetadata)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            #endif
+
             if let clusterPreview = item.clusterPreview {
                 TimelineClusterPreviewView(
                     preview: clusterPreview,

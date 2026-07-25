@@ -42,16 +42,17 @@ struct MacDayTimelineView: View {
 
     private var activityItems: [TimelineDisplayItem] {
         items.filter {
-            ($0.presentation == .span || $0.presentation == .major) && $0.kind != .sleep
+            ($0.macTrackPresentation == .span || $0.macTrackPresentation == .major)
+                && $0.kind != .sleep
         }
     }
 
     private var inputItems: [TimelineDisplayItem] {
-        items.filter { $0.presentation == .point }
+        items.filter { $0.macTrackPresentation == .point }
     }
 
     private var ambientItems: [TimelineDisplayItem] {
-        items.filter { $0.presentation == .ambient }
+        items.filter { $0.macTrackPresentation == .ambient }
     }
 
     /// Greedy interval packing: overlapping spans spill into a new lane.
@@ -208,7 +209,7 @@ struct MacDayTimelineView: View {
             }
         }
         .buttonStyle(.plain)
-        .help("\(item.categoryLabel) · \(item.timeDisplay)\n\(item.label)")
+        .help(trackHelp(for: item))
         .accessibilityLabel(item.label)
         .accessibilityValue(item.accessibilityValue)
     }
@@ -236,7 +237,7 @@ struct MacDayTimelineView: View {
                     }
             }
             .buttonStyle(.plain)
-            .help("\(item.categoryLabel) · \(item.timeDisplay)\n\(item.label)")
+            .help(trackHelp(for: item))
             .accessibilityLabel(item.label)
             .accessibilityValue(item.accessibilityValue)
             .offset(
@@ -244,6 +245,15 @@ struct MacDayTimelineView: View {
                 y: inputTop
             )
         }
+    }
+
+    private func trackHelp(for item: TimelineDisplayItem) -> String {
+        var lines = ["\(item.categoryLabel) · \(item.timeDisplay)", item.label]
+        if let subtitle = item.subtitle, subtitle != item.label {
+            lines.append(subtitle)
+        }
+        lines.append("Click to open full sample detail")
+        return lines.joined(separator: "\n")
     }
 
     private var ambientDots: some View {
@@ -260,6 +270,26 @@ struct MacDayTimelineView: View {
                 )
         }
         .allowsHitTesting(false)
+    }
+}
+
+extension TimelineDisplayItem {
+    /// Desktop track density is independent from the reviewed iOS list
+    /// hierarchy: contextual sampler points stay on the ambient baseline while
+    /// agent sessions remain bars even though iOS presents them as major cards.
+    var macTrackPresentation: Presentation {
+        if kind == .agent || kind == .app || kind == .sleep {
+            return .span
+        }
+        if kind == .feed {
+            switch category {
+            case "browse_history", "tab_sample", "git_commit", "vscode_recent":
+                return .ambient
+            default:
+                return end == start ? .point : .span
+            }
+        }
+        return end == start ? .point : .span
     }
 }
 

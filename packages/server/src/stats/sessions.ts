@@ -17,6 +17,7 @@ export function nodeEventTime(n: NodeRecord): string {
 /**
  * Merge consecutive same-app samples into sessions.
  * Gap > sampleIntervalMin minutes severs the session (PRD §4.1).
+ * Carries sample_count + last known bundle_id in meta for thick timeline cards.
  */
 export function aggregateAppSessions(
   samples: NodeRecord[],
@@ -39,6 +40,8 @@ export function aggregateAppSessions(
   let curStart = nodeEventTime(appSamples[0]!);
   let curEnd = curStart;
   let lastTs = new Date(curStart).getTime();
+  let sampleCount = 1;
+  let bundleId = bundleIdOf(appSamples[0]!);
 
   for (let i = 1; i < appSamples.length; i++) {
     const s = appSamples[i]!;
@@ -48,16 +51,30 @@ export function aggregateAppSessions(
     const severed = ts - lastTs > gapMs || app !== curApp;
 
     if (severed) {
-      sessions.push(makeSession(curApp, "app", curStart, curEnd, sampleIntervalMin));
+      sessions.push(
+        makeSession(curApp, "app", curStart, curEnd, sampleIntervalMin, {
+          sample_count: sampleCount,
+          bundle_id: bundleId,
+        }),
+      );
       curApp = app;
       curStart = at;
       curEnd = at;
+      sampleCount = 1;
+      bundleId = bundleIdOf(s);
     } else {
       curEnd = at;
+      sampleCount += 1;
+      bundleId = bundleIdOf(s) ?? bundleId;
     }
     lastTs = ts;
   }
-  sessions.push(makeSession(curApp, "app", curStart, curEnd, sampleIntervalMin));
+  sessions.push(
+    makeSession(curApp, "app", curStart, curEnd, sampleIntervalMin, {
+      sample_count: sampleCount,
+      bundle_id: bundleId,
+    }),
+  );
   return sessions;
 }
 
@@ -86,7 +103,12 @@ export function agentSessionsFromNodes(nodes: NodeRecord[]): Session[] {
         start,
         end,
         durationMin,
-        meta,
+        meta: {
+          ...meta,
+          node_id: n.id,
+          title: n.title,
+          content: n.content,
+        },
       };
     });
 }
@@ -114,9 +136,15 @@ function makeSession(
   start: string,
   end: string,
   sampleIntervalMin: number,
+  meta?: Record<string, unknown>,
 ): Session {
   const rawMin = (new Date(end).getTime() - new Date(start).getTime()) / 60_000;
   // Single sample → count one sample interval of presence.
   const durationMin = Math.max(rawMin, sampleIntervalMin);
-  return { app, kind, start, end, durationMin };
+  return { app, kind, start, end, durationMin, meta };
+}
+
+function bundleIdOf(n: NodeRecord): string | undefined {
+  const meta = (n.source_meta ?? {}) as Record<string, unknown>;
+  return typeof meta.bundle_id === "string" ? meta.bundle_id : undefined;
 }

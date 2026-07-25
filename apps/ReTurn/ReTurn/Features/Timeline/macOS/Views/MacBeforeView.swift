@@ -515,37 +515,48 @@ struct MacBeforeView: View {
         }
     }
 
-    /// The mobile timeline's three event presentations, minus the rail: the
-    /// horizontal track above already plays the rail's orienting role.
+    /// Summary row for the list; selecting it (or the track above) expands the
+    /// full sample detail card under the row — all projection meta, no extra fetch.
     @ViewBuilder
     private func eventRow(_ item: TimelineDisplayItem) -> some View {
         let isSelected = selectedItemID == item.id
 
-        Button {
-            selectedItemID = item.id
-        } label: {
-            Group {
-                switch item.presentation {
-                case .ambient:
-                    TimelineAmbientEventView(item: item)
-                case .major:
-                    TimelineEventCard(item: item)
-                case .point, .span:
-                    TimelineEventDetailsView(item: item)
+        VStack(alignment: .leading, spacing: ReTurnDesign.Spacing.extraSmall) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    selectedItemID = isSelected ? nil : item.id
                 }
+            } label: {
+                // One summary row for every sampler sample — agent / git / browse
+                // share TimelineEventDetailsView so group children stay consistent.
+                // Major (+ cluster) keeps TimelineEventCard; ambient is track-only
+                // salience, not a separate list chrome.
+                Group {
+                    if item.clusterPreview != nil {
+                        TimelineEventCard(item: item)
+                    } else {
+                        TimelineEventDetailsView(item: item)
+                    }
+                }
+                .padding(ReTurnDesign.Spacing.small)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    Color.primary.opacity(isSelected ? 0.05 : 0),
+                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                )
+                .contentShape(.rect)
             }
-            .padding(ReTurnDesign.Spacing.small)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                Color.primary.opacity(isSelected ? 0.05 : 0),
-                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-            )
-            .contentShape(.rect)
+            .buttonStyle(.plain)
+            .accessibilityLabel(item.label)
+            .accessibilityValue(item.accessibilityValue)
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
+
+            if isSelected {
+                TimelineSampleDetailView(item: item)
+                    .padding(.leading, 4)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(item.label)
-        .accessibilityValue(item.accessibilityValue)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
         .id(item.id)
     }
 }

@@ -3,6 +3,7 @@ import SwiftUI
 struct HomeTimelineView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(ChatStore.self) private var chat: ChatStore
+    @Environment(TimelineStore.self) private var timeline: TimelineStore
 
     @State private var selectedPage: TimelinePage?
     @State private var isPagerScrolling = false
@@ -122,7 +123,10 @@ struct HomeTimelineView: View {
                 Group {
                     #if os(iOS)
                     ZStack {
-                        ComposerBar(isFocused: $isComposerFocused)
+                        ComposerBar(
+                            isFocused: $isComposerFocused,
+                            isActive: isNowPage && isChromeVisible
+                        )
                             .opacity(isNowPage ? 1 : 0)
                             .blur(radius: isNowPage ? 0 : bottomChromeInactiveBlurRadius)
                             .zIndex(isNowPage ? 1 : 0)
@@ -171,6 +175,11 @@ struct HomeTimelineView: View {
         .onChange(of: chat.pendingJump) { _, jump in
             guard jump != nil else { return }
             _ = chat.consumePendingJump()
+            select(.before)
+        }
+        .onChange(of: timeline.focusRequest) { _, request in
+            guard request != nil else { return }
+            _ = timeline.consumeFocusRequest()
             select(.before)
         }
     }

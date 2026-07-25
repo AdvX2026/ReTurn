@@ -59,20 +59,35 @@ final class ChatStore {
     var pendingJump: ChatJump?
 
     private let api: APIEnvironment
+    private var conversationRevision: UInt = 0
+    private var isHistoryRequestInFlight = false
 
     init(api: APIEnvironment) {
         self.api = api
     }
 
     func loadHistory(force: Bool = false) async {
+        guard !isHistoryRequestInFlight else { return }
         guard force || historyState == .idle || historyState.isFailure else { return }
         guard !isSending else { return }
+        isHistoryRequestInFlight = true
+        defer { isHistoryRequestInFlight = false }
+        let requestRevision = conversationRevision
         historyState = .loading
         do {
             let response = try await api.makeClient().listMessages(limit: 50)
             let serverEntries = response.messages.reversed().map(Self.entry(from:))
-            let failedLocals = entries.filter { $0.failed && $0.id.hasPrefix("local-") }
-            entries = serverEntries + failedLocals
+            guard let mergedEntries = Self.reconciledHistory(
+                serverEntries: serverEntries,
+                currentEntries: entries,
+                requestRevision: requestRevision,
+                currentRevision: conversationRevision
+            ) else {
+                historyState = .idle
+                api.markReachable()
+                return
+            }
+            entries = mergedEntries
             historyState = .ready
             lastError = nil
             api.markReachable()
@@ -104,19 +119,21 @@ final class ChatStore {
         isSending = true
         lastError = nil
         let localID = "local-\(UUID().uuidString)"
-        entries.append(
-            Entry(
-                id: localID,
-                role: .user,
-                text: "Voice recording",
-                intent: nil,
-                createdAt: .now,
-                failed: false,
-                retryPayload: nil,
-                correctionMessageID: nil,
-                taskID: nil
+        mutateEntries {
+            $0.append(
+                Entry(
+                    id: localID,
+                    role: .user,
+                    text: "Voice recording",
+                    intent: nil,
+                    createdAt: .now,
+                    failed: false,
+                    retryPayload: nil,
+                    correctionMessageID: nil,
+                    taskID: nil
+                )
             )
-        )
+        }
         do {
             let voice = try await api.makeClient().uploadVoice(
                 audio: capture.data,
@@ -125,7 +142,7 @@ final class ChatStore {
                 clientUuid: capture.clientUUID,
                 date: APIEnvironment.dayKey(for: .now)
             )
-            entries.removeAll { $0.id == localID }
+            mutateEntries { $0.removeAll { $0.id == localID } }
             isSending = false
             await send(voice.transcript)
             return
@@ -146,7 +163,7 @@ final class ChatStore {
     func retry(_ entryID: String) async {
         guard let entry = entries.first(where: { $0.id == entryID }),
               let payload = entry.retryPayload else { return }
-        entries.removeAll { $0.id == entryID }
+        mutateEntries { $0.removeAll { $0.id == entryID } }
         switch payload {
         case .chat(let text, let image):
             await send(
@@ -182,19 +199,21 @@ final class ChatStore {
             let response = try await api.makeClient().resume(
                 .init(deviceId: api.deviceID, hours: hours)
             )
-            entries.append(
-                Entry(
-                    id: response.messageId,
-                    role: .assistant,
-                    text: response.reply,
-                    intent: nil,
-                    createdAt: .now,
-                    failed: false,
-                    retryPayload: nil,
-                    correctionMessageID: nil,
-                    taskID: nil
+            mutateEntries {
+                $0.append(
+                    Entry(
+                        id: response.messageId,
+                        role: .assistant,
+                        text: response.reply,
+                        intent: nil,
+                        createdAt: .now,
+                        failed: false,
+                        retryPayload: nil,
+                        correctionMessageID: nil,
+                        taskID: nil
+                    )
                 )
-            )
+            }
             api.markReachable()
         } catch {
             lastError = apiErrorMessage(error)
@@ -225,39 +244,43 @@ final class ChatStore {
         isSending = true
         lastError = nil
         let localID = "local-\(UUID().uuidString)"
-        entries.append(
-            Entry(
-                id: localID,
-                role: .user,
-                text: displayText,
-                intent: nil,
-                createdAt: .now,
-                failed: false,
-                retryPayload: nil,
-                correctionMessageID: nil,
-                taskID: nil
+        mutateEntries {
+            $0.append(
+                Entry(
+                    id: localID,
+                    role: .user,
+                    text: displayText,
+                    intent: nil,
+                    createdAt: .now,
+                    failed: false,
+                    retryPayload: nil,
+                    correctionMessageID: nil,
+                    taskID: nil
+                )
             )
-        )
+        }
         do {
             let response = try await api.makeClient().chat(
                 .init(text: text, image: image, deviceId: api.deviceID, intent: nil)
             )
-            if let index = entries.firstIndex(where: { $0.id == localID }) {
-                entries[index].id = response.userMessageId
-            }
-            entries.append(
-                Entry(
-                    id: response.messageId,
-                    role: .assistant,
-                    text: response.reply,
-                    intent: response.intent,
-                    createdAt: .now,
-                    failed: false,
-                    retryPayload: nil,
-                    correctionMessageID: response.intent == .unknown ? response.userMessageId : nil,
-                    taskID: response.taskId
+            mutateEntries {
+                if let index = $0.firstIndex(where: { $0.id == localID }) {
+                    $0[index].id = response.userMessageId
+                }
+                $0.append(
+                    Entry(
+                        id: response.messageId,
+                        role: .assistant,
+                        text: response.reply,
+                        intent: response.intent,
+                        createdAt: .now,
+                        failed: false,
+                        retryPayload: nil,
+                        correctionMessageID: response.intent == .unknown ? response.userMessageId : nil,
+                        taskID: response.taskId
+                    )
                 )
-            )
+            }
             pendingJump = response.jump
             api.markReachable()
         } catch {
@@ -268,11 +291,29 @@ final class ChatStore {
 
     private func fail(_ localID: String, payload: RetryPayload, error: Error) {
         lastError = apiErrorMessage(error)
-        if let index = entries.firstIndex(where: { $0.id == localID }) {
-            entries[index].failed = true
-            entries[index].retryPayload = payload
+        mutateEntries {
+            if let index = $0.firstIndex(where: { $0.id == localID }) {
+                $0[index].failed = true
+                $0[index].retryPayload = payload
+            }
         }
         api.markUnreachable(error)
+    }
+
+    private func mutateEntries(_ mutation: (inout [Entry]) -> Void) {
+        mutation(&entries)
+        conversationRevision &+= 1
+    }
+
+    static func reconciledHistory(
+        serverEntries: [Entry],
+        currentEntries: [Entry],
+        requestRevision: UInt,
+        currentRevision: UInt
+    ) -> [Entry]? {
+        guard requestRevision == currentRevision else { return nil }
+        let failedLocals = currentEntries.filter { $0.failed && $0.id.hasPrefix("local-") }
+        return serverEntries + failedLocals
     }
 
     private static func entry(from message: MessageRecord) -> Entry {

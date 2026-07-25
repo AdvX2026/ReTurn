@@ -211,6 +211,18 @@ struct TimelinePresentationTests {
         #expect(!ambientFeed.isUserInput)
         #expect(!savedNote.isUserInput)
         #expect(!generatedIdea.isUserInput)
+
+        let browsePoint = try #require(
+            TimelineDisplayItem(
+                segment: segment(
+                    kind: .feed,
+                    start: "2026-07-24T14:00:00Z",
+                    end: "2026-07-24T14:00:00Z",
+                    category: "browse_history"
+                )
+            )
+        )
+        #expect(browsePoint.presentation == .point)
     }
 
     @Test func dailyBriefingDoesNotChangeRepresentedEventCount() throws {

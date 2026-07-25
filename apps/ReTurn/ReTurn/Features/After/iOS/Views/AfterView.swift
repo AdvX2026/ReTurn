@@ -14,7 +14,7 @@ struct AfterView: View {
     let onTodoDismiss: ((String) -> Void)?
     let onOpenHealth: (() -> Void)?
     let onOpenIdea: ((IdeaCardContent) -> Void)?
-    let canLoadMore: Bool
+    let loadMoreID: String?
     let onLoadMore: (() async -> Void)?
 
     init(
@@ -30,7 +30,7 @@ struct AfterView: View {
         onTodoDismiss: ((String) -> Void)? = nil,
         onOpenHealth: (() -> Void)? = nil,
         onOpenIdea: ((IdeaCardContent) -> Void)? = nil,
-        canLoadMore: Bool = false,
+        loadMoreID: String? = nil,
         onLoadMore: (() async -> Void)? = nil
     ) {
         self.todoSuggestions = todoSuggestions
@@ -45,7 +45,7 @@ struct AfterView: View {
         self.onTodoDismiss = onTodoDismiss
         self.onOpenHealth = onOpenHealth
         self.onOpenIdea = onOpenIdea
-        self.canLoadMore = canLoadMore
+        self.loadMoreID = loadMoreID
         self.onLoadMore = onLoadMore
     }
 
@@ -106,10 +106,10 @@ struct AfterView: View {
                             }
                         }
 
-                        if canLoadMore {
+                        if let loadMoreID {
                             ProgressView()
                                 .frame(maxWidth: .infinity)
-                                .task {
+                                .task(id: loadMoreID) {
                                     if let onLoadMore {
                                         await onLoadMore()
                                     }

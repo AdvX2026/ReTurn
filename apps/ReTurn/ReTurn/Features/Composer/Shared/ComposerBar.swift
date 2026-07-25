@@ -5,6 +5,7 @@ import UniformTypeIdentifiers
 /// `ContentView` rebuilt the pager, its pages and the mascot on every keystroke.
 struct ComposerBar: View {
     @FocusState.Binding var isFocused: Bool
+    let isActive: Bool
     @Environment(ChatStore.self) private var chat: ChatStore
     @Environment(APIEnvironment.self) private var api: APIEnvironment
     @Environment(NodesStore.self) private var nodes: NodesStore
@@ -14,6 +15,11 @@ struct ComposerBar: View {
     @State private var isImportingFile = false
     @State private var errorMessage = ""
     @State private var isShowingError = false
+
+    init(isFocused: FocusState<Bool>.Binding, isActive: Bool = true) {
+        _isFocused = isFocused
+        self.isActive = isActive
+    }
 
     private var trimmedText: String {
         text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -164,6 +170,14 @@ struct ComposerBar: View {
             } message: {
                 Text(errorMessage)
             }
+            .onChange(of: isActive) { _, isActive in
+                if !isActive {
+                    recorder.cancel()
+                }
+            }
+            .onDisappear {
+                recorder.cancel()
+            }
     }
 
     @ViewBuilder
@@ -204,7 +218,6 @@ struct ComposerBar: View {
                 )
                 .background(ReTurnDesign.Colors.voiceButtonBackground, in: Circle())
                 .buttonStyle(.plain)
-                .disabled(!api.isConnected)
         }
     }
 
