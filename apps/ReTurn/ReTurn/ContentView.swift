@@ -83,17 +83,14 @@ struct ContentView: View {
         }
     }
 
-    private var pageSelection: Binding<TimelinePage> {
-        Binding(
-            get: { selectedPage ?? .now },
-            set: { page in
-                withAnimation(
-                    .easeInOut(duration: ReTurnDesign.Motion.navigationSelectionDuration)
-                ) {
-                    selectedPage = page
-                }
-            }
-        )
+    private var currentPage: TimelinePage { selectedPage ?? .now }
+
+    private func select(_ page: TimelinePage) {
+        withAnimation(
+            .easeInOut(duration: ReTurnDesign.Motion.navigationSelectionDuration)
+        ) {
+            selectedPage = page
+        }
     }
 
     /// Plain labels rather than a segmented `Picker`: the filled control was the
@@ -101,10 +98,10 @@ struct ContentView: View {
     private var pageNavigation: some View {
         HStack(spacing: ReTurnDesign.Spacing.large) {
             ForEach(TimelinePage.allCases) { page in
-                let isSelected = page == pageSelection.wrappedValue
+                let isSelected = page == currentPage
 
                 Button {
-                    pageSelection.wrappedValue = page
+                    select(page)
                 } label: {
                     // Every label reserves its selected width, so changing
                     // weights cannot shove the row's other labels around.
@@ -175,16 +172,10 @@ private struct NowPage: View {
             // Sized from the scroll viewport, which only changes on rotation --
             // the mascot is a preserved vector and re-rasterizes on every new
             // width, so it must not track the composer or keyboard animation.
-            Image("Kongkong")
-                .resizable()
-                .aspectRatio(
-                    ReTurnDesign.Metrics.mascotAspectRatio,
-                    contentMode: .fit
-                )
+            MascotImage()
                 .containerRelativeFrame(.horizontal) { width, _ in
                     ReTurnDesign.Layout.mascotWidth(in: width)
                 }
-                .accessibilityHidden(true)
 
             Text("Teethe is back!")
                 .font(ReTurnDesign.Typography.heroTitle)

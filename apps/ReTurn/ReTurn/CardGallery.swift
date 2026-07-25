@@ -6,6 +6,9 @@ import SwiftUI
 /// the card designs can be reviewed as a set, and so `CardKit`'s shell is
 /// exercised by every variant at once. Delete once the real screens land.
 struct CardGallery: View {
+    @ScaledMetric(relativeTo: .largeTitle)
+    private var mascotWidth = ReTurnDesign.Card.mascotWidth
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: ReTurnDesign.Card.groupSpacing) {
@@ -47,14 +50,8 @@ struct CardGallery: View {
             )
 
             VStack(spacing: ReTurnDesign.Spacing.extraSmall) {
-                Image("Kongkong")
-                    .resizable()
-                    .aspectRatio(
-                        ReTurnDesign.Metrics.mascotAspectRatio,
-                        contentMode: .fit
-                    )
-                    .frame(width: ReTurnDesign.Card.mascotWidth)
-                    .accessibilityHidden(true)
+                MascotImage()
+                    .frame(width: mascotWidth)
 
                 Text("Coder")
                     .font(ReTurnDesign.Typography.cardDisplayTitle)
@@ -210,14 +207,8 @@ struct CardGallery: View {
     private var unsavedPromptCard: some View {
         Card {
             VStack(spacing: ReTurnDesign.Spacing.medium) {
-                Image("Kongkong")
-                    .resizable()
-                    .aspectRatio(
-                        ReTurnDesign.Metrics.mascotAspectRatio,
-                        contentMode: .fit
-                    )
-                    .frame(width: ReTurnDesign.Card.mascotWidth)
-                    .accessibilityHidden(true)
+                MascotImage()
+                    .frame(width: mascotWidth)
 
                 Text("今天还没有存档")
                     .font(ReTurnDesign.Typography.cardHeadline)

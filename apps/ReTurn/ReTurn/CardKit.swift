@@ -1,18 +1,19 @@
 import SwiftUI
 
-/// The shared card shell, at the three levels the design calls for: group,
-/// card, row. Every card type wears this shell and differs only in its main
-/// visual — see `docs/prd-drift.md` §6.5 / §6.6.
-///
-/// Three rules taken from Apple Health, all easy to break by accident:
-///
-/// 1. **One accent per card**, on the header icon and title only. Colour
-///    elsewhere needs fixed meaning (a chart legend, a status), never decoration.
-/// 2. **A separator marks a change of content**, not the end of the header.
-///    Health runs header → headline → separator → data.
-/// 3. **Rows are regular weight**; primary vs secondary label carries the
-///    hierarchy. Semibold everywhere reads as noise.
-enum CardKit {}
+// The shared card shell, at the three levels the design calls for: group,
+// card, row. Every card type wears this shell and differs only in its main
+// visual — see `docs/prd-drift.md` §6.5 / §6.6.
+//
+// Three rules taken from Apple Health, all easy to break by accident:
+//
+// 1. One accent per card, on the header icon and title only. Colour elsewhere
+//    must classify (a chart legend) and never judge — see `Accents`.
+// 2. A separator marks a change of content, not the end of the header. Health
+//    runs header → headline → separator → data.
+// 3. Rows are regular weight; primary vs secondary label carries the
+//    hierarchy. Semibold everywhere reads as noise.
+
+import SwiftUI
 
 // ── group ────────────────────────────────────────────────
 
@@ -92,6 +93,9 @@ struct CardHeader: View {
                 Image(systemName: "chevron.right")
                     .font(ReTurnDesign.Typography.cardHeader)
                     .foregroundStyle(ReTurnDesign.Colors.secondaryLabel)
+                    // Decorative: the card itself carries the tap target, so
+                    // VoiceOver should not announce "chevron.right".
+                    .accessibilityHidden(true)
             }
         }
     }
