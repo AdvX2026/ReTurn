@@ -15,9 +15,9 @@ func nowGreeting(for state: CharacterState) -> String {
     }
 }
 
-/// One line under the Save button: the day's opening line, new-card count and
-/// streak after a save; the error after a failure. Reads `SaveStore`
-/// directly so both platforms stay in sync.
+/// One line of Save feedback: the day's opening line, new-card count and
+/// streak after a save, or the error after a failure. Reads `SaveStore`
+/// directly so every macOS placement stays in sync.
 struct SaveResultLine: View {
     @Environment(SaveStore.self) private var save: SaveStore
 

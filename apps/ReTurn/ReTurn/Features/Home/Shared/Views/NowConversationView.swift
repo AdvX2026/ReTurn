@@ -4,11 +4,12 @@ import SwiftUI
 /// The Now transcript starts below the desktop header and grows downward.
 /// User bubbles stay on the trailing edge in accent; replies lead with the
 /// triage intent required by PRD F4. Only overflowing content follows the
-/// latest reply, with a dedicated bottom target keeping it above Composer.
+/// latest update, with a dedicated bottom target keeping it above Composer.
 struct NowConversationView: View {
     let entries: [ChatStore.Entry]
     @Environment(APIEnvironment.self) private var api: APIEnvironment
     @Environment(ChatStore.self) private var chat: ChatStore
+    @Environment(SaveStore.self) private var save: SaveStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var scrollTarget: String?
 
@@ -20,6 +21,11 @@ struct NowConversationView: View {
                 ForEach(entries) { entry in
                     bubble(for: entry)
                         .id(entry.id)
+                }
+
+                if hasSaveFeedback {
+                    SaveResultLine()
+                        .frame(maxWidth: .infinity)
                 }
 
                 Color.clear
@@ -36,11 +42,23 @@ struct NowConversationView: View {
         .defaultScrollAnchor(.top)
         .onChange(of: entries.last?.id, initial: true) { _, latestID in
             guard latestID != nil else { return }
-            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
-                scrollTarget = Self.bottomID
-            }
+            scrollToBottom()
+        }
+        .onChange(of: hasSaveFeedback, initial: true) { _, isVisible in
+            guard isVisible else { return }
+            scrollToBottom()
         }
         .accessibilityIdentifier("now.conversation")
+    }
+
+    private var hasSaveFeedback: Bool {
+        save.result != nil || save.error != nil
+    }
+
+    private func scrollToBottom() {
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) {
+            scrollTarget = Self.bottomID
+        }
     }
 
     @ViewBuilder

@@ -335,9 +335,6 @@ private struct MacNowPage: View {
             NowConversationView(entries: chat.entries)
                 .frame(maxWidth: ReTurnDesign.Metrics.composerFocusedRegularMaxWidth)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            SaveResultLine()
-                .padding(.bottom, ReTurnDesign.Spacing.extraSmall)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
