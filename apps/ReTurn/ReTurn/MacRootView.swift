@@ -12,25 +12,29 @@ struct MacRootView: View {
     @FocusState private var isComposerFocused: Bool
 
     var body: some View {
-        ScrollView(.horizontal) {
-            LazyHStack(spacing: 0) {
-                ForEach(TimelinePage.allCases) { page in
-                    pageContent(for: page)
-                        .containerRelativeFrame([.horizontal, .vertical])
-                        .id(page)
-                }
-            }
-            .scrollTargetLayout()
-        }
-        .scrollIndicators(.hidden)
-        .scrollTargetBehavior(.paging)
-        .scrollPosition(id: $selection)
-        .background(ReTurnDesign.Colors.screenBackground)
-        // `spacing` reserves breathing room below the page-indicator row for
-        // every page at once — the single place the top gap is defined.
-        .safeAreaInset(edge: .top, spacing: ReTurnDesign.Spacing.medium) {
+        // A plain VStack, NOT safeAreaInset: scroll content extends into
+        // inset areas on every axis except along the scroll direction, so a
+        // top inset on a horizontal pager never pushes the pages down — the
+        // indicator row just overlaps them. Laying the indicator out as a
+        // sibling reserves the top space for all three pages in one place.
+        VStack(spacing: 0) {
             pageIndicator
+
+            ScrollView(.horizontal) {
+                LazyHStack(spacing: 0) {
+                    ForEach(TimelinePage.allCases) { page in
+                        pageContent(for: page)
+                            .containerRelativeFrame([.horizontal, .vertical])
+                            .id(page)
+                    }
+                }
+                .scrollTargetLayout()
+            }
+            .scrollIndicators(.hidden)
+            .scrollTargetBehavior(.paging)
+            .scrollPosition(id: $selection)
         }
+        .background(ReTurnDesign.Colors.screenBackground)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             ComposerBar(isFocused: $isComposerFocused)
         }
@@ -126,7 +130,9 @@ struct MacRootView: View {
             }
         }
         .padding(.top, ReTurnDesign.Spacing.small)
-        .padding(.bottom, ReTurnDesign.Spacing.extraSmall)
+        // The single definition of the gap between the indicator row and the
+        // pages below it.
+        .padding(.bottom, ReTurnDesign.Spacing.medium)
         .animation(
             .easeInOut(duration: ReTurnDesign.Motion.navigationSelectionDuration),
             value: currentPage
