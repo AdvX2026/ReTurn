@@ -10,6 +10,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { expandHome } from "./config.js";
 import { copySqliteWithWal, unlinkSqliteSnapshot } from "./sqlite-snapshot.js";
 
 /** Microseconds between Windows FILETIME epoch (1601-01-01) and Unix epoch. */
@@ -126,14 +127,6 @@ export function resolveHistoryPaths(
     if (out.length >= MAX_HISTORY_DBS) break;
   }
   return out;
-}
-
-function expandHome(p: string): string {
-  if (p === "~") return homedir();
-  if (p.startsWith("~/") || p.startsWith("~\\")) {
-    return join(homedir(), p.slice(2));
-  }
-  return p;
 }
 
 function profileFromPath(p: string): string {

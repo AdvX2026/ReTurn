@@ -11,6 +11,7 @@ import { homedir, tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
+import { expandHome } from "./config.js";
 import { copySqliteWithWalSync, unlinkSqliteSnapshotSync } from "./sqlite-snapshot.js";
 
 export interface VscodeRecent {
@@ -35,13 +36,6 @@ export type VscodeEditor = "code" | "code-insiders" | "cursor" | "custom";
 export interface ResolvedVscodeDb {
   path: string;
   editor: VscodeEditor;
-}
-
-/** Expand leading `~` to homedir; leave other paths as-is. */
-export function expandHome(p: string): string {
-  if (p === "~") return homedir();
-  if (p.startsWith("~/") || p.startsWith("~\\")) return join(homedir(), p.slice(2));
-  return p;
 }
 
 /**

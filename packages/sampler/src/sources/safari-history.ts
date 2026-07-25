@@ -1,53 +1,15 @@
-import type { NodeInput } from "@return/shared";
+/**
+ * Safari browse-history SampleSource (macOS).
+ *
+ * Same browse_history node shape as Chrome — mapping lives in chrome-history.
+ */
 import {
   collectSafariHistory,
   resolveSafariHistoryPath,
 } from "../collect-safari-history.js";
 import { config } from "../config.js";
-import {
-  type KeyDedupe,
-  type SampleContext,
-  type SampleSource,
-  type SourceResult,
-  createKeyDedupe,
-  uuidFromSeed,
-} from "../source.js";
-
-const seen: KeyDedupe = createKeyDedupe();
-
-export function resetSeenSafariVisits(): void {
-  seen.clear();
-}
-
-export function safariVisitsToNodes(
-  visits: Awaited<ReturnType<typeof collectSafariHistory>>,
-  day: string,
-  dedupe: KeyDedupe = seen,
-): NodeInput[] {
-  const nodes: NodeInput[] = [];
-  for (const visit of visits) {
-    const key = `browse:safari:Default:${visit.visitId}`;
-    if (!dedupe.tryAdd(key)) continue;
-    const title = visit.title.trim();
-    nodes.push({
-      client_uuid: uuidFromSeed(key),
-      kind: "browse_history",
-      title: title ? title.slice(0, 500) : null,
-      content: visit.url,
-      source_meta: {
-        url: visit.url,
-        title: visit.title,
-        visited_at: visit.visitedAt,
-        visit_id: visit.visitId,
-        browser: "safari",
-        profile: "Default",
-      },
-      client_created_at: visit.visitedAt,
-      date: day,
-    });
-  }
-  return nodes;
-}
+import type { SampleContext, SampleSource, SourceResult } from "../source.js";
+import { visitsToNodes } from "./chrome-history.js";
 
 export const safariHistorySource: SampleSource = {
   id: "safari_history",
@@ -63,7 +25,7 @@ export const safariHistorySource: SampleSource = {
       start: ctx.dayStart,
       end: ctx.dayEnd,
     });
-    const nodes = safariVisitsToNodes(visits, ctx.day);
+    const nodes = visitsToNodes(visits, ctx.day);
     return {
       nodes,
       stats: { enabled: 1, dbs: 1, visits: visits.length, emitted: nodes.length },

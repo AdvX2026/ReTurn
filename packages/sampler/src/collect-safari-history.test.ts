@@ -10,7 +10,7 @@ import {
   resolveSafariHistoryPath,
   safariTimeToIso,
 } from "./collect-safari-history.js";
-import { resetSeenSafariVisits, safariVisitsToNodes } from "./sources/safari-history.js";
+import { resetSeenVisits, visitsToNodes } from "./sources/chrome-history.js";
 
 describe("Safari history", () => {
   let root: string;
@@ -42,7 +42,7 @@ describe("Safari history", () => {
 
   afterEach(() => {
     rmSync(root, { recursive: true, force: true });
-    resetSeenSafariVisits();
+    resetSeenVisits();
   });
 
   it("round-trips Safari epoch seconds", () => {
@@ -63,7 +63,7 @@ describe("Safari history", () => {
       end: "2026-07-24T16:00:00.000Z",
     });
     assert.equal(visits.length, 1);
-    const nodes = safariVisitsToNodes(visits, "2026-07-24");
+    const nodes = visitsToNodes(visits, "2026-07-24");
     assert.equal(nodes.length, 1);
     assert.equal(nodes[0]!.kind, "browse_history");
     assert.equal(nodes[0]!.date, "2026-07-24");

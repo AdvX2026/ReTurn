@@ -60,11 +60,11 @@ import {
   listNodesByDate,
   listSavedDays,
   listTasks,
-  reindexNode,
   setMessageIntent,
   setTodoDone,
   touchDevice,
   upsertDevice,
+  upsertNodeContent,
 } from "./db/repo.js";
 import type { Db } from "./db/schema.js";
 import { ask } from "./search/ask.js";
@@ -124,6 +124,12 @@ function parseLimit(value: string | undefined, defaultValue: number): number {
     throw new Error("limit must be an integer from 1 to 50");
   }
   return parsed;
+}
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function isDate(value: string): boolean {
+  return DATE_RE.test(value);
 }
 
 export async function registerRoutes(
@@ -204,7 +210,7 @@ export async function registerRoutes(
   app.get("/api/nodes", async (req, reply) => {
     const q = req.query as { date?: string };
     const date = q.date ?? todayDate();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    if (!isDate(date)) {
       return reply.code(400).send(badRequest("date must be YYYY-MM-DD"));
     }
     const body: ListNodesResponse = {
@@ -263,7 +269,7 @@ export async function registerRoutes(
     if (clientUuid && !uuidRe.test(clientUuid)) {
       return reply.code(400).send(badRequest("client_uuid must be a UUID"));
     }
-    if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    if (date && !isDate(date)) {
       return reply.code(400).send(badRequest("date must be YYYY-MM-DD"));
     }
     touchDevice(db, deviceId);
@@ -362,7 +368,7 @@ export async function registerRoutes(
       steps: parsed.data.steps,
       source: "shortcuts",
     };
-    const { node, duplicate } = insertNode(db, {
+    const node = upsertNodeContent(db, {
       client_uuid: clientUuid,
       kind: "health_daily",
       title: `Health ${parsed.data.date}`,
@@ -371,20 +377,7 @@ export async function registerRoutes(
       source_meta,
     });
 
-    if (duplicate) {
-      db.prepare(
-        `UPDATE nodes SET content = ?, source_meta = ?, title = ? WHERE client_uuid = ?`,
-      ).run(
-        content,
-        JSON.stringify(source_meta),
-        `Health ${parsed.data.date}`,
-        clientUuid,
-      );
-      reindexNode(db, node.id);
-    }
-
-    const fresh = getNodeById(db, node.id)!;
-    const body: HealthResponse = { node: fresh };
+    const body: HealthResponse = { node };
     return body;
   });
 
@@ -407,7 +400,7 @@ export async function registerRoutes(
   app.get("/api/stats/today", async (req, reply) => {
     const q = req.query as { date?: string };
     const date = q.date ?? todayDate();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    if (!isDate(date)) {
       return reply.code(400).send(badRequest("date must be YYYY-MM-DD"));
     }
     const live = computeLiveStats(db, date);
@@ -428,8 +421,7 @@ export async function registerRoutes(
     const today = todayDate();
     const from = q.from ?? addDays(today, -29);
     const to = q.to ?? today;
-    const dateRe = /^\d{4}-\d{2}-\d{2}$/;
-    if (!dateRe.test(from) || !dateRe.test(to)) {
+    if (!isDate(from) || !isDate(to)) {
       return reply.code(400).send(badRequest("from/to must be YYYY-MM-DD"));
     }
     if (from > to) {
@@ -442,12 +434,11 @@ export async function registerRoutes(
   // ── timeline (single day or from/to range) ──────────
   app.get("/api/timeline", async (req, reply) => {
     const q = req.query as { date?: string; from?: string; to?: string };
-    const dateRe = /^\d{4}-\d{2}-\d{2}$/;
     try {
       if (q.from || q.to) {
         const from = q.from ?? q.to!;
         const to = q.to ?? q.from!;
-        if (!dateRe.test(from) || !dateRe.test(to)) {
+        if (!isDate(from) || !isDate(to)) {
           return reply.code(400).send(badRequest("from/to must be YYYY-MM-DD"));
         }
         if (from > to) {
@@ -457,7 +448,7 @@ export async function registerRoutes(
         return body;
       }
       const date = q.date ?? todayDate();
-      if (!dateRe.test(date)) {
+      if (!isDate(date)) {
         return reply.code(400).send(badRequest("date must be YYYY-MM-DD"));
       }
       const body: TimelineResponse = buildTimeline(db, date);
@@ -518,10 +509,10 @@ export async function registerRoutes(
     if (!query || query.length > 500) {
       return reply.code(400).send(badRequest("q is required (1–500 characters)"));
     }
-    if (q.from && !/^\d{4}-\d{2}-\d{2}$/.test(q.from)) {
+    if (q.from && !isDate(q.from)) {
       return reply.code(400).send(badRequest("from must be YYYY-MM-DD"));
     }
-    if (q.to && !/^\d{4}-\d{2}-\d{2}$/.test(q.to)) {
+    if (q.to && !isDate(q.to)) {
       return reply.code(400).send(badRequest("to must be YYYY-MM-DD"));
     }
     if (q.from && q.to && q.from > q.to) {

@@ -27,6 +27,7 @@ import {
   reminderCompletionRate,
   setTodoDone,
   upsertDevice,
+  upsertNodeContent,
 } from "./repo.js";
 import { type Db, openDb, openMemoryDb } from "./schema.js";
 
@@ -54,6 +55,34 @@ describe("repo", () => {
     assert.equal(b.duplicate, true);
     assert.equal(a.node.id, b.node.id);
     assert.equal(listNodesByDate(db, "2026-07-24").length, 1);
+  });
+
+  it("upsertNodeContent inserts then refreshes payload", () => {
+    const uuid = crypto.randomUUID();
+    const first = upsertNodeContent(db, {
+      client_uuid: uuid,
+      kind: "health_daily",
+      title: "Health 2026-07-24",
+      content: JSON.stringify({ sleep_minutes: 300, steps: 1000 }),
+      date: "2026-07-24",
+      source_meta: { sleep_minutes: 300, steps: 1000, source: "shortcuts" },
+    });
+    const second = upsertNodeContent(db, {
+      client_uuid: uuid,
+      kind: "health_daily",
+      title: "Health 2026-07-24",
+      content: JSON.stringify({ sleep_minutes: 420, steps: 8000 }),
+      date: "2026-07-24",
+      source_meta: { sleep_minutes: 420, steps: 8000, source: "shortcuts" },
+    });
+    assert.equal(first.id, second.id);
+    assert.equal(listNodesByDate(db, "2026-07-24").length, 1);
+    assert.equal(second.content, JSON.stringify({ sleep_minutes: 420, steps: 8000 }));
+    assert.deepEqual(second.source_meta, {
+      sleep_minutes: 420,
+      steps: 8000,
+      source: "shortcuts",
+    });
   });
 
   it("batch insert reports duplicates", () => {

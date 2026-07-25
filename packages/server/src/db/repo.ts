@@ -363,6 +363,36 @@ export function insertNodes(
   return { created, duplicates };
 }
 
+/**
+ * Insert, or refresh title/content/source_meta when client_uuid already exists.
+ * Used by health re-posts (idempotent per date; always take latest payload).
+ */
+export function upsertNodeContent(db: Db, input: InsertNodeInput): NodeRecord {
+  const existing = db
+    .prepare(`SELECT * FROM nodes WHERE client_uuid = ?`)
+    .get(input.client_uuid) as NodeRow | undefined;
+
+  if (!existing) {
+    return insertNode(db, input).node;
+  }
+
+  const title = input.title ?? null;
+  const content = input.content ?? null;
+  const source_meta = input.source_meta ?? null;
+  db.prepare(
+    `UPDATE nodes SET title = ?, content = ?, source_meta = ? WHERE client_uuid = ?`,
+  ).run(
+    title,
+    content,
+    source_meta ? JSON.stringify(source_meta) : null,
+    input.client_uuid,
+  );
+  reindexNode(db, existing.id);
+  const fresh = getNodeById(db, existing.id);
+  if (!fresh) throw new Error(`node vanished after upsert: ${existing.id}`);
+  return fresh;
+}
+
 export function listNodesByDate(db: Db, date: string): NodeRecord[] {
   const day = getDayByDate(db, date);
   if (!day) return [];

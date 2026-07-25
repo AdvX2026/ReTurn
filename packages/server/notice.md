@@ -7,6 +7,7 @@
 - Stats/character are pure code (`src/stats/*`). LLM only produces text products (summary/opening/todos/tags/edges).
 - Save is idempotent per day; ferment failure leaves the day open and returns an error.
 - Save switches cadence to `night` through the next local 06:00 boundary.
+- Health re-posts use `upsertNodeContent` (refresh title/content/source_meta + reindex); no raw SQL in routes.
 - Provider calls are recorded in `llm_usage` with model, operation, status, and
   token counts only. Prompts, responses, errors, and user content are never stored.
 - Day bucketing uses **server local timezone** (`created_at` stamped server-side).
