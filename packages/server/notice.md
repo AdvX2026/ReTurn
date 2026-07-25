@@ -27,6 +27,12 @@ See root `.env.example`. `LLM_API_KEY` / `HEALTH_TOKEN` never ship to clients. H
 - Swift `Models.swift` mirrors the shared API contract, including all sampler node kinds.
 - Voice transcription failure preserves the raw audio file and a pending voice node (`pending_transcript: true`), and returns HTTP 502/503 — no fake transcript.
 
+## Development data
+- `pnpm --filter @return/server data:mock` fills an empty database with randomized, human-paced history (default: 14 days ending today). Use `--days`, `--end`, or `--db` to target another range/database.
+- `data:inspect` shows table counts, recent days, and nodes; filters include `--date`, `--kind`, `--limit`, and `--json`.
+- `data:clear -- --confirm` clears SQLite business data and derived indexes but preserves the schema and `data/audio/`. It refuses to run without explicit confirmation.
+- Mock generation refuses non-empty databases so generated data cannot silently mix with existing user data.
+
 ## Todo preference loop (AI suggestions ↔ Apple Reminders)
 - Real checklist = Mac Reminders. Server `todos` = AI suggestions only (`status`: suggested|accepted|dismissed).
 - Accept: `POST /api/todos/:id/accept` after UI EventKit write. Dismiss: `POST .../dismiss`.
