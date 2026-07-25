@@ -13,32 +13,27 @@ enum ReTurnDesign {
 
         static var screenBackground: Color {
             #if os(iOS)
-            Color(uiColor: .secondarySystemBackground)
+            Color(uiColor: .systemGroupedBackground)
             #elseif os(macOS)
             Color(nsColor: .windowBackgroundColor)
             #endif
         }
 
-        /// Opaque color at the top of the navigation readability gradient.
-        /// The system background resolves to white in Light Mode and black in
-        /// Dark Mode without a separate appearance branch in the view.
+        /// Keeps the navigation readability gradient continuous with every
+        /// Main page instead of introducing a separate background shade.
         static var navigationBackdrop: Color {
-            #if os(iOS)
-            Color(uiColor: .systemBackground)
-            #elseif os(macOS)
-            Color(nsColor: .windowBackgroundColor)
-            #endif
+            screenBackground
         }
 
         static let voiceButtonBackground = Color.black
         static let voiceButtonForeground = Color.white
         static let composerFallbackShadow = Color.black.opacity(0.1)
 
-        /// Cards sit on `screenBackground`, so they take the plain system
-        /// background to read as raised white surfaces.
+        /// Cards use the system's raised grouped surface over the Main canvas:
+        /// white on the light grouped background, dark gray on black in Dark Mode.
         static var cardBackground: Color {
             #if os(iOS)
-            Color(uiColor: .systemBackground)
+            Color(uiColor: .secondarySystemGroupedBackground)
             #elseif os(macOS)
             Color(nsColor: .controlBackgroundColor)
             #endif
