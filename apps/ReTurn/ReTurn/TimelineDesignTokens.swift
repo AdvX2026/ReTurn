@@ -93,9 +93,11 @@ enum TimelineDesign {
                 case "text", "save_note": Color(AccentColor.systemMint)
                 case "url": Color(AccentColor.systemBlue)
                 case "git", "git_commit": Color(AccentColor.systemBrown)
-                case "email": Color(AccentColor.systemBlue)
+                case "email": Color(AccentColor.systemIndigo)
                 case "browse_history": Color(AccentColor.systemPurple)
+                case "tab_sample": Color(AccentColor.systemPurple).opacity(0.85)
                 case "vscode_recent": Color(AccentColor.systemOrange)
+                case "todo_check": Color(AccentColor.systemGreen)
                 default: Color(AccentColor.systemTeal)
                 }
             case .app:
@@ -107,6 +109,7 @@ enum TimelineDesign {
                 case "media": Color(AccentColor.systemRed)
                 case "notes": Color(AccentColor.systemYellow)
                 case "system": Color(AccentColor.systemGray)
+                case "other": Color(AccentColor.systemBrown)
                 default: Color(AccentColor.systemBrown)
                 }
             case .unknown:

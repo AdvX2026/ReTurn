@@ -208,7 +208,7 @@ struct MacDayTimelineView: View {
             }
         }
         .buttonStyle(.plain)
-        .help("\(item.categoryLabel) · \(item.timeDisplay)\n\(item.label)")
+        .help(trackHelp(for: item))
         .accessibilityLabel(item.label)
         .accessibilityValue(item.accessibilityValue)
     }
@@ -236,7 +236,7 @@ struct MacDayTimelineView: View {
                     }
             }
             .buttonStyle(.plain)
-            .help("\(item.categoryLabel) · \(item.timeDisplay)\n\(item.label)")
+            .help(trackHelp(for: item))
             .accessibilityLabel(item.label)
             .accessibilityValue(item.accessibilityValue)
             .offset(
@@ -244,6 +244,15 @@ struct MacDayTimelineView: View {
                 y: inputTop
             )
         }
+    }
+
+    private func trackHelp(for item: TimelineDisplayItem) -> String {
+        var lines = ["\(item.categoryLabel) · \(item.timeDisplay)", item.label]
+        if let subtitle = item.subtitle, subtitle != item.label {
+            lines.append(subtitle)
+        }
+        lines.append("Click to open full sample detail")
+        return lines.joined(separator: "\n")
     }
 
     private var ambientDots: some View {

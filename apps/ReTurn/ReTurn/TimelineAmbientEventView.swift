@@ -12,9 +12,17 @@ struct TimelineAmbientEventView: View {
                 .foregroundStyle(.tertiary)
                 .accessibilityHidden(true)
 
-            Text(item.label)
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(item.label)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                if let subtitle = item.subtitle, subtitle != item.label {
+                    Text(subtitle)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
 
             Spacer(minLength: 8)
 
@@ -24,6 +32,5 @@ struct TimelineAmbientEventView: View {
         }
         .font(TimelineDesign.Typography.ambientEvent)
         .padding(.trailing, 4)
-        .allowsHitTesting(false)
     }
 }

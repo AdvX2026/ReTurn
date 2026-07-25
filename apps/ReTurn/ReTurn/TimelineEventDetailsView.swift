@@ -23,11 +23,17 @@ struct TimelineEventDetailsView: View {
             Text(item.label)
                 .font(TimelineDesign.Typography.eventTitle)
                 .foregroundStyle(.primary)
-                .lineLimit(item.isUserInput ? 1 : nil)
+                .lineLimit(item.isUserInput ? 1 : 3)
                 .truncationMode(.tail)
                 .fixedSize(horizontal: false, vertical: true)
 
-            if item.presentation == .span {
+            if let subtitle = item.subtitle, subtitle != item.label {
+                Text(subtitle)
+                    .font(TimelineDesign.Typography.eventMetadata)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .truncationMode(.middle)
+            } else if item.presentation == .span {
                 Text(item.durationDisplay)
                     .font(TimelineDesign.Typography.eventMetadata)
                     .foregroundStyle(.secondary)
