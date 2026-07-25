@@ -11,6 +11,8 @@ import { simpleParser } from "mailparser";
 
 const SNIPPET_MAX = 2000;
 const SUBJECT_MAX = 500;
+/** Cap raw RFC822 download; we only need enough for a text snippet. */
+const SOURCE_MAX_BYTES = 256 * 1024;
 
 export type EmailDirection = "received" | "sent";
 
@@ -50,20 +52,47 @@ export interface RawFetch {
     | null
     | undefined;
   text: string | null;
+  /** IMAP UID; with uidValidity it forms a stable fallback identity. */
+  uid?: number;
+  uidValidity?: bigint;
+  /** Server INTERNALDATE (delivery time); trusted over the sender's Date header. */
+  internalDate?: Date | null;
+}
+
+function isValidDate(d: Date | null | undefined): d is Date {
+  return d instanceof Date && !Number.isNaN(d.getTime());
 }
 
 /**
  * Pure mapper: raw fetch → EmailMessage.
- * Required identity and timestamp fields fail the source instead of silently
- * dropping messages from the timeline.
+ * Identity falls back to uidvalidity:uid and timestamps to INTERNALDATE, so a
+ * single malformed message cannot take down the whole source; only messages
+ * with no usable identity/timestamp at all are rejected.
  */
 export function toEmailMessage(raw: RawFetch): EmailMessage {
   const env = raw.envelope;
   if (!env) throw new Error("Gmail message envelope is missing");
-  const messageId = env.messageId?.trim();
-  if (!messageId) throw new Error("Gmail message RFC Message-ID is missing");
-  const date = env.date ?? null;
-  if (!date || Number.isNaN(date.getTime())) {
+  let messageId = env.messageId?.trim();
+  if (!messageId) {
+    if (raw.uid !== undefined && raw.uidValidity !== undefined) {
+      messageId = `imap:${raw.uidValidity}:${raw.uid}`;
+    } else {
+      throw new Error("Gmail message RFC Message-ID is missing");
+    }
+  }
+  // received: prefer server INTERNALDATE (sender Date headers drift/forge);
+  // sent: the Date header is our own send time, INTERNALDATE is the fallback.
+  const claimed = env.date ?? null;
+  const internal = raw.internalDate ?? null;
+  const date =
+    raw.direction === "received"
+      ? isValidDate(internal)
+        ? internal
+        : claimed
+      : isValidDate(claimed)
+        ? claimed
+        : internal;
+  if (!isValidDate(date)) {
     throw new Error(`Gmail message date is invalid: ${messageId}`);
   }
 
@@ -85,13 +114,22 @@ export function toEmailMessage(raw: RawFetch): EmailMessage {
   };
 }
 
+/** Result of a full fetch pass; skipped counts unmappable messages. */
+export interface FetchEmailsResult {
+  emails: EmailMessage[];
+  /** Messages dropped for having no usable identity/timestamp. */
+  skipped: number;
+  /** True when the Sent mailbox could not be resolved (INBOX still sampled). */
+  sentMailboxMissing: boolean;
+}
+
 /**
  * Connect and fetch messages from INBOX + Sent within the shared tick range.
  */
 export async function fetchEmails(
   cfg: GmailConfig,
   range: { start: string; end: string },
-): Promise<EmailMessage[]> {
+): Promise<FetchEmailsResult> {
   const client = new ImapFlow({
     host: cfg.host,
     port: cfg.port,
@@ -101,6 +139,8 @@ export async function fetchEmails(
   });
 
   const out: EmailMessage[] = [];
+  let skipped = 0;
+  let sentMailboxMissing = false;
   let connected = false;
   try {
     await client.connect();
@@ -111,16 +151,29 @@ export async function fetchEmails(
     const targets: Array<{ path: string; direction: EmailDirection }> = [
       { path: "INBOX", direction: "received" },
     ];
-    targets.push({ path: await findSentMailbox(client), direction: "sent" });
+    try {
+      targets.push({ path: await findSentMailbox(client), direction: "sent" });
+    } catch {
+      // Sent hidden from IMAP must not cost us the INBOX pass.
+      sentMailboxMissing = true;
+    }
 
     for (const t of targets) {
-      const msgs = await fetchMailbox(client, t.path, t.direction, since, end);
-      out.push(...msgs);
+      const res = await fetchMailbox(client, t.path, t.direction, since, end);
+      out.push(...res.messages);
+      skipped += res.skipped;
     }
   } finally {
-    if (connected) await client.logout();
+    if (connected) {
+      try {
+        await client.logout();
+      } catch {
+        // Dead connection: destroy the socket without masking the original error.
+        client.close();
+      }
+    }
   }
-  return out;
+  return { emails: out, skipped, sentMailboxMissing };
 }
 
 /** Resolve the Sent mailbox path across Gmail's supported IMAP schemas. */
@@ -140,28 +193,47 @@ async function fetchMailbox(
   direction: EmailDirection,
   since: Date,
   end: number,
-): Promise<EmailMessage[]> {
+): Promise<{ messages: EmailMessage[]; skipped: number }> {
   const lock = await client.getMailboxLock(path);
   const res: EmailMessage[] = [];
+  let skipped = 0;
   try {
     const uids = await client.search({ since }, { uid: true });
-    if (!uids || uids.length === 0) return [];
+    if (!uids || uids.length === 0) return { messages: [], skipped: 0 };
+    const uidValidity =
+      typeof client.mailbox === "object" ? client.mailbox.uidValidity : undefined;
 
     for await (const msg of client.fetch(
       uids,
-      { uid: true, envelope: true, source: true },
+      {
+        uid: true,
+        envelope: true,
+        internalDate: true,
+        source: { maxLength: SOURCE_MAX_BYTES },
+      },
       { uid: true },
     )) {
-      let text: string | null = null;
-      if (msg.source) {
-        const parsed = await simpleParser(msg.source);
-        text = parsed.text ?? null;
+      let email: EmailMessage;
+      try {
+        let text: string | null = null;
+        if (msg.source) {
+          const parsed = await simpleParser(msg.source);
+          text = parsed.text ?? null;
+        }
+        const internal = msg.internalDate ? new Date(msg.internalDate) : null;
+        email = toEmailMessage({
+          direction,
+          envelope: msg.envelope as RawFetch["envelope"],
+          text,
+          uid: msg.uid,
+          uidValidity,
+          internalDate: internal,
+        });
+      } catch {
+        // One malformed message must not cost the whole day's mail.
+        skipped++;
+        continue;
       }
-      const email = toEmailMessage({
-        direction,
-        envelope: msg.envelope as RawFetch["envelope"],
-        text,
-      });
       const receivedAt = Date.parse(email.receivedAt);
       if (receivedAt >= since.getTime() && receivedAt < end) {
         res.push(email);
@@ -170,5 +242,5 @@ async function fetchMailbox(
   } finally {
     lock.release();
   }
-  return res;
+  return { messages: res, skipped };
 }

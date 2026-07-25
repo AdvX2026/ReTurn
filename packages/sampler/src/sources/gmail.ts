@@ -24,14 +24,17 @@ export function resetSeenEmailKeys(): void {
   seen.clear();
 }
 
-/** Stable dedupe key from the required RFC Message-ID. */
+/**
+ * Stable dedupe key: direction-qualified so a self-addressed mail counts once
+ * as received (INBOX copy) and once as sent (Sent copy).
+ */
 function emailKey(m: EmailMessage): string {
-  return m.messageId;
+  return `${m.direction}:${m.messageId}`;
 }
 
-/** Deterministic seed → same message → same client_uuid across restarts. */
+/** Deterministic seed → same message + direction → same client_uuid across restarts. */
 function emailSeed(m: EmailMessage): string {
-  return `gmail:${m.messageId}`;
+  return `gmail:${m.direction}:${m.messageId}`;
 }
 
 export function emailsToNodes(
@@ -42,11 +45,10 @@ export function emailsToNodes(
   const nodes: NodeInput[] = [];
   for (const m of emails) {
     if (!dedupe.tryAdd(emailKey(m))) continue;
-    const title = m.subject.length > 500 ? m.subject.slice(0, 500) : m.subject;
     nodes.push({
       client_uuid: uuidFromSeed(emailSeed(m)),
       kind: "email",
-      title: title || null,
+      title: m.subject || null,
       content: m.snippet || null,
       source_meta: {
         direction: m.direction,
@@ -72,20 +74,20 @@ export const gmailSource: SampleSource = {
     if (!config.gmail) {
       return { nodes: [], stats: { configured: 0 } };
     }
-    const emails = await fetchEmails(config.gmail, {
+    const { emails, skipped, sentMailboxMissing } = await fetchEmails(config.gmail, {
       start: ctx.dayStart,
       end: ctx.dayEnd,
     });
     const nodes = emailsToNodes(emails, ctx.day);
-    return {
-      nodes,
-      stats: {
-        configured: 1,
-        emails: emails.length,
-        received: emails.filter((e) => e.direction === "received").length,
-        sent: emails.filter((e) => e.direction === "sent").length,
-        emitted: nodes.length,
-      },
+    const stats: Record<string, number> = {
+      configured: 1,
+      emails: emails.length,
+      received: emails.filter((e) => e.direction === "received").length,
+      sent: emails.filter((e) => e.direction === "sent").length,
+      emitted: nodes.length,
+      skipped,
     };
+    if (sentMailboxMissing) stats.sent_mailbox_missing = 1;
+    return { nodes, stats };
   },
 };
