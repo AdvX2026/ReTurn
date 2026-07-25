@@ -167,7 +167,18 @@ struct ContentView: View {
             Color.clear
             #endif
         case .after:
+            #if os(iOS)
+            // The API-backed card store is not wired yet. Keep the fixture
+            // isolated so the After composition remains reviewable without
+            // pretending this preview content is persisted state.
+            AfterView(
+                todoSuggestion: AfterPreviewData.todoSuggestion,
+                health: AfterPreviewData.health,
+                ideas: AfterPreviewData.ideas
+            )
+            #else
             Color.clear
+            #endif
         case .now:
             NowPage()
         }

@@ -158,6 +158,13 @@ enum ReTurnDesign {
         static let spacing: CGFloat = 12
         /// Between card groups.
         static let groupSpacing: CGFloat = 32
+        /// Lets the last card clear the persistent composer even when a short
+        /// feed would otherwise fit exactly inside the pager's viewport.
+        static var pageBottomPadding: CGFloat {
+            ReTurnDesign.Metrics.composerHeight
+                + groupSpacing
+                + ReTurnDesign.Spacing.large
+        }
         /// Vertical breathing room above and below each detail row, so the
         /// separators land in the middle of real whitespace.
         static let rowVerticalPadding: CGFloat = 9

@@ -23,14 +23,54 @@ final class ReTurnUITests: XCTestCase {
     }
 
     @MainActor
-    func testExample() throws {
-        // UI tests must launch the application that they test.
+    func testAfterPage() throws {
         let app = XCUIApplication()
         app.launch()
 
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
-        // XCUIAutomation Documentation
-        // https://developer.apple.com/documentation/xcuiautomation
+        let afterButton = app.buttons["After"]
+        XCTAssertTrue(afterButton.waitForExistence(timeout: 2))
+        afterButton.tap()
+
+        XCTAssertTrue(app.buttons["after.todo.open"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["after.todo.accept.0"].exists)
+        XCTAssertTrue(app.buttons["after.health.open"].exists)
+
+        let topScreenshot = XCTAttachment(screenshot: app.screenshot())
+        topScreenshot.name = "After page top"
+        topScreenshot.lifetime = .keepAlways
+        add(topScreenshot)
+
+        let afterPage = app.scrollViews["after.page"]
+        XCTAssertTrue(afterPage.waitForExistence(timeout: 2))
+
+        let initialTodoY = app.buttons["after.todo.open"].frame.minY
+        afterPage.swipeUp()
+        XCTAssertLessThan(app.buttons["after.todo.open"].frame.minY, initialTodoY)
+
+        let userIdea = app.buttons["after.idea.user"]
+        scrollToHittable(userIdea, in: afterPage)
+
+        let automaticIdea = app.buttons["after.idea.auto"]
+        scrollToHittable(automaticIdea, in: afterPage)
+
+        let ideasScreenshot = XCTAttachment(screenshot: app.screenshot())
+        ideasScreenshot.name = "After page ideas"
+        ideasScreenshot.lifetime = .keepAlways
+        add(ideasScreenshot)
+    }
+
+    @MainActor
+    private func scrollToHittable(
+        _ element: XCUIElement,
+        in scrollView: XCUIElement
+    ) {
+        for _ in 0..<4 {
+            guard !element.isHittable else { break }
+            scrollView.swipeUp()
+        }
+
+        XCTAssertTrue(element.waitForExistence(timeout: 2))
+        XCTAssertTrue(element.isHittable)
     }
 
     @MainActor
