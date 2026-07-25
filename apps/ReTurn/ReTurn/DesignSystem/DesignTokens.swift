@@ -13,21 +13,27 @@ enum ReTurnDesign {
 
         static var screenBackground: Color {
             #if os(iOS)
-            Color(uiColor: .secondarySystemBackground)
+            Color(uiColor: .systemGroupedBackground)
             #elseif os(macOS)
             Color(nsColor: .windowBackgroundColor)
             #endif
+        }
+
+        /// Keeps the navigation readability gradient continuous with every
+        /// Main page instead of introducing a separate background shade.
+        static var navigationBackdrop: Color {
+            screenBackground
         }
 
         static let voiceButtonBackground = Color.black
         static let voiceButtonForeground = Color.white
         static let composerFallbackShadow = Color.black.opacity(0.1)
 
-        /// Cards sit on `screenBackground`, so they take the plain system
-        /// background to read as raised white surfaces.
+        /// Cards use the system's raised grouped surface over the Main canvas:
+        /// white on the light grouped background, dark gray on black in Dark Mode.
         static var cardBackground: Color {
             #if os(iOS)
-            Color(uiColor: .systemBackground)
+            Color(uiColor: .secondarySystemGroupedBackground)
             #elseif os(macOS)
             Color(nsColor: .controlBackgroundColor)
             #endif
@@ -87,6 +93,8 @@ enum ReTurnDesign {
         static let focusedScreenHorizontalInset: CGFloat = 12
         static let composerAccessorySize: CGFloat = 30
         static let composerAccessoryHitSize: CGFloat = 44
+        /// Keeps the first scroll-content heading below the Main navigation.
+        static let mainContentTopPadding: CGFloat = 96
 
         /// Padding that grows the attachment button's touch target to
         /// `composerAccessoryHitSize`; cancelled by an equal negative padding so

@@ -7,10 +7,12 @@ import {
   insertMessage,
   insertNode,
   insertTodo,
+  listNodesByDate,
   markDaySaved,
   upsertDevice,
 } from "../db/repo.js";
 import type { Db } from "../db/schema.js";
+import { extractHealth } from "../stats/compute.js";
 import { computeLiveStats } from "../stats/live.js";
 import { addDays, lastNDays, parseDate, todayDate, uuid } from "../util/time.js";
 
@@ -202,9 +204,21 @@ export function generateMockData(db: Db, options: MockDataOptions = {}): MockDat
       edgeCount += 1;
     }
 
+    let latestSavedDay: GeneratedDay | undefined;
+    for (const day of generated) {
+      if (day.shouldSave) latestSavedDay = day;
+    }
+
     for (const day of generated) {
       if (!day.shouldSave) continue;
-      finalizeSavedDay(db, day.date, day.dayId, day.primaryNodeId, rng);
+      finalizeSavedDay(
+        db,
+        day.date,
+        day.dayId,
+        day.primaryNodeId,
+        day.dayId === latestSavedDay?.dayId,
+        rng,
+      );
     }
 
     const counts = countData(db);
@@ -518,6 +532,7 @@ function finalizeSavedDay(
   date: string,
   dayId: string,
   primaryNodeId: string,
+  includeTomorrowCard: boolean,
   rng: () => number,
 ): void {
   const summary = choice(rng, [
@@ -593,13 +608,32 @@ function finalizeSavedDay(
   });
   db.prepare(`UPDATE cards SET created_at = ? WHERE id = ?`).run(saveAt, card.id);
 
-  if (todoTexts.length > 0) {
+  if (includeTomorrowCard && todoTexts.length > 0) {
     const todoCard = insertCard(db, {
       type: "todo_suggestion",
       date,
       content: { todos: todoTexts, todo_ids: todoIds },
     });
     db.prepare(`UPDATE cards SET created_at = ? WHERE id = ?`).run(saveAt, todoCard.id);
+  }
+
+  if (includeTomorrowCard) {
+    const health = extractHealth(listNodesByDate(db, date));
+    if (health.sleepMinutes !== null || health.steps !== null) {
+      const healthCard = insertCard(db, {
+        type: "health",
+        date: addDays(date, 1),
+        content: {
+          advice: "今天的睡眠与活动数据已记录，明天继续保持规律作息和适量活动。",
+          sleep_minutes: health.sleepMinutes,
+          steps: health.steps,
+        },
+      });
+      db.prepare(`UPDATE cards SET created_at = ? WHERE id = ?`).run(
+        saveAt,
+        healthCard.id,
+      );
+    }
   }
 
   if (chance(rng, 0.45)) {

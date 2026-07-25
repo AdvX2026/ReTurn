@@ -168,12 +168,18 @@ enum TimelineDesign {
         static let contentHorizontalPadding: CGFloat = 20
         static var contentTopPadding: CGFloat {
             #if os(iOS)
-            96
+            ReTurnDesign.Metrics.mainContentTopPadding
             #elseif os(macOS)
             18
             #endif
         }
-        static let contentBottomPadding: CGFloat = 36
+        static var contentBottomPadding: CGFloat {
+            #if os(iOS)
+            ReTurnDesign.Card.pageBottomPadding
+            #elseif os(macOS)
+            36
+            #endif
+        }
         static let daySpacing: CGFloat = 38
         static let dayHeaderBottomPadding: CGFloat = 18
         static let dailyBriefingTopSpacing: CGFloat = 4

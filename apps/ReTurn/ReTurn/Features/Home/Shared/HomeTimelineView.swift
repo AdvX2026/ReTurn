@@ -7,8 +7,8 @@ struct HomeTimelineView: View {
 
     @State private var selectedPage: TimelinePage?
     @State private var isPagerScrolling = false
-    @State private var isBeforeScrolling = false
-    @State private var isBeforeChromeVisible = true
+    @State private var isDataPageScrolling = false
+    @State private var isDataPageChromeVisible = true
     @FocusState private var isComposerFocused: Bool
     #if os(iOS)
     @FocusState private var isSearchFocused: Bool
@@ -25,9 +25,9 @@ struct HomeTimelineView: View {
                     TimelinePageContent(
                         page: page,
                         isActive: page == currentPage && !isPagerScrolling,
-                        isBeforeChromeVisible: isBeforeChromeVisible,
-                        onBeforeChromeVisibilityChange: updateBeforeChromeVisibility,
-                        onBeforeScrollActivityChange: updateBeforeScrollActivity
+                        isDataPageChromeVisible: isDataPageChromeVisible,
+                        onDataPageChromeVisibilityChange: updateDataPageChromeVisibility,
+                        onDataPageScrollActivityChange: updateDataPageScrollActivity
                     )
                         .containerRelativeFrame([.horizontal, .vertical])
                         .id(page)
@@ -50,11 +50,11 @@ struct HomeTimelineView: View {
             if #available(iOS 18.0, macOS 15.0, *) {
                 pager
                     .onScrollPhaseChange { _, phase in
-                        let isScrolling = phase != ScrollPhase.idle
+                        let isScrolling = phase.isScrolling
                         isPagerScrolling = isScrolling
                         if isScrolling {
-                            isBeforeChromeVisible = true
-                            isBeforeScrolling = false
+                            isDataPageChromeVisible = true
+                            isDataPageScrolling = false
                         }
                     }
             } else {
@@ -62,21 +62,29 @@ struct HomeTimelineView: View {
             }
 
             #if os(iOS)
-            Rectangle()
-                .fill(.bar)
+            LinearGradient(
+                stops: [
+                    .init(
+                        color: ReTurnDesign.Colors.navigationBackdrop,
+                        location: 0
+                    ),
+                    .init(
+                        color: ReTurnDesign.Colors.navigationBackdrop,
+                        location: 0.48
+                    ),
+                    .init(
+                        color: ReTurnDesign.Colors.navigationBackdrop.opacity(0.72),
+                        location: 0.72
+                    ),
+                    .init(
+                        color: ReTurnDesign.Colors.navigationBackdrop.opacity(0),
+                        location: 1
+                    ),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
                 .frame(height: ReTurnDesign.Metrics.navigationBackdropHeight)
-                .mask {
-                    LinearGradient(
-                        stops: [
-                            .init(color: .white, location: 0),
-                            .init(color: .white, location: 0.48),
-                            .init(color: .white.opacity(0.72), location: 0.72),
-                            .init(color: .clear, location: 1),
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                }
                 .ignoresSafeArea(edges: [.top, .horizontal])
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
@@ -119,30 +127,34 @@ struct HomeTimelineView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             Group {
                 #if os(iOS)
-                ZStack {
-                    ComposerBar(
-                        isFocused: $isComposerFocused,
-                        isActive: isNowPage && isChromeVisible
-                    )
+                VStack(spacing: 0) {
+                    ConnectionStatusView()
+
+                    ZStack {
+                        ComposerBar(
+                            isFocused: $isComposerFocused,
+                            isActive: isNowPage && isChromeVisible
+                        )
                         .opacity(isNowPage ? 1 : 0)
                         .blur(radius: isNowPage ? 0 : bottomChromeInactiveBlurRadius)
                         .zIndex(isNowPage ? 1 : 0)
                         .allowsHitTesting(isNowPage)
                         .accessibilityHidden(!isNowPage)
 
-                    TimelineSearchBar(isFocused: $isSearchFocused)
-                        .opacity(isNowPage ? 0 : 1)
-                        .blur(radius: isNowPage ? bottomChromeInactiveBlurRadius : 0)
-                        .zIndex(isNowPage ? 0 : 1)
-                        .allowsHitTesting(!isNowPage)
-                        .accessibilityHidden(isNowPage)
+                        TimelineSearchBar(isFocused: $isSearchFocused)
+                            .opacity(isNowPage ? 0 : 1)
+                            .blur(radius: isNowPage ? bottomChromeInactiveBlurRadius : 0)
+                            .zIndex(isNowPage ? 0 : 1)
+                            .allowsHitTesting(!isNowPage)
+                            .accessibilityHidden(isNowPage)
+                    }
+                    .animation(
+                        .easeInOut(
+                            duration: ReTurnDesign.Motion.bottomChromeTransitionDuration
+                        ),
+                        value: isNowPage
+                    )
                 }
-                .animation(
-                    .easeInOut(
-                        duration: ReTurnDesign.Motion.bottomChromeTransitionDuration
-                    ),
-                    value: isNowPage
-                )
                 #else
                 VStack(spacing: 0) {
                     ConnectionStatusView()
@@ -168,8 +180,8 @@ struct HomeTimelineView: View {
                 isComposerFocused = false
             }
             #endif
-            isBeforeChromeVisible = true
-            isBeforeScrolling = false
+            isDataPageChromeVisible = true
+            isDataPageScrolling = false
         }
         .onChange(of: chat.pendingJump) { _, jump in
             guard jump != nil else { return }
@@ -184,7 +196,7 @@ struct HomeTimelineView: View {
     }
 
     private var isChromeVisible: Bool {
-        selectedPage != .before || isBeforeChromeVisible
+        isNowPage || isDataPageChromeVisible
     }
 
     private var currentPage: TimelinePage {
@@ -200,7 +212,7 @@ struct HomeTimelineView: View {
     }
 
     private var isTimelineScrolling: Bool {
-        isPagerScrolling || (selectedPage == .before && isBeforeScrolling)
+        isPagerScrolling || (!isNowPage && isDataPageScrolling)
     }
 
     private var chromeAnimation: Animation {
@@ -215,11 +227,11 @@ struct HomeTimelineView: View {
         }
     }
 
-    private func updateBeforeChromeVisibility(_ isVisible: Bool) {
+    private func updateDataPageChromeVisibility(_ isVisible: Bool) {
         guard
-            selectedPage == .before,
+            !isNowPage,
             !isPagerScrolling,
-            isBeforeChromeVisible != isVisible
+            isDataPageChromeVisible != isVisible
         else {
             return
         }
@@ -230,12 +242,12 @@ struct HomeTimelineView: View {
             isSearchFocused = false
             #endif
         }
-        isBeforeChromeVisible = isVisible
+        isDataPageChromeVisible = isVisible
     }
 
-    private func updateBeforeScrollActivity(_ isScrolling: Bool) {
-        isBeforeScrolling =
-            selectedPage == .before
+    private func updateDataPageScrollActivity(_ isScrolling: Bool) {
+        isDataPageScrolling =
+            !isNowPage
             && !isPagerScrolling
             && isScrolling
     }

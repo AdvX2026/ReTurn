@@ -13,27 +13,37 @@ struct IdeaCard: View {
     }
 
     var body: some View {
-        Button {
-            onOpen?(content)
-        } label: {
-            CardSurface {
-                CardHeader(
-                    icon: "lightbulb.fill",
-                    title: "Idea",
-                    tint: ReTurnDesign.Colors.Accents.idea,
-                    detail: provenanceLabel,
-                    showsChevron: onOpen != nil
-                )
-
-                Text(content.text)
-                    .font(ReTurnDesign.Typography.cardBody)
-                    .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
-                    .fixedSize(horizontal: false, vertical: true)
+        Group {
+            if let onOpen {
+                Button {
+                    onOpen(content)
+                } label: {
+                    cardContent
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("after.idea.\(content.provenance.rawValue)")
+            } else {
+                cardContent
+                    .accessibilityIdentifier("after.idea.\(content.provenance.rawValue)")
             }
         }
-        .buttonStyle(.plain)
-        .disabled(onOpen == nil)
-        .accessibilityIdentifier("after.idea.\(content.provenance.rawValue)")
+    }
+
+    private var cardContent: some View {
+        CardSurface {
+            CardHeader(
+                icon: "lightbulb.fill",
+                title: "Idea",
+                tint: ReTurnDesign.Colors.Accents.idea,
+                detail: provenanceLabel,
+                showsChevron: onOpen != nil
+            )
+
+            Text(content.text)
+                .font(ReTurnDesign.Typography.cardBody)
+                .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private var provenanceLabel: String {

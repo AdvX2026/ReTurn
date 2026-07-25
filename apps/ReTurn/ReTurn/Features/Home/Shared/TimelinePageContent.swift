@@ -3,25 +3,29 @@ import SwiftUI
 struct TimelinePageContent: View {
     let page: TimelinePage
     let isActive: Bool
-    let isBeforeChromeVisible: Bool
-    let onBeforeChromeVisibilityChange: (Bool) -> Void
-    let onBeforeScrollActivityChange: (Bool) -> Void
+    let isDataPageChromeVisible: Bool
+    let onDataPageChromeVisibilityChange: (Bool) -> Void
+    let onDataPageScrollActivityChange: (Bool) -> Void
 
     var body: some View {
         switch page {
         case .before:
             #if os(iOS)
             IOSBeforePage(
-                isChromeVisible: isBeforeChromeVisible,
-                onChromeVisibilityChange: onBeforeChromeVisibilityChange,
-                onScrollActivityChange: onBeforeScrollActivityChange
+                isChromeVisible: isDataPageChromeVisible,
+                onChromeVisibilityChange: onDataPageChromeVisibilityChange,
+                onScrollActivityChange: onDataPageScrollActivityChange
             )
             #else
             Color.clear
             #endif
         case .after:
             #if os(iOS)
-            IOSAfterPage()
+            IOSAfterPage(
+                isChromeVisible: isDataPageChromeVisible,
+                onChromeVisibilityChange: onDataPageChromeVisibilityChange,
+                onScrollActivityChange: onDataPageScrollActivityChange
+            )
             #else
             Color.clear
             #endif
@@ -86,6 +90,10 @@ private struct IOSBeforePage: View {
 }
 
 private struct IOSAfterPage: View {
+    let isChromeVisible: Bool
+    let onChromeVisibilityChange: (Bool) -> Void
+    let onScrollActivityChange: (Bool) -> Void
+
     @Environment(CardsStore.self) private var cards: CardsStore
 
     var body: some View {
@@ -116,6 +124,9 @@ private struct IOSAfterPage: View {
                     onTodoDismiss: { id in
                         Task { await cards.dismissTodo(id) }
                     },
+                    isChromeVisible: isChromeVisible,
+                    onChromeVisibilityChange: onChromeVisibilityChange,
+                    onScrollActivityChange: onScrollActivityChange,
                     loadMoreID: cards.nextCursor,
                     onLoadMore: { await cards.loadNextPage() }
                 )

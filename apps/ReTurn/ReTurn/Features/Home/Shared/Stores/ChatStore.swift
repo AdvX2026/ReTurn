@@ -20,7 +20,7 @@ final class ChatStore {
         var id: String
         let role: Role
         let text: String
-        let intent: ChatIntent?
+        var intent: ChatIntent?
         let createdAt: Date
         var failed: Bool
         var retryPayload: RetryPayload?
@@ -119,7 +119,7 @@ final class ChatStore {
             let message = apiErrorMessage(error)
             historyState = .failed(message)
             lastError = message
-            api.markUnreachable(error)
+            api.markRequestFailure(error)
         }
     }
 
@@ -205,12 +205,21 @@ final class ChatStore {
         correctingMessageIDs.insert(messageID)
         defer { correctingMessageIDs.remove(messageID) }
         do {
-            _ = try await api.makeClient().patchMessageIntent(id: messageID, intent: intent)
+            let response = try await api.makeClient().patchMessageIntent(
+                id: messageID,
+                intent: intent
+            )
+            mutateEntries {
+                guard let index = $0.firstIndex(where: { $0.id == messageID }) else {
+                    return
+                }
+                $0[index].intent = response.message.intent ?? intent
+            }
             api.markReachable()
             await loadHistory(force: true)
         } catch {
             lastError = apiErrorMessage(error)
-            api.markUnreachable(error)
+            api.markRequestFailure(error)
         }
     }
 
@@ -244,7 +253,7 @@ final class ChatStore {
             api.markReachable()
         } catch {
             lastError = apiErrorMessage(error)
-            api.markUnreachable(error)
+            api.markRequestFailure(error)
         }
     }
 
@@ -326,7 +335,7 @@ final class ChatStore {
                 $0[index].retryPayload = payload
             }
         }
-        api.markUnreachable(error)
+        api.markRequestFailure(error)
     }
 
     private func mutateEntries(_ mutation: (inout [Entry]) -> Void) {
