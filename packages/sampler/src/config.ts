@@ -60,7 +60,7 @@ export function parseFixedNow(value?: string): Date | null {
 
 /** Explicit boolean parser; invalid configured values fail fast. */
 function bool(name: string, defaultValue: boolean): boolean {
-  const v = process.env[name];
+  const v = process.env[name]?.trim();
   if (v === undefined || v === "") return defaultValue;
   const lower = v.toLowerCase();
   if (lower === "0" || lower === "false" || lower === "off" || lower === "no") {

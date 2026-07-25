@@ -18,8 +18,13 @@ let cachedDeviceId: string | null = null;
 
 function loadDeviceId(): string | null {
   if (cachedDeviceId) return cachedDeviceId;
-  if (existsSync(config.deviceIdPath)) {
-    cachedDeviceId = readFileSync(config.deviceIdPath, "utf8").trim() || null;
+  try {
+    if (existsSync(config.deviceIdPath)) {
+      cachedDeviceId = readFileSync(config.deviceIdPath, "utf8").trim() || null;
+    }
+  } catch {
+    // Unreadable device-id file must not fail a flush; re-register instead.
+    return null;
   }
   return cachedDeviceId;
 }

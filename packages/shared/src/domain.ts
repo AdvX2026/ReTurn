@@ -18,7 +18,6 @@ export const NodeKind = z.enum([
   "todo_check",
   "idea",
   "image",
-  "reminder",
 ]);
 export type NodeKind = z.infer<typeof NodeKind>;
 
