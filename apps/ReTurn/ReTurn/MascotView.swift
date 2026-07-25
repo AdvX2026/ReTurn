@@ -176,10 +176,13 @@ struct MascotView: View {
         body.translateBy(x: -Design.pivot.x, y: -Design.pivot.y)
 
         // Arms pivot where they meet the body: a gentle wave at idle, a full
-        // counter-swing against the same-side leg when walking. Folded a few
-        // degrees inward from the Figma pose so they nestle against the
+        // counter-swing against the same-side leg when walking. The Figma
+        // pose raised the right arm in a wave; the right side is instead
+        // mirrored from the left so both arms hang symmetrically. Folded a
+        // few degrees inward from the Figma pose so they nestle against the
         // body's slope instead of hovering off it.
         let leftArmAnchor = CGPoint(x: 38.5, y: 60.7349)
+        let rightArmAnchor = CGPoint(x: Design.coreWidth - leftArmAnchor.x, y: leftArmAnchor.y)
         let armSwing = walking
             ? -phase * Motion.armWalkSwing
             : sin(t * speed * .pi + 1.2) * Motion.armWaveAmplitude
@@ -192,8 +195,8 @@ struct MascotView: View {
         )
         drawLimb(
             &body,
-            rect: CGRect(x: 132.392, y: 39, width: 15, height: 25),
-            anchor: CGPoint(x: 139.892, y: 51.5),
+            rect: CGRect(x: Design.coreWidth - 31 - 15, y: 48.2349, width: 15, height: 25),
+            anchor: rightArmAnchor,
             degrees: -leftArmDegrees
         )
 
