@@ -47,13 +47,19 @@ describe("parseRecentlyOpened", () => {
     assert.equal(recents[2]!.label, "demo.code-workspace");
   });
 
-  it("returns empty for missing or invalid JSON", () => {
-    assert.deepEqual(parseRecentlyOpened("", "code"), []);
-    assert.deepEqual(parseRecentlyOpened("   ", "code"), []);
-    assert.deepEqual(parseRecentlyOpened("not-json", "code"), []);
-    assert.deepEqual(parseRecentlyOpened("{}", "code"), []);
-    assert.deepEqual(parseRecentlyOpened('{"entries":null}', "code"), []);
-    assert.deepEqual(parseRecentlyOpened('{"entries":"x"}', "code"), []);
+  it("rejects missing or invalid JSON", () => {
+    assert.throws(() => parseRecentlyOpened("", "code"));
+    assert.throws(() => parseRecentlyOpened("   ", "code"));
+    assert.throws(() => parseRecentlyOpened("not-json", "code"));
+    assert.throws(() => parseRecentlyOpened("{}", "code"), /entries must be an array/);
+    assert.throws(
+      () => parseRecentlyOpened('{"entries":null}', "code"),
+      /entries must be an array/,
+    );
+    assert.throws(
+      () => parseRecentlyOpened('{"entries":"x"}', "code"),
+      /entries must be an array/,
+    );
   });
 
   it("caps at 30 most recent entries", () => {
@@ -158,6 +164,17 @@ describe("readRecentlyOpenedJson integration", () => {
     assert.equal(recents[0]!.kind, "folder");
     assert.equal(recents[1]!.kind, "file");
     assert.equal(recents[2]!.kind, "workspace");
+  });
+
+  it("rejects a database without a supported recents key", async () => {
+    const unsupported = join(dir, "unsupported.vscdb");
+    const db = new DatabaseSync(unsupported);
+    db.exec(`CREATE TABLE ItemTable (key TEXT PRIMARY KEY NOT NULL, value BLOB)`);
+    db.close();
+    await assert.rejects(
+      collectVscodeRecents(unsupported, "code"),
+      /no supported recent-projects key/,
+    );
   });
 
   it("missing path rejects instead of reporting an empty sample", async () => {

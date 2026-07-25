@@ -46,6 +46,8 @@ export interface SampleSnapshot {
   platform: NodeJS.Platform;
   /** Per-source stats (e.g. agents.intervals, agents.emitted). */
   stats: Record<string, Record<string, number>>;
+  /** Explicit operational failures keyed by source id. */
+  errors: Record<string, string>;
 }
 
 export interface SampleResult {
@@ -72,11 +74,17 @@ export async function collectSample(opts?: {
 
   const results = await Promise.all(
     (opts?.sources ?? SOURCES).map(
-      async (src): Promise<{ id: string; result: SourceResult }> => {
+      async (src): Promise<{ id: string; result: SourceResult; error?: string }> => {
         try {
           return { id: src.id, result: await src.sample(ctx) };
-        } catch {
-          return { id: src.id, result: { nodes: [], stats: { error: 1 } } };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          console.error(`[sampler:${src.id}] ${message}`);
+          return {
+            id: src.id,
+            result: { nodes: [], stats: { error: 1 } },
+            error: message,
+          };
         }
       },
     ),
@@ -84,9 +92,11 @@ export async function collectSample(opts?: {
 
   const nodes: NodeInput[] = [];
   const stats: SampleSnapshot["stats"] = {};
-  for (const { id, result } of results) {
+  const errors: SampleSnapshot["errors"] = {};
+  for (const { id, result, error } of results) {
     nodes.push(...result.nodes);
     stats[id] = result.stats;
+    if (error) errors[id] = error;
   }
 
   // Save Today: environment meta node (orchestrator-level, not a feature source).
@@ -104,12 +114,14 @@ export async function collectSample(opts?: {
           browser: t.browser,
         })),
         stats,
+        errors,
         at,
       }),
       source_meta: {
         at,
         tab_count: env.tabs.length,
         stats,
+        errors,
       },
       client_created_at: at,
       date: ctx.day,
@@ -124,6 +136,7 @@ export async function collectSample(opts?: {
       at,
       platform,
       stats,
+      errors,
     },
     nodes,
   };

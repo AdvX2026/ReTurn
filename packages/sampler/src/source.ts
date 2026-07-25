@@ -4,8 +4,9 @@
  * Each source owns its full pipeline: collect → map → in-process dedupe →
  * NodeInput[]. The orchestrator (collect.ts) never knows feature internals.
  */
-import { createHash } from "node:crypto";
 import type { NodeInput } from "@return/shared";
+
+export { uuidFromSeed } from "@return/shared";
 
 /** Shared clock / mode for one sample tick. */
 export interface SampleContext {
@@ -53,8 +54,11 @@ export function dateInTimeZone(d: Date, timezone: string): string {
     month: "2-digit",
     day: "2-digit",
   }).formatToParts(d);
-  const value = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((part) => part.type === type)?.value ?? "";
+  const value = (type: Intl.DateTimeFormatPartTypes) => {
+    const part = parts.find((candidate) => candidate.type === type);
+    if (!part) throw new Error(`timezone formatter omitted ${type}`);
+    return part.value;
+  };
   return `${value("year")}-${value("month")}-${value("day")}`;
 }
 
@@ -117,20 +121,6 @@ export function createSampleContext(opts: {
     platform: opts.platform ?? process.platform,
     asSnapshot: Boolean(opts.asSnapshot),
   };
-}
-
-/** Stable UUIDv4-shaped id from seed — survives sampler restarts. */
-export function uuidFromSeed(seed: string): string {
-  const hex = createHash("sha256").update(seed).digest("hex");
-  return [
-    hex.slice(0, 8),
-    hex.slice(8, 12),
-    `4${hex.slice(13, 16)}`,
-    ((Number.parseInt(hex.slice(16, 18), 16) & 0x3f) | 0x80)
-      .toString(16)
-      .padStart(2, "0") + hex.slice(18, 20),
-    hex.slice(20, 32),
-  ].join("-");
 }
 
 /**

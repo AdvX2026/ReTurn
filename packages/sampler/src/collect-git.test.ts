@@ -52,10 +52,10 @@ describe("parseGitLog", () => {
     assert.equal(commits[1]!.deletions, null);
   });
 
-  it("returns empty for empty or garbage input", () => {
+  it("returns empty only for empty output and rejects malformed records", () => {
     assert.deepEqual(parseGitLog("", repo, repoPath), []);
     assert.deepEqual(parseGitLog("   \n  ", repo, repoPath), []);
-    assert.deepEqual(parseGitLog("not a git log", repo, repoPath), []);
+    assert.throws(() => parseGitLog("not a git log", repo, repoPath));
   });
 
   it("converts offset author time to UTC ISO (Z)", () => {
@@ -76,17 +76,14 @@ describe("parseGitLog", () => {
     assert.equal(c!.deletions, null);
   });
 
-  it("skips bad author time without dropping later records", () => {
+  it("rejects a bad author time", () => {
     const stdout = [
       "\x1ebad\x1fnot-a-date\x1fgarbage header",
       " 1 file changed, 1 insertion(+)",
       "\x1egood\x1f2026-07-24T10:00:00Z\x1fok commit",
       " 1 file changed, 1 insertion(+)",
     ].join("\n");
-    const commits = parseGitLog(stdout, repo, repoPath);
-    assert.equal(commits.length, 1);
-    assert.equal(commits[0]!.sha, "good");
-    assert.equal(commits[0]!.committedAt, "2026-07-24T10:00:00.000Z");
+    assert.throws(() => parseGitLog(stdout, repo, repoPath), /author timestamp/);
   });
 });
 

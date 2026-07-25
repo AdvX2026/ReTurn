@@ -33,8 +33,8 @@ export function unlinkSqliteSnapshotSync(tmpPath: string): void {
   for (const suffix of ["", ...SQLITE_WAL_SUFFIXES]) {
     try {
       unlinkSync(`${tmpPath}${suffix}`);
-    } catch {
-      /* ignore */
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
   }
 }
@@ -43,8 +43,8 @@ export async function unlinkSqliteSnapshot(tmpPath: string): Promise<void> {
   for (const suffix of ["", ...SQLITE_WAL_SUFFIXES]) {
     try {
       await unlink(`${tmpPath}${suffix}`);
-    } catch {
-      /* ignore */
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
   }
 }

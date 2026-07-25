@@ -121,6 +121,9 @@ describe("source helpers", () => {
       broken: { error: 1 },
       healthy: { ok: 1 },
     });
+    assert.deepEqual(result.snapshot.errors, {
+      broken: "permission denied",
+    });
   });
 });
 

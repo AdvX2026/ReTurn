@@ -16,6 +16,10 @@ export interface SamplerRuntime {
   getLastSampleAt: () => string | null;
   getLastError: () => string | null;
   isPiOnline: () => boolean;
+  /** Current Pi rhythm (PRD F2). */
+  getCadence: () => "active" | "night";
+  /** Effective sample interval minutes for current cadence. */
+  getIntervalMin: () => number;
   /** Force one sample cycle; returns snapshot + enqueue count. */
   sampleNow: (opts?: { asSnapshot?: boolean }) => Promise<{
     snapshot: SampleSnapshot;
@@ -71,7 +75,8 @@ export function startLocalServer(rt: SamplerRuntime): Promise<void> {
           pi_online: rt.isPiOnline(),
           device_id: getCachedDeviceId(),
           server_url: config.serverUrl,
-          interval_min: config.sampleIntervalMin,
+          cadence: rt.getCadence(),
+          interval_min: rt.getIntervalMin(),
           error: rt.getLastError(),
         });
         return;
@@ -83,6 +88,8 @@ export function startLocalServer(rt: SamplerRuntime): Promise<void> {
           last_sample_at: rt.getLastSampleAt(),
           outbox_size: rt.outbox.size(),
           pi_online: rt.isPiOnline(),
+          cadence: rt.getCadence(),
+          interval_min: rt.getIntervalMin(),
           app: snap?.app ?? null,
           tab_count: snap?.tabs.length ?? 0,
           agent_count: snap?.stats.agents?.intervals ?? 0,
@@ -94,14 +101,15 @@ export function startLocalServer(rt: SamplerRuntime): Promise<void> {
 
       if (req.method === "POST" && url.pathname === "/sample-now") {
         let asSnapshot = false;
-        try {
-          const raw = await readBody(req);
-          if (raw) {
+        const raw = await readBody(req);
+        if (raw) {
+          try {
             const body = JSON.parse(raw) as { as_snapshot?: boolean };
             asSnapshot = Boolean(body.as_snapshot);
+          } catch {
+            send(res, 400, { error: "request body must be valid JSON" });
+            return;
           }
-        } catch {
-          /* empty body ok */
         }
         const result = await rt.sampleNow({ asSnapshot });
         send(res, 200, {

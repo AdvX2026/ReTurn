@@ -98,7 +98,10 @@ export const config = {
   /** Pi base URL */
   serverUrl: str("RETURN_SERVER_URL", "http://127.0.0.1:8787").replace(/\/$/, ""),
   deviceName: str("SAMPLER_DEVICE_NAME", "Mac Sampler"),
+  /** Daytime / pre-Save sample period (PRD F2 active cadence). */
   sampleIntervalMin: positiveNumber("SAMPLE_INTERVAL_MIN", 5),
+  /** After Save (night cadence). */
+  sampleIntervalNightMin: positiveNumber("SAMPLE_INTERVAL_NIGHT_MIN", 30),
   /** One timezone authority shared by every source. */
   timezone: parseTimeZone(process.env.SAMPLER_TIMEZONE),
   /** Explicit replay/test clock. Unset in normal long-running operation. */

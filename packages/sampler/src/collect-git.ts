@@ -136,8 +136,9 @@ async function localGitAuthor(repoPath: string): Promise<string | null> {
     );
     const email = String(stdout).trim();
     return email || null;
-  } catch {
-    return null;
+  } catch (error) {
+    if ((error as { code?: number }).code === 1) return null;
+    throw error;
   }
 }
 
@@ -157,14 +158,16 @@ export function parseGitLog(stdout: string, repo: string, repoPath: string): Git
     const lines = record.split(/\r?\n/);
     const header = (lines[0] ?? "").replace(/^\r?\n?/, "");
     const [sha, authorIso, ...subjectParts] = header.split("\x1f");
-    if (!sha || !authorIso) continue;
+    if (!sha || !authorIso) throw new Error("invalid git log record header");
     const subject = subjectParts.join("\x1f");
 
     // %aI is offset-aware; NodeInput.client_created_at requires Z-suffixed datetime.
     // Parse first — Invalid Date throws RangeError on toISOString() and would
     // abort the whole record loop if left uncaught (scanRepo catches per-repo).
     const ms = Date.parse(authorIso);
-    if (Number.isNaN(ms)) continue;
+    if (Number.isNaN(ms)) {
+      throw new Error(`invalid git author timestamp: ${authorIso}`);
+    }
     const committedAt = new Date(ms).toISOString();
 
     let filesChanged: number | null = null;

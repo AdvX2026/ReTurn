@@ -91,17 +91,13 @@ async function frontmostApp(): Promise<{ name: string; bundleId?: string } | nul
     tell application "System Events"
       set p to first application process whose frontmost is true
       set n to name of p
-      try
-        set b to bundle identifier of p
-      on error
-        set b to ""
-      end try
+      set b to bundle identifier of p
       return n & linefeed & b
     end tell
   `;
   const raw = await osascript(script);
   const [name, bundleId] = raw.split("\n");
-  if (!name?.trim()) return null;
+  if (!name?.trim()) throw new Error("System Events returned no frontmost app");
   return { name: name.trim(), bundleId: bundleId?.trim() || undefined };
 }
 

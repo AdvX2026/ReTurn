@@ -1,10 +1,15 @@
-import type { NodeRecord, TimelineResponse, TimelineSegment } from "@return/shared";
+import {
+  ACTIVE_FEED_KINDS,
+  type NodeRecord,
+  type TimelineResponse,
+  type TimelineSegment,
+} from "@return/shared";
 import { config } from "../config.js";
 import { listNodesByDate } from "../db/repo.js";
 import type { Db } from "../db/schema.js";
 import { extractHealth } from "../stats/compute.js";
 import { allSessions, nodeEventTime } from "../stats/sessions.js";
-import { parseDate } from "../util/time.js";
+import { dateRange, parseDate } from "../util/time.js";
 
 /** App → coarse category for timeline coloring. */
 const CATEGORY_MAP: Array<{ test: RegExp; category: string }> = [
@@ -25,47 +30,93 @@ function categorize(app: string): string {
 }
 
 /**
- * Build 24h timeline from existing nodes (PRD F12).
- * No new tables — pure aggregation.
+ * Build timeline from existing nodes (PRD F7).
+ * Single day or inclusive from/to range. No new tables — pure aggregation.
+ * Range is capped at MAX_TIMELINE_DAYS inclusive days; larger spans throw.
  */
-export function buildTimeline(db: Db, date: string): TimelineResponse {
-  const nodes = listNodesByDate(db, date);
-  const sessions = allSessions(nodes, config.sampleIntervalMin);
+export const MAX_TIMELINE_DAYS = 31;
+
+export class TimelineRangeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "TimelineRangeError";
+  }
+}
+
+export function buildTimeline(
+  db: Db,
+  dateOrRange: string | { from: string; to: string },
+): TimelineResponse {
+  const from = typeof dateOrRange === "string" ? dateOrRange : dateOrRange.from;
+  const to = typeof dateOrRange === "string" ? dateOrRange : dateOrRange.to;
+  const dates = dateSpan(from, to);
   const segments: TimelineSegment[] = [];
 
-  for (const s of sessions) {
-    segments.push({
-      kind: s.kind === "agent" ? "agent" : "app",
-      start: s.start,
-      end: s.end,
-      label: s.app,
-      category: s.kind === "agent" ? "agent" : categorize(s.app),
-      meta: s.meta,
-    });
-  }
+  for (const date of dates) {
+    const nodes = listNodesByDate(db, date);
+    const sessions = allSessions(nodes, config.sampleIntervalMin);
 
-  // Feed dots (active nodes) — use client event time when present (offline buffer).
-  for (const n of nodes) {
-    if (!["text", "url", "voice", "save_note"].includes(n.kind)) continue;
-    const at = nodeEventTime(n);
-    segments.push({
-      kind: "feed",
-      start: at,
-      end: at,
-      label: n.title || n.kind,
-      node_id: n.id,
-      category: n.kind,
-      meta: { kind: n.kind },
-    });
-  }
+    for (const s of sessions) {
+      segments.push({
+        kind: s.kind === "agent" ? "agent" : "app",
+        start: s.start,
+        end: s.end,
+        label: s.app,
+        category: s.kind === "agent" ? "agent" : categorize(s.app),
+        meta: s.meta,
+        date,
+      });
+    }
 
-  // Sleep segment from health_daily
-  const sleep = sleepSegment(nodes, date);
-  if (sleep) segments.push(sleep);
+    for (const n of nodes) {
+      if (!(ACTIVE_FEED_KINDS as readonly string[]).includes(n.kind)) {
+        continue;
+      }
+      const at = nodeEventTime(n);
+      segments.push({
+        kind: "feed",
+        start: at,
+        end: at,
+        label: n.title || n.kind,
+        node_id: n.id,
+        category: n.kind,
+        meta: { kind: n.kind },
+        date,
+      });
+    }
+
+    const sleep = sleepSegment(nodes, date);
+    if (sleep) segments.push({ ...sleep, date });
+  }
 
   segments.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
 
-  return { date, segments };
+  return {
+    date: from,
+    from: from !== to ? from : undefined,
+    to: from !== to ? to : undefined,
+    segments,
+  };
+}
+
+/** Inclusive day count between YYYY-MM-DD from..to (assumes from ≤ to). */
+export function inclusiveDayCount(from: string, to: string): number {
+  const a = parseDate(from).getTime();
+  const b = parseDate(to).getTime();
+  return Math.floor((b - a) / 86_400_000) + 1;
+}
+
+function dateSpan(from: string, to: string): string[] {
+  if (from > to) {
+    throw new TimelineRangeError("from must be ≤ to");
+  }
+  const days = inclusiveDayCount(from, to);
+  if (days > MAX_TIMELINE_DAYS) {
+    throw new TimelineRangeError(
+      `timeline range exceeds ${MAX_TIMELINE_DAYS} days (got ${days})`,
+    );
+  }
+  return dateRange(from, to);
 }
 
 function sleepSegment(nodes: NodeRecord[], date: string): TimelineSegment | null {

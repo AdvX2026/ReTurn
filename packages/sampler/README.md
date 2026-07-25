@@ -16,7 +16,8 @@ Env (optional):
 | Var | Default |
 |-----|---------|
 | `RETURN_SERVER_URL` | `http://127.0.0.1:8787` |
-| `SAMPLE_INTERVAL_MIN` | `5` |
+| `SAMPLE_INTERVAL_MIN` | `5` (active cadence) |
+| `SAMPLE_INTERVAL_NIGHT_MIN` | `30` (post-Save cadence) |
 | `SAMPLER_PORT` | `8791` |
 | `SAMPLER_DATA_DIR` | `~/.return/sampler` |
 | `SAMPLER_DEVICE_NAME` | `Mac Sampler` |
