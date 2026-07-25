@@ -63,7 +63,14 @@ export type TaskType = z.infer<typeof TaskType>;
 export const TaskStatus = z.enum(["queued", "running", "done", "failed"]);
 export type TaskStatus = z.infer<typeof TaskStatus>;
 
-export const CardType = z.enum(["briefing", "idea", "todo_suggestion", "health"]);
+export const CardType = z.enum([
+  "briefing",
+  "idea",
+  "todo_suggestion",
+  "health",
+  /** Narrative week recap (PRD P1); produced on Save when triggered. */
+  "weekly",
+]);
 export type CardType = z.infer<typeof CardType>;
 
 /** Sampler rhythm after Save (PRD F2). */

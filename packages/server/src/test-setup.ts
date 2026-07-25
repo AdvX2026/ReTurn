@@ -94,6 +94,15 @@ globalThis.fetch = async (input, init) => {
       content = "你刚才主要在推进 ReTurn。";
     } else if (system.includes("提取图片")) {
       content = "图片中的测试笔记。";
+    } else if (system.includes("weekly recap engine")) {
+      content = JSON.stringify({
+        summary: "A solid week of shipping and reflection.",
+        opening_line: "这一周你把主线推进了一步。",
+        highlights: [
+          { text: "Shipped the weekly card path.", kind: "win" },
+          { text: "Keep the demo data warm.", kind: "insight" },
+        ],
+      });
     } else {
       content = JSON.stringify({
         summary: "Test day summary.",

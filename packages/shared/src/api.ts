@@ -317,6 +317,26 @@ export const BriefingCardContent = z.object({
 });
 export type BriefingCardContent = z.infer<typeof BriefingCardContent>;
 
+/**
+ * Typed content of a `weekly` CardRecord (PRD P1 week recap).
+ * Produced on Save when every 7th saved day lands, or on a Sunday save.
+ * `date` on the card row is `week_end` (the Save day that sealed the window).
+ */
+export const WeeklyCardContent = z.object({
+  week_start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  week_end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  summary: z.string().min(1).max(4000),
+  opening_line: z.string().min(1).max(280),
+  highlights: z.array(ReviewPoint).max(12),
+  /** Saved calendar days included in this recap (subset of the week window). */
+  day_dates: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)),
+  /** Mean of sealed day stats in the window; null if no numeric stats. */
+  stats_avg: StatsSchema.nullable(),
+  /** Dominant day-role in the window, else profile profession at write time. */
+  profession: Profession,
+});
+export type WeeklyCardContent = z.infer<typeof WeeklyCardContent>;
+
 export const DaySummary = z.object({
   date: z.string(),
   saved_at: z.string().datetime().nullable(),

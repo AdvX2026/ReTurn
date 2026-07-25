@@ -54,7 +54,7 @@
 `active`（当日未 Save）· `night`（当日已 Save）
 
 **CardType**  
-`briefing` · `idea` · `todo_suggestion` · `health`
+`briefing` · `idea` · `todo_suggestion` · `health` · `weekly`
 
 **TaskType**  
 `meeting_notes` · `image_extract` · `generic`
@@ -274,7 +274,8 @@
 | `edges_created`, `cards_created?` | 计数 |
 | `cadence` | 存后一般为 `night` |
 
-会写 `todo_suggestion` / `briefing` / `health` / auto-`idea` 等 cards（视发酵输出）。
+会写 `todo_suggestion` / `briefing` / `health` / auto-`idea` 等 cards（视发酵输出）。  
+满足触发条件时额外写 `weekly`（周日 Save 或第 7/14/… 个封存日）；周报 LLM 失败不回滚当日 Save。
 
 ---
 
@@ -596,7 +597,7 @@ Now 对话流，**新→旧**。
 | `limit` | 默认 30，最大 100 |
 | `cursor` | **before**：`date|created_at|id`；**future**：`created_at|id` |
 
-**before**：`date ≤ today`，排序 `date DESC, created_at DESC, id DESC`  
+**before**：`date ≤ today`，排序 `date DESC, created_at DESC, id DESC`（含 `briefing` / `weekly` / 当日 idea 等）  
 **future**：类型 `idea` / `todo_suggestion` / `health`，排序 `created_at DESC, id DESC`
 
 **响应 200**
@@ -617,7 +618,22 @@ Now 对话流，**新→旧**。
 }
 ```
 
-`content` 为开放 JSON（如 briefing 含 summary/stats；idea 含 text/provenance/node_ids）。
+`content` 为开放 JSON：
+
+| type | 主要字段 |
+|---|---|
+| `briefing` | summary, opening_line, stats, character_state, profession, streak, breakdown, … |
+| `weekly` | week_start, week_end, summary, opening_line, highlights, day_dates, stats_avg, profession |
+| `idea` | text, provenance, node_ids |
+| `todo_suggestion` | todos, todo_ids |
+| `health` | advice, sleep_minutes, steps |
+
+**周报卡（`weekly`）产出规则（PRD P1）**：在 `POST /api/save` 成功封存当日后，若满足以下之一则追加一张（失败不回滚当日 Save）：
+
+1. 封存日为**本地周日**；或  
+2. 历史已封存天数（含当日）为 **7 的正倍数**。
+
+同一 `week_end`（= Save 的 `date`）幂等，不重复写。窗口为 `week_end` 往前共 7 个自然日。
 
 ---
 
