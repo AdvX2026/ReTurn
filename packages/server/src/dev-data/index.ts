@@ -202,9 +202,21 @@ export function generateMockData(db: Db, options: MockDataOptions = {}): MockDat
       edgeCount += 1;
     }
 
+    let latestSavedDay: GeneratedDay | undefined;
+    for (const day of generated) {
+      if (day.shouldSave) latestSavedDay = day;
+    }
+
     for (const day of generated) {
       if (!day.shouldSave) continue;
-      finalizeSavedDay(db, day.date, day.dayId, day.primaryNodeId, rng);
+      finalizeSavedDay(
+        db,
+        day.date,
+        day.dayId,
+        day.primaryNodeId,
+        day.dayId === latestSavedDay?.dayId,
+        rng,
+      );
     }
 
     const counts = countData(db);
@@ -518,6 +530,7 @@ function finalizeSavedDay(
   date: string,
   dayId: string,
   primaryNodeId: string,
+  includeTomorrowCard: boolean,
   rng: () => number,
 ): void {
   const summary = choice(rng, [
@@ -593,7 +606,7 @@ function finalizeSavedDay(
   });
   db.prepare(`UPDATE cards SET created_at = ? WHERE id = ?`).run(saveAt, card.id);
 
-  if (todoTexts.length > 0) {
+  if (includeTomorrowCard && todoTexts.length > 0) {
     const todoCard = insertCard(db, {
       type: "todo_suggestion",
       date,

@@ -30,6 +30,9 @@ test("generates realistic linked mock data", () => {
       ).map((row) => row.kind),
     );
     const foreignKeyErrors = db.prepare(`PRAGMA foreign_key_check`).all();
+    const tomorrowCards = db
+      .prepare(`SELECT id FROM cards WHERE type = 'todo_suggestion'`)
+      .all();
 
     assert.equal(result.days, 7);
     assert.equal(inspected.counts.days, 7);
@@ -37,6 +40,7 @@ test("generates realistic linked mock data", () => {
     assert.ok(result.nodes > 200);
     assert.ok(result.savedDays >= 1);
     assert.ok(inspected.counts.cards >= result.savedDays);
+    assert.equal(tomorrowCards.length, 1);
     assert.deepEqual(foreignKeyErrors, []);
     for (const kind of ["health_daily", "app_sample", "reminder", "text", "email"]) {
       assert.ok(kinds.has(kind), `expected ${kind} mock nodes`);
