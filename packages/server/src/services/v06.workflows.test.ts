@@ -301,6 +301,61 @@ describe("v0.6 chat / cards / tasks / resume / timeline range", () => {
     assert.equal(tl.from, "2026-07-22");
     assert.equal(tl.to, "2026-07-23");
     assert.ok(tl.segments.length >= 2);
+    for (const s of tl.segments) {
+      assert.ok(s.id, "stable segment id required");
+      assert.ok(s.shape === "point" || s.shape === "span");
+      assert.ok(["ambient", "normal", "major"].includes(s.importance));
+    }
+  });
+
+  it("timeline projects briefing entry and clusters dense feeds", () => {
+    const card = insertCard(db, {
+      type: "briefing",
+      date: "2026-07-20",
+      content: { summary: "hi" },
+    });
+    const base = Date.parse("2026-07-20T10:00:00.000Z");
+    for (let i = 0; i < 4; i++) {
+      insertNode(db, {
+        client_uuid: crypto.randomUUID(),
+        kind: "text",
+        title: `note ${i}`,
+        content: `c${i}`,
+        date: "2026-07-20",
+        source_meta: {
+          client_created_at: new Date(base + i * 60_000).toISOString(),
+        },
+      });
+    }
+    const tl = buildTimeline(db, "2026-07-20");
+    const briefing = tl.segments.find((s) => s.kind === "briefing");
+    assert.ok(briefing);
+    assert.equal(briefing!.destination?.type, "daily_briefing");
+    if (briefing!.destination?.type === "daily_briefing") {
+      assert.equal(briefing!.destination.briefing_id, card.id);
+    }
+    const cluster = tl.segments.find((s) => s.kind === "cluster");
+    assert.ok(cluster, "four close text feeds should cluster");
+    assert.ok((cluster!.child_count ?? 0) >= 3);
+    assert.equal(cluster!.destination?.type, "timeline_cluster");
+
+    // Cluster id must stay stable when a later same-kind feed joins the burst.
+    const idBefore = cluster!.id;
+    insertNode(db, {
+      client_uuid: crypto.randomUUID(),
+      kind: "text",
+      title: "note 4",
+      content: "c4",
+      date: "2026-07-20",
+      source_meta: {
+        client_created_at: new Date(base + 4 * 60_000).toISOString(),
+      },
+    });
+    const tl2 = buildTimeline(db, "2026-07-20");
+    const cluster2 = tl2.segments.find((s) => s.kind === "cluster");
+    assert.ok(cluster2);
+    assert.equal(cluster2!.id, idBefore, "cluster id stable across membership growth");
+    assert.ok((cluster2!.child_count ?? 0) > (cluster!.child_count ?? 0));
   });
 
   it("timeline rejects ranges over 31 days", () => {

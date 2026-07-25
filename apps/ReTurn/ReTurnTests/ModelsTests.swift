@@ -112,6 +112,38 @@ struct ModelsTests {
                 "node_ids": ["9c5c9e59-0000-4000-8000-000000000003"],
                 "provenance": "user"
               }
+            },
+            {
+              "id": "9c5c9e59-0000-4000-8000-000000000010",
+              "type": "briefing",
+              "date": "2026-07-24",
+              "created_at": "2026-07-24T22:00:00.000Z",
+              "content": {
+                "summary": "写了一天代码",
+                "opening_line": "辛苦了",
+                "briefing": "写了一天代码",
+                "review_points": [{"text": "推进了时间线", "kind": "win"}],
+                "stats": {"intake": 40, "focus": 70, "output": 55, "continuity": 10, "energy": 60},
+                "character_state": "focused",
+                "node_ids": ["9c5c9e59-0000-4000-8000-000000000003"],
+                "profession": "coder",
+                "streak": 3,
+                "breakdown": {
+                  "idea_count": 2,
+                  "image_count": 1,
+                  "active_feed_count": 5,
+                  "email_received": 0,
+                  "todo_completed": 6,
+                  "todo_total": 17,
+                  "agent_duration_min": 120,
+                  "git_commit_count": 4,
+                  "email_sent": 0,
+                  "longest_session_min": 90,
+                  "sleep_minutes": 300,
+                  "steps": 4000,
+                  "cross_day_edges": 1
+                }
+              }
             }
           ]
         }
@@ -128,6 +160,70 @@ struct ModelsTests {
             return
         }
         #expect(idea.provenance == .user)
+        guard case .briefing(let brief) = res.cards[2].content else {
+            Issue.record("expected typed briefing content")
+            return
+        }
+        #expect(brief.profession == .coder)
+        #expect(brief.streak == 3)
+        #expect(brief.breakdown.todoCompleted == 6)
+        #expect(brief.breakdown.agentDurationMin == 120)
+    }
+
+    @Test func decodesTimelineSegmentProjection() throws {
+        let json = """
+        {
+          "date": "2026-07-24",
+          "segments": [
+            {
+              "id": "9c5c9e59-0000-4000-8000-000000000001",
+              "kind": "briefing",
+              "shape": "point",
+              "importance": "major",
+              "role": "derived",
+              "start": "2026-07-24T22:00:00.000Z",
+              "end": "2026-07-24T22:00:00.000Z",
+              "label": "Daily Briefing",
+              "date": "2026-07-24",
+              "destination": {
+                "type": "daily_briefing",
+                "briefing_id": "9c5c9e59-0000-4000-8000-000000000010"
+              }
+            },
+            {
+              "id": "9c5c9e59-0000-4000-8000-000000000002",
+              "kind": "cluster",
+              "shape": "span",
+              "importance": "normal",
+              "start": "2026-07-24T10:00:00.000Z",
+              "end": "2026-07-24T10:20:00.000Z",
+              "label": "4 text",
+              "cluster_id": "9c5c9e59-0000-4000-8000-000000000002",
+              "child_count": 4,
+              "child_ids": ["a", "b", "c", "d"],
+              "children": [
+                {
+                  "id": "a",
+                  "label": "note 0",
+                  "start": "2026-07-24T10:00:00.000Z"
+                }
+              ],
+              "destination": {
+                "type": "timeline_cluster",
+                "cluster_id": "9c5c9e59-0000-4000-8000-000000000002"
+              }
+            }
+          ]
+        }
+        """
+        let tl = try decode(TimelineResponse.self, json)
+        #expect(tl.segments.count == 2)
+        #expect(tl.segments[0].kind == .briefing)
+        #expect(tl.segments[0].destination?.type == .dailyBriefing)
+        #expect(tl.segments[0].destination?.briefingId == "9c5c9e59-0000-4000-8000-000000000010")
+        #expect(tl.segments[1].kind == .cluster)
+        #expect(tl.segments[1].childCount == 4)
+        #expect(tl.segments[1].children?.first?.label == "note 0")
     }
 
     @Test func malformedCardContentFallsBackToRaw() throws {

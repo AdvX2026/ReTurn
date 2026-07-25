@@ -192,17 +192,23 @@ struct Stats: Codable, Equatable {
 
 **分工**：server 提供**分项计数**，客户端持有文案模板并本地化。
 
-**契约影响**：`BriefingCardContent` 需新增分项计数字段。现有字段只有 `summary / openingLine / briefing / reviewPoints / stats / characterState / nodeIds`，无法拼出上述任何一句。
+**契约影响**：`BriefingCardContent.breakdown`（`DayStatsBreakdown`）已落地 — 见 `packages/shared` + Save 写入 + `Models.swift`。
 
-**待后端明确**：每个维度分别需要哪些计数项（如 intake → idea 数、图片数；output → todo 完成数/总数、agent 工作时长）。这决定模板的形参，前端需要这份清单才能定稿模板。
+| 字段 | 用途 |
+|---|---|
+| `idea_count` / `image_count` / `active_feed_count` / `email_received` | 摄取归因 |
+| `todo_completed` / `todo_total` / `agent_duration_min` / `git_commit_count` / `email_sent` | 产出归因 |
+| `longest_session_min` | 专注归因 |
+| `sleep_minutes` / `steps` | 精力归因 |
+| `cross_day_edges` | 连贯归因 |
 
-### C. 职业字段：Server 下发 ✅ 已定
+### C. 职业字段：Server 下发 🟢 已生效
 
-不采用客户端推导。
+不采用客户端推导。`Profession` 枚举 + Save 确定性映射（`resolveProfession`）已写入 briefing content；Swift `TolerantEnum` 容错未知值。
 
-**契约影响**：`BriefingCardContent` 新增职业字段；需同步 `packages/shared` Zod schema 与 `Models.swift` 镜像（AGENTS.md 要求同一 commit）。
+### D. streak 进 briefing 卡 🟢 已生效
 
-**建议**：职业按 PRD §4.2「五维由代码确定性计算、LLM 不打分」的原则，在 server 侧也应是**确定性映射**而非 LLM 判定。枚举值建议在 shared 中固化，客户端按 `TolerantEnum` 容错（未知职业回落到默认展示），避免后端新增职业时旧版客户端崩溃。
+`BriefingCardContent.streak` 在 Save 时写入（与 `SaveResponse.streak` 同算法）。
 
 ---
 

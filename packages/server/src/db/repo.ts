@@ -944,6 +944,21 @@ export function insertCard(
   };
 }
 
+/** Latest card of a given type on a calendar day (e.g. daily briefing entry). */
+export function getCardByTypeDate(
+  db: Db,
+  type: CardType | string,
+  date: string,
+): CardRecord | undefined {
+  const row = db
+    .prepare(
+      `SELECT * FROM cards WHERE type = ? AND date = ?
+       ORDER BY created_at DESC, id DESC LIMIT 1`,
+    )
+    .get(type, date) as CardRow | undefined;
+  return row ? cardToRecord(row) : undefined;
+}
+
 /**
  * before = cards on dates ≤ today, newest first (past / briefing).
  * future = idea / todo_suggestion / health cards, newest first.
