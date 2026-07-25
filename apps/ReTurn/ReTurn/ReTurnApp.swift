@@ -11,7 +11,7 @@ import SwiftUI
 struct ReTurnApp: App {
     var body: some Scene {
         WindowGroup {
-            CardGallery()
+            ContentView()
         }
     }
 }

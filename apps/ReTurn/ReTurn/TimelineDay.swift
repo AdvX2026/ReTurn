@@ -1,0 +1,85 @@
+#if os(iOS)
+import Foundation
+
+struct TimelineDay: Identifiable, Equatable {
+    let date: Date
+    let items: [TimelineDisplayItem]
+    let dailyBriefing: TimelineDailyBriefing?
+
+    var id: Date { date }
+
+    init(
+        date: Date,
+        items: [TimelineDisplayItem],
+        dailyBriefing: TimelineDailyBriefing? = nil
+    ) {
+        self.date = date
+        self.items = items
+        self.dailyBriefing = dailyBriefing
+    }
+
+    static func grouped(
+        from segments: [TimelineSegment],
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> [TimelineDay] {
+        let items = segments.compactMap {
+            TimelineDisplayItem(segment: $0)
+        }
+        return grouped(from: items, calendar: calendar)
+    }
+
+    static func grouped(
+        from items: [TimelineDisplayItem],
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> [TimelineDay] {
+        let groups = Dictionary(grouping: items) {
+            date(from: $0.dayIdentifier, calendar: calendar)
+                ?? calendar.startOfDay(for: $0.start)
+        }
+
+        return groups
+            .map { date, items in
+                TimelineDay(
+                    date: date,
+                    items: items.sorted { lhs, rhs in
+                        if lhs.start == rhs.start {
+                            return lhs.id < rhs.id
+                        }
+                        return lhs.start < rhs.start
+                    }
+                )
+            }
+            .sorted { $0.date > $1.date }
+    }
+
+    var representedEventCount: Int {
+        items.reduce(into: 0) { count, item in
+            count += item.clusterPreview?.totalCount ?? 1
+        }
+    }
+
+    private static func date(
+        from dayIdentifier: String?,
+        calendar: Calendar
+    ) -> Date? {
+        guard let dayIdentifier else {
+            return nil
+        }
+
+        let parts = dayIdentifier.split(separator: "-", omittingEmptySubsequences: false)
+        guard
+            parts.count == 3,
+            let year = Int(parts[0]),
+            let month = Int(parts[1]),
+            let day = Int(parts[2]),
+            let date = calendar.date(
+                from: DateComponents(year: year, month: month, day: day)
+            )
+        else {
+            return nil
+        }
+
+        return calendar.startOfDay(for: date)
+    }
+}
+#endif

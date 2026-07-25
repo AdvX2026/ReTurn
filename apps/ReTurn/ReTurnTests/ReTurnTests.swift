@@ -14,24 +14,15 @@ struct ReTurnTests {
         #expect(TimelinePage.allCases.map(\.rawValue) == ["Before", "Now", "After"])
     }
 
-    @Test func compactChromeUsesAvailableWidthAndExpandsOnFocus() {
-        #expect(ReTurnDesign.Layout.navigationWidth(in: 402) == 362)
-        #expect(ReTurnDesign.Layout.navigationWidth(in: 440) == 400)
-        #expect(
-            ReTurnDesign.Layout.composerWidth(in: 440, isFocused: false) == 400
-        )
-        #expect(
-            ReTurnDesign.Layout.composerWidth(in: 440, isFocused: true) == 416
-        )
+    @Test func composerUsesFocusSpecificWidthCapsAndInsets() {
+        #expect(ReTurnDesign.Layout.composerMaximumWidth(isFocused: false) == 640)
+        #expect(ReTurnDesign.Layout.composerMaximumWidth(isFocused: true) == 680)
+        #expect(ReTurnDesign.Layout.composerHorizontalPadding(isFocused: false) == 20)
+        #expect(ReTurnDesign.Layout.composerHorizontalPadding(isFocused: true) == 12)
     }
 
-    @Test func regularChromeKeepsAReadableMaximumWidth() {
-        #expect(ReTurnDesign.Layout.navigationWidth(in: 1_024) == 520)
-        #expect(
-            ReTurnDesign.Layout.composerWidth(in: 1_024, isFocused: false) == 640
-        )
-        #expect(
-            ReTurnDesign.Layout.composerWidth(in: 1_024, isFocused: true) == 680
-        )
+    @Test func mascotWidthStaysWithinItsReadableBounds() {
+        #expect(ReTurnDesign.Layout.mascotWidth(in: 300) == 150)
+        #expect(ReTurnDesign.Layout.mascotWidth(in: 1_024) == 195)
     }
 }
