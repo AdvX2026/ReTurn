@@ -5,7 +5,7 @@
 - SQLite via **Node built-in `node:sqlite`** (not better-sqlite3) — requires **Node ≥ 22.13**. Same SQLite engine; avoids native compile on Windows/arm64.
 - Shared Zod contracts live in `@return/shared` (API + ferment JSON). Server validates at trust boundary.
 - Stats/character are pure code (`src/stats/*`). LLM only produces text products (summary/opening/todos/tags/edges).
-- Save is idempotent per day; ferment failure degrades and still seals the day.
+- Save is idempotent per day; ferment failure leaves the day open and returns an error.
 - Day bucketing uses **server local timezone** (`created_at` stamped server-side).
 - Meeting-notes Tasks use the SQLite `tasks` table as a durable queue. Startup
   requeues interrupted `running` work; the Task UUID is also the output node's
@@ -14,14 +14,15 @@
   the Task `failed` without claiming it was organized.
 
 ## Env
-See root `.env.example`. `LLM_API_KEY` / `HEALTH_TOKEN` never ship to clients.
+See root `.env.example`. `LLM_API_KEY` / `HEALTH_TOKEN` never ship to clients. Health, LLM, Whisper, and embedding are optional: unconfigured features answer with an explicit 503 (never a fake success); embedding off → keyword-only search. Invalid numeric/URL configuration fails startup.
+- Image chat uses the configured multimodal `LLM_MODEL`; successful extraction creates a completed high-weight image Task and node.
 
 ## Known
 - mDNS (`return.local`) not implemented yet — clients use IP for now.
 - URL fetch enrichment (title/body summary on `kind=url`) not done; desktop/server can add later.
-- Ferment without `LLM_API_KEY` always degrades (tests rely on this).
 - Global search / node layering: see `docs/architecture-nodes-search.md` (PR #8).
 - Swift `Models.swift` mirror for Search/Ask + `git_commit` waits on `apps/ReturnApp`.
+- Voice transcription failure preserves the raw audio file and a pending voice node (`pending_transcript: true`), and returns HTTP 502/503 — no fake transcript.
 
 ## Todo preference loop (AI suggestions ↔ Apple Reminders)
 - Real checklist = Mac Reminders. Server `todos` = AI suggestions only (`status`: suggested|accepted|dismissed).

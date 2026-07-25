@@ -6,7 +6,6 @@
  * - UI closed does not stop this process
  */
 import type { CadenceMode } from "@return/shared";
-import { intervalMinForCadence } from "./cadence.js";
 import { type SampleSnapshot, collectSample } from "./collect.js";
 import { config } from "./config.js";
 import { startLocalServer } from "./local-server.js";
@@ -23,7 +22,10 @@ let cadence: CadenceMode = "active";
 let sampleTimer: ReturnType<typeof setInterval> | null = null;
 
 function currentIntervalMin(): number {
-  return intervalMinForCadence(cadence);
+  const min =
+    cadence === "night" ? config.sampleIntervalNightMin : config.sampleIntervalMin;
+  // Floor at 1 minute so a misconfigured env value cannot hammer sources.
+  return Math.max(1, min);
 }
 
 function applyCadence(next: CadenceMode | null | undefined): void {
@@ -60,13 +62,15 @@ async function sampleOnce(opts?: { asSnapshot?: boolean }): Promise<{
 
   const flush = await flushOutbox(outbox);
   piOnline = flush.online;
+  lastError = flush.error;
   applyCadence(flush.cadence);
 
   const agentStats = snapshot.stats.agents ?? {};
   const envStats = snapshot.stats.env ?? {};
   const gitStats = snapshot.stats.git ?? {};
+  const gmailStats = snapshot.stats.gmail ?? {};
   console.log(
-    `[sampler] sample app=${snapshot.app?.name ?? "-"} tabs=${envStats.tabs ?? snapshot.tabs.length} agents=${agentStats.intervals ?? 0} commits=${gitStats.commits ?? 0} emitted=${enqueued} flushed=${flush.flushed} outbox=${flush.remaining} pi=${flush.online} cadence=${cadence}`,
+    `[sampler] sample app=${snapshot.app?.name ?? "-"} tabs=${envStats.tabs ?? snapshot.tabs.length} agents=${agentStats.intervals ?? 0} commits=${gitStats.commits ?? 0} mails=${gmailStats.emails ?? 0} emitted=${enqueued} flushed=${flush.flushed} outbox=${flush.remaining} pi=${flush.online} cadence=${cadence}`,
   );
 
   return { snapshot, enqueued };
@@ -80,14 +84,6 @@ async function tick(): Promise<void> {
   } catch (err) {
     lastError = err instanceof Error ? err.message : String(err);
     console.error("[sampler] tick failed:", lastError);
-    // still try flush leftover
-    try {
-      const flush = await flushOutbox(outbox);
-      piOnline = flush.online;
-      applyCadence(flush.cadence);
-    } catch {
-      piOnline = false;
-    }
   } finally {
     tickRunning = false;
   }
@@ -102,6 +98,7 @@ async function main(): Promise<void> {
 
   const boot = await pingPi();
   piOnline = boot.online;
+  lastError = boot.error;
   applyCadence(boot.cadence);
   console.log(`[sampler] pi online=${piOnline} cadence=${cadence}`);
 
@@ -123,10 +120,17 @@ async function main(): Promise<void> {
   // Opportunistic flush every minute when queue non-empty
   setInterval(() => {
     if (outbox.size() === 0) return;
-    void flushOutbox(outbox).then((r) => {
-      piOnline = r.online;
-      applyCadence(r.cadence);
-    });
+    flushOutbox(outbox)
+      .then((r) => {
+        piOnline = r.online;
+        lastError = r.error;
+        applyCadence(r.cadence);
+      })
+      .catch((err) => {
+        // Never let a background flush reject unhandled — that kills the process.
+        lastError = err instanceof Error ? err.message : String(err);
+        console.error("[sampler] flush failed:", lastError);
+      });
   }, 60_000);
 
   const stop = () => {

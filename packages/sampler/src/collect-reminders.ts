@@ -2,10 +2,9 @@
  * Apple Reminders collect helpers.
  *
  * Read-only JXA dump of all lists → pure parse → ReminderItem[].
- * Failures are silent (return []). Never writes to Reminders.
+ * Never writes to Reminders.
  */
 import { execFile } from "node:child_process";
-import { createHash } from "node:crypto";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -14,7 +13,7 @@ const OSASCRIPT_TIMEOUT_MS = 20_000;
 const OSASCRIPT_MAX_BUFFER = 4 * 1024 * 1024;
 
 export interface ReminderItem {
-  /** Stable id from Reminders if available, else hash of list+name+creation. */
+  /** Stable id from Reminders. */
   id: string;
   list: string;
   name: string;
@@ -27,18 +26,14 @@ export interface ReminderItem {
 
 /**
  * JXA: dump every reminder in every list as a JSON array.
- * Dates are best-effort ISO; missing optional props become null.
+ * Missing optional dates/body become null; malformed values fail the source.
  */
 const REMINDERS_JXA = `
 function iso(d) {
   if (d === undefined || d === null) return null;
-  try {
-    var t = new Date(d).getTime();
-    if (isNaN(t)) return null;
-    return new Date(t).toISOString();
-  } catch (e) {
-    return null;
-  }
+  var t = new Date(d).getTime();
+  if (isNaN(t)) throw new Error("invalid reminder date");
+  return new Date(t).toISOString();
 }
 function run() {
   var app = Application("Reminders");
@@ -46,29 +41,20 @@ function run() {
   var lists = app.lists();
   for (var i = 0; i < lists.length; i++) {
     var L = lists[i];
-    var listName = "";
-    try { listName = String(L.name()); } catch (e) { listName = ""; }
-    var reminders;
-    try { reminders = L.reminders(); } catch (e) { continue; }
+    var listName = String(L.name());
+    var reminders = L.reminders();
     for (var j = 0; j < reminders.length; j++) {
       var R = reminders[j];
-      var rid = "";
-      try { rid = String(R.id()); } catch (e) { rid = ""; }
-      var rname = "";
-      try { rname = String(R.name()); } catch (e) { rname = ""; }
+      var rid = String(R.id());
+      if (!rid) throw new Error("reminder is missing a stable id");
+      var rname = String(R.name());
       var rbody = null;
-      try {
-        var b = R.body();
-        if (b !== undefined && b !== null && String(b).length > 0) rbody = String(b);
-      } catch (e) {}
-      var rdone = false;
-      try { rdone = Boolean(R.completed()); } catch (e) {}
-      var rdue = null;
-      try { rdue = iso(R.dueDate()); } catch (e) {}
-      var rcreated = null;
-      try { rcreated = iso(R.creationDate()); } catch (e) {}
-      var rmod = null;
-      try { rmod = iso(R.modificationDate()); } catch (e) {}
+      var b = R.body();
+      if (b !== undefined && b !== null && String(b).length > 0) rbody = String(b);
+      var rdone = Boolean(R.completed());
+      var rdue = iso(R.dueDate());
+      var rcreated = iso(R.creationDate());
+      var rmod = iso(R.modificationDate());
       items.push({
         id: rid,
         list: listName,
@@ -85,52 +71,51 @@ function run() {
 }
 `;
 
-/** Best-effort: accept ISO / Date.parse-able strings; null otherwise. */
+/** Normalize an optional date; malformed values are source errors. */
 export function parseMaybeIso(raw: unknown): string | null {
   if (raw === null || raw === undefined) return null;
-  if (typeof raw !== "string" && typeof raw !== "number") return null;
+  if (typeof raw !== "string" && typeof raw !== "number") {
+    throw new Error("invalid reminder date: expected a string or number");
+  }
   const s = String(raw).trim();
   if (!s) return null;
   const ms = Date.parse(s);
-  if (Number.isNaN(ms)) return null;
+  if (Number.isNaN(ms)) throw new Error(`invalid reminder date: ${s}`);
   return new Date(ms).toISOString();
 }
 
-function fallbackId(list: string, name: string, creation: string | null): string {
-  const seed = `${list}\0${name}\0${creation ?? ""}`;
-  return createHash("sha256").update(seed).digest("hex").slice(0, 32);
-}
-
-function normalizeItem(raw: unknown): ReminderItem | null {
-  if (!raw || typeof raw !== "object") return null;
+function normalizeItem(raw: unknown): ReminderItem {
+  if (!raw || typeof raw !== "object") {
+    throw new Error("invalid reminder item: expected an object");
+  }
   const o = raw as Record<string, unknown>;
-  const list = typeof o.list === "string" ? o.list : "";
-  const name = typeof o.name === "string" ? o.name : "";
-  // Skip fully empty rows (parser noise)
-  if (!list && !name && !o.id) return null;
+  const id = typeof o.id === "string" ? o.id.trim() : "";
+  if (!id) throw new Error("invalid reminder item: stable id is required");
+
+  if (typeof o.list !== "string" || typeof o.name !== "string") {
+    throw new Error("invalid reminder item: list and name must be strings");
+  }
+  const list = o.list;
+  const name = o.name;
 
   const creationDate = parseMaybeIso(o.creationDate);
   const modificationDate = parseMaybeIso(o.modificationDate);
   const due = parseMaybeIso(o.due);
 
-  let id = typeof o.id === "string" ? o.id.trim() : "";
-  if (!id) id = fallbackId(list, name, creationDate);
-
-  let body: string | null = null;
-  if (typeof o.body === "string" && o.body.length > 0) body = o.body;
-
-  const completed =
-    o.completed === true ||
-    o.completed === 1 ||
-    o.completed === "true" ||
-    o.completed === "yes";
+  if (o.body !== null && o.body !== undefined && typeof o.body !== "string") {
+    throw new Error("invalid reminder item: body must be a string or null");
+  }
+  const body = typeof o.body === "string" && o.body.length > 0 ? o.body : null;
+  if (typeof o.completed !== "boolean") {
+    throw new Error("invalid reminder item: completed must be a boolean");
+  }
 
   return {
     id,
     list,
     name,
     body,
-    completed,
+    completed: o.completed,
     due,
     creationDate,
     modificationDate,
@@ -139,29 +124,16 @@ function normalizeItem(raw: unknown): ReminderItem | null {
 
 /**
  * Pure parser for the JXA JSON dump (or a hand-written fixture array).
- * Garbage / empty → [].
  */
 export function parseRemindersOutput(raw: string): ReminderItem[] {
-  const text = raw.trim();
-  if (!text) return [];
-  try {
-    const data: unknown = JSON.parse(text);
-    if (!Array.isArray(data)) return [];
-    const items: ReminderItem[] = [];
-    for (const row of data) {
-      const item = normalizeItem(row);
-      if (item) items.push(item);
-    }
-    return items;
-  } catch {
-    return [];
+  const data: unknown = JSON.parse(raw);
+  if (!Array.isArray(data)) {
+    throw new Error("invalid Reminders payload: expected an array");
   }
+  return data.map(normalizeItem);
 }
 
-/**
- * Run osascript JXA against Reminders. Any error → [].
- * Non-darwin callers should gate before invoking.
- */
+/** Run osascript JXA against Reminders. Non-darwin callers must gate first. */
 export async function collectReminders(): Promise<ReminderItem[]> {
   try {
     const { stdout } = await execFileAsync(
@@ -170,7 +142,14 @@ export async function collectReminders(): Promise<ReminderItem[]> {
       { timeout: OSASCRIPT_TIMEOUT_MS, maxBuffer: OSASCRIPT_MAX_BUFFER },
     );
     return parseRemindersOutput(String(stdout));
-  } catch {
-    return [];
+  } catch (error) {
+    const failure = error as NodeJS.ErrnoException & { stderr?: string };
+    const detail = failure.stderr?.trim();
+    throw new Error(
+      detail
+        ? `Reminders access failed: ${detail}`
+        : `Reminders osascript failed${failure.code ? ` (${failure.code})` : ""}`,
+      { cause: error },
+    );
   }
 }

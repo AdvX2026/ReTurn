@@ -1,10 +1,4 @@
-import {
-  ACTIVE_FEED_KINDS,
-  type FermentResult,
-  type NodeRecord,
-  type ReviewPoint,
-  type SaveResponse,
-} from "@return/shared";
+import { ACTIVE_FEED_KINDS, type ReviewPoint, type SaveResponse } from "@return/shared";
 import { buildFermentContext, runFerment } from "../ai/ferment.js";
 import { config } from "../config.js";
 import {
@@ -13,7 +7,6 @@ import {
   ensureDay,
   expireSuggestedTodos,
   getDayByDate,
-  getLatestSavedDay,
   getNodeByClientUuid,
   getNodeById,
   insertCard,
@@ -54,15 +47,8 @@ async function withSaveLock<T>(date: string, fn: () => Promise<T>): Promise<T> {
     release = r;
   });
   const tail = prev.then(() => gate);
-  saveLocks.set(
-    date,
-    tail.catch(() => {
-      /* keep chain alive */
-    }),
-  );
-  await prev.catch(() => {
-    /* previous failure must not block */
-  });
+  saveLocks.set(date, tail);
+  await prev;
   try {
     return await fn();
   } finally {
@@ -75,8 +61,7 @@ async function withSaveLock<T>(date: string, fn: () => Promise<T>): Promise<T> {
  * Save Today pipeline (PRD §2.3 / §6.3):
  * 1. Idempotent: if day already saved → return existing settlement.
  * 2. Persist save_note node (text or voice ref).
- * 3. Ferment via LLM (timeout + retry + Zod). On failure: degrade with
- *    last real saved result, still seal the day.
+ * 3. Ferment via LLM (timeout + retry + Zod). Failures leave the day open.
  * 4. Write edges / todos / tags; recompute stats (code, not LLM); freeze.
  */
 export async function saveToday(db: Db, input: SaveInput): Promise<SaveResponse> {
@@ -87,48 +72,28 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
   const day = ensureDay(db, input.date);
 
   if (day.saved_at) {
-    return buildSaveResponse(db, day.id, input.date, true, false, 0);
+    return buildSaveResponse(db, day.id, input.date, true);
   }
 
   // ── save note ─────────────────────────────────────────
   let saveNoteText: string | null = null;
   let saveNoteNodeId: string | null = null;
+  let voiceSourceNodeId: string | null = null;
 
   if (input.note_text?.trim()) {
     saveNoteText = input.note_text.trim();
-    const { node } = insertNode(db, {
-      client_uuid: uuid(),
-      kind: "save_note",
-      title: "Save note",
-      content: saveNoteText,
-      device_id: input.device_id ?? null,
-      date: input.date,
-      source_meta: { source: "save_today" },
-    });
-    saveNoteNodeId = node.id;
   } else if (input.note_voice_ref) {
     const existing =
       getNodeByClientUuid(db, input.note_voice_ref) ??
       getNodeById(db, input.note_voice_ref);
-    if (existing) {
-      saveNoteText = existing.content;
-      if (existing.kind === "save_note") {
-        saveNoteNodeId = existing.id;
-      } else {
-        const { node } = insertNode(db, {
-          client_uuid: uuid(),
-          kind: "save_note",
-          title: "Save note (voice)",
-          content: existing.content,
-          device_id: input.device_id ?? null,
-          date: input.date,
-          source_meta: {
-            source: "save_today",
-            from_voice_node_id: existing.id,
-          },
-        });
-        saveNoteNodeId = node.id;
-      }
+    if (!existing) {
+      throw new Error(`save note voice node not found: ${input.note_voice_ref}`);
+    }
+    saveNoteText = existing.content;
+    if (existing.kind === "save_note") {
+      saveNoteNodeId = existing.id;
+    } else {
+      voiceSourceNodeId = existing.id;
     }
   }
 
@@ -169,36 +134,24 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
   const dismissedTodos = listTodosByStatus(db, "dismissed", 20).map((t) => t.text);
 
   // ── ferment ───────────────────────────────────────────
-  let ferment: FermentResult;
-  let degraded = false;
-
-  try {
-    const ctx = buildFermentContext({
-      date: input.date,
-      saveNote: saveNoteText,
-      nodes,
-      sessions,
-      recentSummaries,
-      linkableNodes,
-      openReminders: rem.openTitles,
-      acceptedTodos,
-      dismissedTodos,
-    });
-    ferment = await runFerment(ctx);
-  } catch (err) {
-    degraded = true;
-    console.error(
-      "[ferment] failed, degrading:",
-      err instanceof Error ? err.message : err,
-    );
-    ferment = degradeFerment(db, input.date, saveNoteText, nodes);
-  }
+  const ctx = buildFermentContext({
+    date: input.date,
+    saveNote: saveNoteText,
+    nodes,
+    sessions,
+    recentSummaries,
+    linkableNodes,
+    openReminders: rem.openTitles,
+    acceptedTodos,
+    dismissedTodos,
+  });
+  const ferment = await runFerment(ctx);
 
   // ── persist ferment products ──────────────────────────
   // Re-check under lock: another waiter may have sealed while we fermented.
   const sealed = getDayByDate(db, input.date);
   if (sealed?.saved_at) {
-    return buildSaveResponse(db, sealed.id, input.date, true, false, 0);
+    return buildSaveResponse(db, sealed.id, input.date, true);
   }
 
   const knownIds = new Set([
@@ -208,19 +161,30 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
 
   let cardsCreated = 0;
   db.transaction(() => {
+    if (saveNoteText !== null && saveNoteNodeId === null) {
+      const { node } = insertNode(db, {
+        client_uuid: uuid(),
+        kind: "save_note",
+        title: voiceSourceNodeId ? "Save note (voice)" : "Save note",
+        content: saveNoteText,
+        device_id: input.device_id ?? null,
+        date: input.date,
+        source_meta: voiceSourceNodeId
+          ? { source: "save_today", from_voice_node_id: voiceSourceNodeId }
+          : { source: "save_today" },
+      });
+      saveNoteNodeId = node.id;
+    }
+
     for (const e of ferment.edges) {
       if (!knownIds.has(e.src_node_id) || !knownIds.has(e.dst_node_id)) continue;
       if (e.src_node_id === e.dst_node_id) continue;
-      try {
-        insertEdge(db, {
-          src_node_id: e.src_node_id,
-          dst_node_id: e.dst_node_id,
-          relation: e.relation,
-          created_by_day_id: day.id,
-        });
-      } catch {
-        /* FK miss — skip */
-      }
+      insertEdge(db, {
+        src_node_id: e.src_node_id,
+        dst_node_id: e.dst_node_id,
+        relation: e.relation,
+        created_by_day_id: day.id,
+      });
     }
 
     for (const [nodeId, tags] of Object.entries(ferment.node_tags)) {
@@ -228,12 +192,9 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
         | { source_meta: string | null }
         | undefined;
       if (!row) continue;
-      let meta: Record<string, unknown> = {};
-      try {
-        meta = row.source_meta ? JSON.parse(row.source_meta) : {};
-      } catch {
-        meta = {};
-      }
+      const meta: Record<string, unknown> = row.source_meta
+        ? JSON.parse(row.source_meta)
+        : {};
       meta.tags = tags;
       db.prepare(`UPDATE nodes SET source_meta = ? WHERE id = ?`).run(
         JSON.stringify(meta),
@@ -350,7 +311,7 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
     }
   })();
 
-  return buildSaveResponse(db, day.id, input.date, false, degraded, cardsCreated);
+  return buildSaveResponse(db, day.id, input.date, false, cardsCreated);
 }
 
 /** Normalize for loose reminder/todo text match (dedupe). */
@@ -358,63 +319,11 @@ function normalizeTodoText(s: string): string {
   return s.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-function degradeFerment(
-  db: Db,
-  date: string,
-  saveNote: string | null,
-  nodes: NodeRecord[],
-): FermentResult {
-  const prev = getLatestSavedDay(db, date);
-  const active = nodes.filter((n) =>
-    (ACTIVE_FEED_KINDS as readonly string[]).includes(n.kind),
-  );
-
-  const summary =
-    prev?.summary ??
-    (active.length > 0
-      ? `今天记录了 ${active.length} 条内容。${saveNote ? `存档留言：${saveNote}` : ""}`.trim()
-      : saveNote
-        ? `存档留言：${saveNote}`
-        : "今天还没有太多记录，但你回来存档了——这就够了。");
-
-  const opening_line = prev?.opening_line ?? "新的一天。昨日已存档，继续向前。";
-
-  let review_points: FermentResult["review_points"] = [];
-  if (prev?.review_points_json) {
-    try {
-      review_points = JSON.parse(
-        prev.review_points_json,
-      ) as FermentResult["review_points"];
-    } catch {
-      review_points = [];
-    }
-  }
-  if (review_points.length === 0) {
-    review_points = active.slice(0, 3).map((n) => ({
-      text: n.title || n.content?.slice(0, 80) || n.kind,
-      kind: "other" as const,
-    }));
-  }
-
-  return {
-    summary,
-    opening_line,
-    briefing: summary,
-    review_points,
-    todos: saveNote ? [{ text: saveNote.slice(0, 200) }] : [],
-    health_advice: null,
-    ideas: [],
-    node_tags: {},
-    edges: [],
-  };
-}
-
 function buildSaveResponse(
   db: Db,
   dayId: string,
   date: string,
   already_saved: boolean,
-  degraded: boolean,
   /** Cards inserted by this Save call; 0 on already_saved replay. */
   cardsCreated = 0,
 ): SaveResponse {
@@ -428,26 +337,22 @@ function buildSaveResponse(
   const allSaved = listSavedDays(db, addDays(date, -60));
   const streak = computeStreak(savedDatesFromDays(allSaved), date);
 
-  let review_points: ReviewPoint[] = [];
-  try {
-    review_points = day.review_points_json
-      ? (JSON.parse(day.review_points_json) as ReviewPoint[])
-      : [];
-  } catch {
-    review_points = [];
-  }
+  if (!day.saved_at) throw new Error(`saved day is missing saved_at: ${date}`);
+  const review_points = day.review_points_json
+    ? (JSON.parse(day.review_points_json) as ReviewPoint[])
+    : [];
 
   return {
     day_id: dayId,
     date,
-    saved_at: day.saved_at ?? nowIso(),
+    saved_at: day.saved_at,
     already_saved,
-    degraded,
+    degraded: false,
     summary: day.summary,
     opening_line: day.opening_line,
     briefing: day.summary,
     review_points,
-    todos: nextTodos.length > 0 ? nextTodos : todos,
+    todos: nextDay ? nextTodos : todos,
     stats: live.stats,
     character_state: live.character_state,
     streak,
