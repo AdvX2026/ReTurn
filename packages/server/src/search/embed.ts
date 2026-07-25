@@ -302,12 +302,17 @@ export interface SemanticHit {
   score: number;
 }
 
-/** Brute-force cosine over all embeddings for `model`. Returns top-k by score. */
+/**
+ * Brute-force cosine over all embeddings for `model`. Returns top-k by score.
+ * Optional `filter` runs **before** truncation so date/kind constraints cannot
+ * empty the channel when the global top-k sits outside the filter window.
+ */
 export function semanticTopK(
   db: Db,
   queryVec: Float32Array,
   k: number,
   model: string,
+  filter?: (docId: string) => boolean,
 ): SemanticHit[] {
   const rows = db
     .prepare(`SELECT node_id, vector FROM node_embeddings WHERE model = ?`)
@@ -323,6 +328,7 @@ export function semanticTopK(
       : r.node_id.startsWith("node:")
         ? r.node_id
         : `node:${r.node_id}`;
+    if (filter && !filter(normalized)) continue;
     scored.push({ doc_id: normalized, score });
   }
   scored.sort((a, b) => b.score - a.score);

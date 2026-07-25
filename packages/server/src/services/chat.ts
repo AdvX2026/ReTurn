@@ -25,6 +25,12 @@ export interface ChatInput {
   device_id?: string;
   /** Force intent (user pick / correction). */
   intent?: ChatIntent;
+  /**
+   * Intent-correction path (`PATCH /api/messages/:id/intent`): reuse the
+   * original user message and skip a second insert so Now does not show
+   * duplicate user rows for the same text.
+   */
+  existing_user_message_id?: string;
 }
 
 const INTENTS = new Set<ChatIntent>(["idea", "retrieval", "question", "unknown"]);
@@ -117,12 +123,19 @@ export async function handleChat(
     confidence = h.confidence;
   }
 
-  const userMsg = insertMessage(db, {
-    role: "user",
-    content: text || "[image]",
-    intent,
-    meta: hasImage ? { has_image: true } : null,
-  });
+  // Correction reuses the original user row; normal chat inserts a new one.
+  let userMessageId: string;
+  if (input.existing_user_message_id) {
+    userMessageId = input.existing_user_message_id;
+  } else {
+    const userMsg = insertMessage(db, {
+      role: "user",
+      content: text || "[image]",
+      intent,
+      meta: hasImage ? { has_image: true } : null,
+    });
+    userMessageId = userMsg.id;
+  }
 
   if (intent === "unknown") {
     const reply = "我不太确定你想做什么。请选择：记录灵感 / 检索定位 / 提问。";
@@ -130,11 +143,11 @@ export async function handleChat(
       role: "agent",
       content: reply,
       intent: "unknown",
-      meta: { needs_intent_pick: true, user_message_id: userMsg.id },
+      meta: { needs_intent_pick: true, user_message_id: userMessageId },
     });
     return {
       message_id: agent.id,
-      user_message_id: userMsg.id,
+      user_message_id: userMessageId,
       intent: "unknown",
       confidence,
       reply,
@@ -142,12 +155,12 @@ export async function handleChat(
   }
 
   if (intent === "idea") {
-    return runIdea(db, text, userMsg.id, input.device_id, confidence);
+    return runIdea(db, text, userMessageId, input.device_id, confidence);
   }
   if (intent === "retrieval") {
-    return runRetrieval(db, text, userMsg.id, confidence);
+    return runRetrieval(db, text, userMessageId, confidence);
   }
-  return runQuestion(db, text, userMsg.id, confidence);
+  return runQuestion(db, text, userMessageId, confidence);
 }
 
 async function runIdea(

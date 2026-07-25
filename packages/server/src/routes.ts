@@ -645,6 +645,8 @@ export async function registerRoutes(
           {
             text: existing.content,
             intent: parsed.data.intent,
+            // Reuse the patched user row — do not insert a duplicate (issue #21).
+            existing_user_message_id: id,
           },
           meetingTasks,
         );
