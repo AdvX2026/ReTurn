@@ -5,7 +5,7 @@ import SwiftUI
 /// trackpad two-finger swipe or a Magic Mouse swipe turns pages exactly like
 /// the mobile gesture — the earlier simulated slide transition is gone, and
 /// with it any doubt about directions. Keyboard (arrow keys, Escape,
-/// Cmd-1/2/3), the floating window-edge arrows and the top label row all
+/// Cmd-1/2/3), the floating window-edge arrows and the top segmented control all
 /// drive the same `scrollPosition` binding the gesture drives.
 struct MacRootView: View {
     @State private var selection: TimelinePage? = .now
@@ -83,6 +83,13 @@ struct MacRootView: View {
 
     private var currentPage: TimelinePage { selection ?? .now }
 
+    private var pagePickerSelection: Binding<TimelinePage> {
+        Binding(
+            get: { currentPage },
+            set: { select($0) }
+        )
+    }
+
     /// Manual refresh (⌘R): no server push exists, so each page pulls
     /// its own stores again — stats on Now, the viewed day + overview on
     /// Before, the card stream on After.
@@ -133,38 +140,19 @@ struct MacRootView: View {
         return TimelinePage.allCases[index]
     }
 
-    /// The same three words the iOS pager navigates with, clickable and kept
-    /// at full strength: on the desktop they are the persistent orientation
-    /// cue that replaces the swipe position.
+    /// Desktop navigation uses the native segmented picker so macOS 26 owns
+    /// the Liquid Glass appearance, pointer feedback and selected state.
     private var pageIndicator: some View {
-        HStack(spacing: ReTurnDesign.Spacing.large) {
+        Picker("Timeline page", selection: pagePickerSelection) {
             ForEach(TimelinePage.allCases) { page in
-                let isSelected = page == currentPage
-
-                Button {
-                    select(page)
-                } label: {
-                    // Every label reserves its selected width, so changing
-                    // weights cannot shove the row's other labels around.
-                    Text(page.rawValue)
-                        .fontWeight(.semibold)
-                        .hidden()
-                        .overlay {
-                            Text(page.rawValue)
-                                .fontWeight(isSelected ? .semibold : .regular)
-                                .foregroundStyle(
-                                    isSelected
-                                        ? ReTurnDesign.Colors.primaryLabel
-                                        : ReTurnDesign.Colors.secondaryLabel
-                                )
-                        }
-                }
-                .font(ReTurnDesign.Typography.navigationItem)
-                .buttonStyle(.plain)
-                .accessibilityLabel(page.rawValue)
-                .accessibilityAddTraits(isSelected ? .isSelected : [])
+                Text(page.rawValue)
+                    .tag(page)
             }
         }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .controlSize(.large)
+        .fixedSize(horizontal: true, vertical: false)
         .padding(.top, ReTurnDesign.Spacing.small)
         // The single definition of the gap between the indicator row and the
         // pages below it.
@@ -178,10 +166,6 @@ struct MacRootView: View {
                     .allowsWindowActivationEvents(true)
             }
         }
-        .animation(
-            .easeInOut(duration: ReTurnDesign.Motion.navigationSelectionDuration),
-            value: currentPage
-        )
     }
 
     /// Keyboard navigation. ←/→ step through the flow and Escape returns to
