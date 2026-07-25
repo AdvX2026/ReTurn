@@ -82,7 +82,9 @@
 | POST | `/api/voice` | 上传语音 → 转写 → 落节点（可触发 chat） |
 | POST | `/api/health` | 健康日数据（token） |
 | POST | `/api/save` | 夜间 Save / 发酵 |
-| GET | `/api/stats/today` | 实时五维 + cadence |
+| GET | `/api/stats/today` | 实时五维 + cadence + 画像职业 |
+| GET | `/api/profile` | 用户画像（单用户空间） |
+| PATCH | `/api/profile` | 更新显示名 / 职业锁定 / note |
 | GET | `/api/usage` | Provider 调用与 token 聚合 |
 | GET | `/api/timeline` | 时间轴（单日或 from/to） |
 | GET | `/api/days` | 近 N 日总览 |
@@ -327,9 +329,60 @@
     "sample_count": 48,
     "last_seen_at": "2026-07-24T18:35:00.000Z"
   },
-  "cadence": "active"
+  "cadence": "active",
+  "profession": "coder",
+  "profession_mode": "auto"
 }
 ```
+
+`profession` / `profession_mode` 来自单用户画像（见 `/api/profile`），不是当日重新推断。
+
+---
+
+### 3.10b `GET /api/profile`
+
+单用户空间画像。
+
+**响应 200**
+
+```json
+{
+  "display_name": "Teethe",
+  "profession": "coder",
+  "profession_mode": "auto",
+  "note": "prefer deep work todos",
+  "last_inferred_profession": "coder",
+  "accepted_todos": ["Ship profile API"],
+  "dismissed_todos": ["Buy milk"],
+  "updated_at": "2026-07-25T12:00:00.000Z"
+}
+```
+
+| 字段 | 说明 |
+|---|---|
+| `profession` | 当前生效职业（auto 跟 Save 推断；manual 用户锁定） |
+| `profession_mode` | `auto` \| `manual` |
+| `last_inferred_profession` | 最近一次 Save 的 `resolveProfession` 结果 |
+| `accepted_todos` / `dismissed_todos` | 偏好回环 live 样本（各最多 20 条文本） |
+
+### 3.10c `PATCH /api/profile`
+
+**请求**（至少一字段）：
+
+```json
+{
+  "display_name": "Teethe",
+  "profession": "designer",
+  "profession_mode": "manual",
+  "note": "…"
+}
+```
+
+- 只改 `profession` 且不传 `profession_mode` → 自动锁为 `manual`
+- `profession_mode: "auto"` → 把 `profession` 重置为 `last_inferred_profession`
+- 空字符串 `display_name` / `note` → 清成 null
+
+**响应 200**：同 GET body。
 
 ---
 

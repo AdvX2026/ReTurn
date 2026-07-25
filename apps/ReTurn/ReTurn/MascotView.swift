@@ -29,7 +29,7 @@ import SwiftUI
 struct MascotView: View {
     /// `nil` renders the plain mascot with no stat wearables.
     var stats: Stats?
-    var profession: MascotProfession = .coder
+    var profession: Profession = .generalist
     /// Stride mode: legs step, arms counter-swing and the body bobs and leans
     /// at a fixed cadence instead of the energy-driven idle tempo. The
     /// composer walker uses this; pass `stats: nil` with it — the pacing

@@ -66,7 +66,9 @@ struct ModelsTests {
               "character_state": "normal",
               "saved": false,
               "collection": {"device_count": 2, "sample_count": 18, "last_seen_at": "2026-07-25T10:00:00.000Z"},
-              "cadence": "active"
+              "cadence": "active",
+              "profession": "coder",
+              "profession_mode": "auto"
             }
             """
         )

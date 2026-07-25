@@ -83,7 +83,8 @@ export const CharacterState = z.enum([
 export type CharacterState = z.infer<typeof CharacterState>;
 
 /**
- * Day-role label for Daily Brief (deterministic from sessions / output signals).
+ * Day-role / profile profession (deterministic from sessions / output signals,
+ * or user-locked via PATCH /api/profile).
  * Client should tolerate unknown values (new professions must not crash old apps).
  */
 export const Profession = z.enum([
@@ -95,6 +96,10 @@ export const Profession = z.enum([
   "generalist",
 ]);
 export type Profession = z.infer<typeof Profession>;
+
+/** How profile.profession is maintained. */
+export const ProfessionMode = z.enum(["auto", "manual"]);
+export type ProfessionMode = z.infer<typeof ProfessionMode>;
 
 export const Platform = z.enum(["macos", "ios", "linux", "unknown"]);
 export type Platform = z.infer<typeof Platform>;

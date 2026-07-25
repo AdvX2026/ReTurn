@@ -117,6 +117,10 @@ enum TimelineDesign {
                 default:
                     Color(AccentColor.systemTeal)
                 }
+            case .cluster:
+                Color(AccentColor.systemPurple)
+            case .briefing:
+                Color(AccentColor.systemIndigo)
             case .unknown:
                 Color(AccentColor.systemGray)
             }

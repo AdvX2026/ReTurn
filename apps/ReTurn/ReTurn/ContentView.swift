@@ -173,51 +173,68 @@ struct ContentView: View {
 }
 
 private struct NowPage: View {
-    /// Demo driver until the Now store wires `/api/stats/today` and the
-    /// contract's pending profession field in: every few seconds the next
-    /// profession takes the stage, and one stat at a time is pushed to the
-    /// max so each wearable (sparkles, eye glints, gear, orbit dots, aura)
-    /// gets its turn in the spotlight.
-    private static let demoLineup: [(profession: MascotProfession, stat: String, stats: Stats)] = [
-        (.coder, "intake", Stats(intake: 95, focus: 40, output: 40, continuity: 40, energy: 40)),
-        (.writer, "focus", Stats(intake: 40, focus: 95, output: 40, continuity: 40, energy: 40)),
-        (.designer, "output", Stats(intake: 40, focus: 40, output: 95, continuity: 40, energy: 40)),
-        (.researcher, "continuity", Stats(intake: 40, focus: 40, output: 40, continuity: 95, energy: 40)),
-        (.manager, "energy", Stats(intake: 40, focus: 40, output: 40, continuity: 40, energy: 95)),
-    ]
+    @State private var stats: Stats = .empty
+    @State private var profession: Profession = .generalist
+    @State private var displayName: String?
+    @State private var characterState: CharacterState = .normal
+    @State private var loadError: String?
 
-    @State private var demoIndex = 0
+    private var greeting: String {
+        let name = displayName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let name, !name.isEmpty {
+            return "\(name) is back!"
+        }
+        return "You're back!"
+    }
 
     var body: some View {
-        let demo = Self.demoLineup[demoIndex]
         VStack(spacing: ReTurnDesign.Spacing.medium) {
             // Sized from the scroll viewport, which only changes on rotation --
             // the mascot redraws every frame, so it must not track the
             // composer or keyboard animation.
-            MascotView(stats: demo.stats, profession: demo.profession)
+            MascotView(stats: stats, profession: profession)
                 .containerRelativeFrame(.horizontal) { width, _ in
                     MascotView.frameWidth(
                         forMascotWidth: ReTurnDesign.Layout.mascotWidth(in: width)
                     )
                 }
 
-            Text("Teethe is back!")
+            Text(greeting)
                 .font(ReTurnDesign.Typography.heroTitle)
                 .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
                 .multilineTextAlignment(.center)
 
-            Text("\(demo.profession.displayName) · \(demo.stat)")
+            Text("\(profession.displayName) · \(characterState.rawValue)")
                 .font(ReTurnDesign.Typography.cardTag)
                 .foregroundStyle(ReTurnDesign.Colors.secondaryLabel)
+
+            if let loadError {
+                Text(loadError)
+                    .font(ReTurnDesign.Typography.cardTag)
+                    .foregroundStyle(.secondary)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.bottom, ReTurnDesign.Metrics.heroOpticalLift * 2)
-        .task {
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(3))
-                guard !Task.isCancelled else { return }
-                demoIndex = (demoIndex + 1) % Self.demoLineup.count
-            }
+        .task { await refreshProfileAndStats() }
+    }
+
+    private func refreshProfileAndStats() async {
+        let base = URL(string: UserDefaults.standard.string(forKey: "piBaseURL")
+            ?? "http://127.0.0.1:8787")!
+        let client = APIClient(baseURL: base)
+        do {
+            async let statsReq = client.statsToday()
+            async let profileReq = client.getProfile()
+            let (today, profile) = try await (statsReq, profileReq)
+            stats = today.stats
+            characterState = today.characterState
+            profession = today.profession
+            displayName = profile.displayName
+            loadError = nil
+        } catch {
+            // Keep last good values; surface a short line rather than a demo rotation.
+            loadError = "Can't reach the Pi"
         }
     }
 }
