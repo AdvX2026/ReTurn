@@ -13,19 +13,13 @@ import {
 } from "../db/repo.js";
 import { type Db, openMemoryDb } from "../db/schema.js";
 import { todayDate } from "../util/time.js";
-import { handleChat, parseTriageJson, triageHeuristic } from "./chat.js";
+import { handleChat, parseTriageJson } from "./chat.js";
 import { MeetingTaskRunner } from "./meeting-tasks.js";
 import { handleResume } from "./resume.js";
 import { saveToday } from "./save.js";
 import { TimelineRangeError, buildTimeline } from "./timeline.js";
 
 describe("triage", () => {
-  it("offline heuristic classifies idea / retrieval / question", () => {
-    assert.equal(triageHeuristic("灵感: 做一个时间轴").intent, "idea");
-    assert.equal(triageHeuristic("搜一下 timeline").intent, "retrieval");
-    assert.equal(triageHeuristic("我昨天下午在干什么？").intent, "question");
-  });
-
   it("parseTriageJson accepts LLM payload and floors low confidence", () => {
     assert.equal(
       parseTriageJson('{"intent":"retrieval","confidence":0.9}').intent,
@@ -88,6 +82,23 @@ describe("v0.6 chat / cards / tasks / resume / timeline range", () => {
     const r = await handleChat(db, { text: "搜索 timeline" });
     assert.equal(r.intent, "retrieval");
     assert.ok(r.jump == null || r.jump.date);
+  });
+
+  it("does not create an idea node when the provider fails", async () => {
+    const fetchBefore = globalThis.fetch;
+    globalThis.fetch = async () => new Response("provider unavailable", { status: 503 });
+    try {
+      await assert.rejects(
+        handleChat(db, { text: "灵感: 不应静默降级", intent: "idea" }),
+        /LLM HTTP 503/,
+      );
+    } finally {
+      globalThis.fetch = fetchBefore;
+    }
+    assert.equal(
+      listNodesByDate(db, todayDate()).filter((node) => node.kind === "idea").length,
+      0,
+    );
   });
 
   it("meeting notes stay running until async process completes", async () => {
@@ -254,7 +265,7 @@ describe("v0.6 chat / cards / tasks / resume / timeline range", () => {
     });
     assert.equal(save.already_saved, false);
     assert.equal(save.cadence, "night");
-    // Degraded ferment: briefing + todo_suggestion from note; no health/ideas.
+    // Mock ferment creates briefing + todo_suggestion; no health/ideas.
     assert.equal(save.cards_created, 2);
     const before = listCards(db, { direction: "before" });
     assert.ok(before.cards.some((c) => c.type === "briefing"));

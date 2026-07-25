@@ -18,10 +18,6 @@ export async function transcribeAudio(
   filename: string,
   mimeType: string,
 ): Promise<string> {
-  if (!config.whisper.apiKey) {
-    throw new TranscribeError("WHISPER_API_KEY / LLM_API_KEY not configured");
-  }
-
   const form = new FormData();
   const blob = new Blob([new Uint8Array(buffer)], {
     type: mimeType || "audio/webm",
@@ -42,7 +38,7 @@ export async function transcribeAudio(
       signal: controller.signal,
     });
     if (!res.ok) {
-      const body = await res.text().catch(() => "");
+      const body = await res.text();
       throw new TranscribeError(`Whisper HTTP ${res.status}: ${body.slice(0, 300)}`);
     }
     const data = (await res.json()) as { text?: string };

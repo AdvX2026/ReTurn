@@ -174,7 +174,7 @@ describe("scoreEnergy", () => {
     assert.ok(short < 70, `5h sleep got ${short}`);
   });
 
-  it("no health falls back to pure deduction from 100", () => {
+  it("uses the no-health energy formula when health is absent", () => {
     const s = scoreEnergy({
       nodes: [],
       sessions: [],

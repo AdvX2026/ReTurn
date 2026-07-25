@@ -17,6 +17,7 @@ export class LlmError extends Error {
 export interface LlmChatOptions {
   system: string;
   user: string;
+  imageUrl?: string;
   temperature?: number;
   /** Defaults to config.llm.timeoutMs. */
   timeoutMs?: number;
@@ -25,10 +26,6 @@ export interface LlmChatOptions {
 }
 
 export async function llmChat(opts: LlmChatOptions): Promise<string> {
-  if (!config.llm.apiKey?.trim()) {
-    throw new LlmError("LLM_API_KEY not configured");
-  }
-
   const timeoutMs = opts.timeoutMs ?? config.llm.timeoutMs;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -38,7 +35,15 @@ export async function llmChat(opts: LlmChatOptions): Promise<string> {
       temperature: opts.temperature ?? 0.3,
       messages: [
         { role: "system", content: opts.system },
-        { role: "user", content: opts.user },
+        {
+          role: "user",
+          content: opts.imageUrl
+            ? [
+                { type: "text", text: opts.user },
+                { type: "image_url", image_url: { url: opts.imageUrl } },
+              ]
+            : opts.user,
+        },
       ],
     };
     if (opts.json) {
@@ -55,7 +60,7 @@ export async function llmChat(opts: LlmChatOptions): Promise<string> {
       signal: controller.signal,
     });
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
+      const text = await res.text();
       throw new LlmError(`LLM HTTP ${res.status}: ${text.slice(0, 300)}`);
     }
     const data = (await res.json()) as {

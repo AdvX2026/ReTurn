@@ -32,21 +32,17 @@ export function computeLiveStats(db: Db, date: string): LiveStats {
 
   // If already saved, prefer frozen stats.
   if (day?.saved_at && day.stats_json) {
-    try {
-      const stats = JSON.parse(day.stats_json) as Stats;
-      return {
-        date,
-        stats,
-        character_state:
-          (day.character_state as CharacterState) ?? resolveCharacterState(stats),
-        sessions,
-        nodes,
-        saved: true,
-        crossDayEdges,
-      };
-    } catch {
-      /* fall through to live */
-    }
+    const stats = JSON.parse(day.stats_json) as Stats;
+    return {
+      date,
+      stats,
+      character_state:
+        (day.character_state as CharacterState) ?? resolveCharacterState(stats),
+      sessions,
+      nodes,
+      saved: true,
+      crossDayEdges,
+    };
   }
 
   const stats = computeStats({

@@ -18,6 +18,8 @@ describe("http smoke", () => {
   let db: Db;
   let dir: string;
   let deviceId: string;
+  let nodeId: string;
+  let todoIds: string[];
   let meetingRunner: MeetingTaskRunner;
   let meetingStarted: Promise<void>;
   let releaseMeeting: (() => void) | undefined;
@@ -44,11 +46,6 @@ describe("http smoke", () => {
       };
     });
     app = await createApp(db, { meetingTaskRunner: meetingRunner });
-    process.env.HEALTH_TOKEN = "test-token";
-    // config already loaded at import — health route reads config.healthToken.
-    // For smoke we use whatever is in env at process start; set before routes
-    // is too late if config is a frozen snapshot. Override via header matching
-    // .env default when unset: change-me-health-token OR re-read.
   });
 
   after(async () => {
@@ -56,6 +53,8 @@ describe("http smoke", () => {
     await app.close();
     db.close();
     rmSync(dir, { recursive: true, force: true });
+    const { config } = await import("./config.js");
+    rmSync(config.dataDir, { recursive: true, force: true });
   });
 
   it("GET /api/ping", async () => {
@@ -110,9 +109,13 @@ describe("http smoke", () => {
       payload,
     });
     assert.equal(res.statusCode, 200);
-    const body = res.json() as { created: unknown[]; duplicates: string[] };
+    const body = res.json() as {
+      created: Array<{ id: string }>;
+      duplicates: string[];
+    };
     assert.equal(body.created.length, 2);
     assert.equal(body.duplicates.length, 0);
+    nodeId = body.created[0]!.id;
 
     const replay = await app.inject({
       method: "POST",
@@ -132,6 +135,32 @@ describe("http smoke", () => {
     assert.equal(res.statusCode, 200);
     const body = res.json() as { nodes: unknown[] };
     assert.ok(body.nodes.length >= 2);
+  });
+
+  it("POST /api/voice", async () => {
+    const boundary = "return-smoke-boundary";
+    const field = (name: string, value: string) =>
+      `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`;
+    const payload = Buffer.concat([
+      Buffer.from(field("device_id", deviceId)),
+      Buffer.from(field("client_uuid", crypto.randomUUID())),
+      Buffer.from(field("date", date)),
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="voice.wav"\r\nContent-Type: audio/wav\r\n\r\n`,
+      ),
+      Buffer.from("mock audio bytes"),
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]);
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/voice",
+      headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
+      payload,
+    });
+    assert.equal(res.statusCode, 200, res.body);
+    const body = res.json() as { transcript: string; node: { kind: string } };
+    assert.equal(body.transcript, "Mock voice transcript");
+    assert.equal(body.node.kind, "voice");
   });
 
   it("POST /api/health with token", async () => {
@@ -183,11 +212,14 @@ describe("http smoke", () => {
       degraded: boolean;
       summary: string | null;
       streak: number;
+      todos: Array<{ id: string }>;
     };
     assert.equal(body.already_saved, false);
-    assert.equal(body.degraded, true); // no LLM key in CI
+    assert.equal(body.degraded, false);
     assert.ok(body.summary);
     assert.ok(body.streak >= 1);
+    assert.equal(body.todos.length, 3);
+    todoIds = body.todos.map((todo) => todo.id);
 
     const again = await app.inject({
       method: "POST",
@@ -196,6 +228,29 @@ describe("http smoke", () => {
     });
     const body2 = again.json() as { already_saved: boolean };
     assert.equal(body2.already_saved, true);
+  });
+
+  it("PATCH /api/todos/:id and accept/dismiss preference endpoints", async () => {
+    const patched = await app.inject({
+      method: "PATCH",
+      url: `/api/todos/${todoIds[0]}`,
+      payload: { done: true, device_id: deviceId },
+    });
+    assert.equal(patched.statusCode, 200, patched.body);
+
+    const accepted = await app.inject({
+      method: "POST",
+      url: `/api/todos/${todoIds[1]}/accept`,
+      payload: { device_id: deviceId, reminder_id: "reminder-1" },
+    });
+    assert.equal(accepted.statusCode, 200, accepted.body);
+
+    const dismissed = await app.inject({
+      method: "POST",
+      url: `/api/todos/${todoIds[2]}/dismiss`,
+      payload: { device_id: deviceId },
+    });
+    assert.equal(dismissed.statusCode, 200, dismissed.body);
   });
 
   it("GET /api/continue has before after save", async () => {
@@ -245,13 +300,13 @@ describe("http smoke", () => {
     assert.equal(res.statusCode, 400);
   });
 
-  it("POST /api/ask without LLM key → 503", async () => {
+  it("POST /api/ask", async () => {
     const res = await app.inject({
       method: "POST",
       url: "/api/ask",
       payload: { question: "今天存了什么？" },
     });
-    assert.equal(res.statusCode, 503);
+    assert.equal(res.statusCode, 200, res.body);
   });
 
   it("POST /api/chat idea + GET messages/cards", async () => {
@@ -274,6 +329,47 @@ describe("http smoke", () => {
       url: "/api/cards?direction=future",
     });
     assert.equal(cards.statusCode, 200);
+  });
+
+  it("POST /api/chat image extracts a high-weight node", async () => {
+    const png =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nCEAAAAASUVORK5CYII=";
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/chat",
+      payload: { image: png, device_id: deviceId },
+    });
+    assert.equal(res.statusCode, 200, res.body);
+    const body = res.json() as { task_id: string; degraded: boolean };
+    assert.ok(body.task_id);
+    assert.equal(body.degraded, false);
+
+    const tasks = await app.inject({ method: "GET", url: "/api/tasks?status=done" });
+    assert.equal(tasks.statusCode, 200, tasks.body);
+    assert.ok(
+      (tasks.json() as { tasks: Array<{ id: string }> }).tasks.some(
+        (task) => task.id === body.task_id,
+      ),
+    );
+  });
+
+  it("PATCH /api/messages/:id/intent re-runs a corrected intent", async () => {
+    const unknown = await app.inject({
+      method: "POST",
+      url: "/api/chat",
+      payload: { text: "待分类内容", intent: "unknown" },
+    });
+    assert.equal(unknown.statusCode, 200, unknown.body);
+    const userMessageId = (unknown.json() as { user_message_id: string }).user_message_id;
+
+    const corrected = await app.inject({
+      method: "PATCH",
+      url: `/api/messages/${userMessageId}/intent`,
+      payload: { intent: "idea" },
+    });
+    assert.equal(corrected.statusCode, 200, corrected.body);
+    const body = corrected.json() as { follow_up?: { intent: string } };
+    assert.equal(body.follow_up?.intent, "idea");
   });
 
   it("POST /api/chat exposes a running meeting Task before completion", async () => {
@@ -342,5 +438,53 @@ describe("http smoke", () => {
       url: "/api/timeline?from=2026-01-01&to=2026-03-15",
     });
     assert.equal(res.statusCode, 400);
+  });
+
+  it("rejects invalid query values instead of substituting defaults", async () => {
+    const stats = await app.inject({
+      method: "GET",
+      url: "/api/stats/today?date=not-a-date",
+    });
+    assert.equal(stats.statusCode, 400);
+
+    const days = await app.inject({ method: "GET", url: "/api/days?range=7.5" });
+    assert.equal(days.statusCode, 400);
+
+    const messages = await app.inject({
+      method: "GET",
+      url: "/api/messages?limit=3.5",
+    });
+    assert.equal(messages.statusCode, 400);
+
+    const tasks = await app.inject({
+      method: "GET",
+      url: "/api/tasks?status=unknown",
+    });
+    assert.equal(tasks.statusCode, 400);
+
+    const nodes = await app.inject({
+      method: "POST",
+      url: "/api/nodes",
+      payload: {
+        device_id: deviceId,
+        nodes: [
+          {
+            client_uuid: crypto.randomUUID(),
+            kind: "app_sample",
+            date,
+            source_meta: { sampled_at: "not-a-date" },
+          },
+        ],
+      },
+    });
+    assert.equal(nodes.statusCode, 400);
+  });
+
+  it("DELETE /api/nodes/:id", async () => {
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/api/nodes/${nodeId}`,
+    });
+    assert.equal(res.statusCode, 200, res.body);
   });
 });

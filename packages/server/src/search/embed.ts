@@ -3,7 +3,7 @@
  * No vector DB — Float32 BLOB + brute-force cosine.
  */
 
-import { config, isEmbeddingConfigured } from "../config.js";
+import { config } from "../config.js";
 import type { Db } from "../db/schema.js";
 import { nowIso } from "../util/time.js";
 import {
@@ -14,7 +14,6 @@ import {
 } from "./index.js";
 
 const BATCH_SIZE = 32;
-const MAX_ATTEMPTS = 3;
 
 export interface EmbeddingRow {
   node_id: string;
@@ -56,9 +55,6 @@ export function cosineSimilarity(a: Float32Array, b: Float32Array): number {
 }
 
 export async function embedTexts(texts: string[]): Promise<Float32Array[]> {
-  if (!isEmbeddingConfigured()) {
-    throw new Error("embedding not configured");
-  }
   if (texts.length === 0) return [];
 
   const controller = new AbortController();
@@ -77,7 +73,7 @@ export async function embedTexts(texts: string[]): Promise<Float32Array[]> {
       signal: controller.signal,
     });
     if (!res.ok) {
-      const body = await res.text().catch(() => "");
+      const body = await res.text();
       throw new Error(`embedding HTTP ${res.status}: ${body.slice(0, 300)}`);
     }
     const data = (await res.json()) as {
@@ -122,14 +118,9 @@ export function textForEmbedding(db: Db, nodeId: string): string | null {
     | undefined;
   if (!row) return null;
   if (!isEmbeddableKind(row.kind)) return null;
-  let meta: Record<string, unknown> | null = null;
-  if (row.source_meta) {
-    try {
-      meta = JSON.parse(row.source_meta) as Record<string, unknown>;
-    } catch {
-      meta = null;
-    }
-  }
+  const meta = row.source_meta
+    ? (JSON.parse(row.source_meta) as Record<string, unknown>)
+    : null;
   const text = buildNodeIndexText({
     kind: row.kind,
     title: row.title,
@@ -161,22 +152,16 @@ export function textForDayEmbedding(db: Db, date: string): string | null {
   return text || null;
 }
 
-export async function drainEmbedQueue(db: Db): Promise<{
-  processed: number;
-  failed: number;
-}> {
-  if (!isEmbeddingConfigured()) return { processed: 0, failed: 0 };
-
+export async function drainEmbedQueue(db: Db): Promise<number> {
   const pending = db
     .prepare(
       `SELECT node_id, attempts FROM embed_queue
-       WHERE attempts < ?
        ORDER BY enqueued_at ASC
        LIMIT ?`,
     )
-    .all(MAX_ATTEMPTS, BATCH_SIZE) as Array<{ node_id: string; attempts: number }>;
+    .all(BATCH_SIZE) as Array<{ node_id: string; attempts: number }>;
 
-  if (pending.length === 0) return { processed: 0, failed: 0 };
+  if (pending.length === 0) return 0;
 
   const prepared: Array<{ id: string; text: string; attempts: number }> = [];
   for (const p of pending) {
@@ -193,27 +178,9 @@ export async function drainEmbedQueue(db: Db): Promise<{
     prepared.push({ id: p.node_id, text, attempts: p.attempts });
   }
 
-  if (prepared.length === 0) return { processed: 0, failed: 0 };
+  if (prepared.length === 0) return 0;
 
-  let vectors: Float32Array[];
-  try {
-    vectors = await embedTexts(prepared.map((p) => p.text));
-  } catch (err) {
-    console.warn("[embed] batch failed:", err instanceof Error ? err.message : err);
-    for (const p of prepared) {
-      const next = p.attempts + 1;
-      if (next >= MAX_ATTEMPTS) {
-        console.warn(`[embed] giving up on ${p.id} after ${next} attempts`);
-        db.prepare(`DELETE FROM embed_queue WHERE node_id = ?`).run(p.id);
-      } else {
-        db.prepare(`UPDATE embed_queue SET attempts = ? WHERE node_id = ?`).run(
-          next,
-          p.id,
-        );
-      }
-    }
-    return { processed: 0, failed: prepared.length };
-  }
+  const vectors = await embedTexts(prepared.map((p) => p.text));
 
   const model = config.embedding.model;
   const at = nowIso();
@@ -235,7 +202,7 @@ export async function drainEmbedQueue(db: Db): Promise<{
     }
   })();
 
-  return { processed, failed: 0 };
+  return processed;
 }
 
 /**
@@ -243,7 +210,6 @@ export async function drainEmbedQueue(db: Db): Promise<{
  * Also re-queue embeddable nodes missing from node_embeddings.
  */
 export function requeueStaleEmbeddings(db: Db): number {
-  if (!isEmbeddingConfigured()) return 0;
   const model = config.embedding.model;
   const at = nowIso();
   let n = 0;
@@ -315,19 +281,15 @@ export function semanticTopK(
 
   const scored: SemanticHit[] = [];
   for (const r of rows) {
-    try {
-      const v = decodeVector(r.vector);
-      const score = cosineSimilarity(queryVec, v);
-      // Days stored as day:DATE; nodes as bare uuid.
-      const normalized = r.node_id.startsWith("day:")
+    const v = decodeVector(r.vector);
+    const score = cosineSimilarity(queryVec, v);
+    // Days stored as day:DATE; nodes as bare uuid.
+    const normalized = r.node_id.startsWith("day:")
+      ? r.node_id
+      : r.node_id.startsWith("node:")
         ? r.node_id
-        : r.node_id.startsWith("node:")
-          ? r.node_id
-          : `node:${r.node_id}`;
-      scored.push({ doc_id: normalized, score });
-    } catch {
-      /* skip corrupt blob */
-    }
+        : `node:${r.node_id}`;
+    scored.push({ doc_id: normalized, score });
   }
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, k);

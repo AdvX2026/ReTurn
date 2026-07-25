@@ -1,12 +1,11 @@
 /**
  * Chat triage + workflows (PRD v0.6 F4 / §6.3).
  * Intent triage uses the same LLM as ferment/ask (LLM_MODEL).
- * Heuristic is only used when LLM is not configured (tests / offline).
  */
 
 import type { ChatIntent, ChatResponse } from "@return/shared";
 import { extractJson, llmChat } from "../ai/llm.js";
-import { config, isLlmConfigured } from "../config.js";
+import { config } from "../config.js";
 import {
   insertCard,
   insertMessage,
@@ -30,36 +29,6 @@ export interface ChatInput {
 
 const INTENTS = new Set<ChatIntent>(["idea", "retrieval", "question", "unknown"]);
 
-/** Offline / test fallback when LLM_API_KEY is unset. Not used when LLM is configured. */
-export function triageHeuristic(text: string): {
-  intent: ChatIntent;
-  confidence: number;
-} {
-  const t = text.trim();
-  if (!t) return { intent: "unknown", confidence: 0 };
-  if (
-    /灵感|想法|点子|idea|灵感来了|记一下想法/i.test(t) ||
-    t.startsWith("灵感:") ||
-    t.startsWith("idea:")
-  ) {
-    return { intent: "idea", confidence: 0.85 };
-  }
-  if (
-    /搜|找|定位|跳转|在哪|哪里|搜索|lookup|find|search|locate|搜一下|找一下|跳到/i.test(t)
-  ) {
-    return { intent: "retrieval", confidence: 0.8 };
-  }
-  if (
-    /谁|什么|怎么|如何|为何|为什么|是否|有没有|吗|？|\?|干什么|做了什么/i.test(t) ||
-    t.includes("？") ||
-    t.includes("?")
-  ) {
-    return { intent: "question", confidence: 0.75 };
-  }
-  if (t.length <= 80) return { intent: "idea", confidence: 0.55 };
-  return { intent: "question", confidence: 0.5 };
-}
-
 /**
  * LLM triage with the same provider/model as ferment (config.llm).
  * Returns unknown on parse failure so the user can pick.
@@ -68,10 +37,6 @@ export async function triageWithLlm(text: string): Promise<{
   intent: ChatIntent;
   confidence: number;
 }> {
-  if (!isLlmConfigured()) {
-    throw new Error("LLM not configured");
-  }
-
   const raw = await llmChat({
     system: `You are the intent classifier for ReTurn (a personal second-brain agent).
 Classify the user message into exactly one intent.
@@ -117,27 +82,6 @@ export function parseTriageJson(raw: string): {
   return { intent, confidence };
 }
 
-async function resolveIntent(text: string): Promise<{
-  intent: ChatIntent;
-  confidence: number;
-}> {
-  if (!isLlmConfigured()) {
-    const h = triageHeuristic(text);
-    if (h.confidence < 0.55) return { intent: "unknown", confidence: h.confidence };
-    return h;
-  }
-  try {
-    return await triageWithLlm(text);
-  } catch (err) {
-    console.warn(
-      "[chat] LLM triage failed → unknown:",
-      err instanceof Error ? err.message : err,
-    );
-    // Do not fall back to rules when LLM is configured — ask the user.
-    return { intent: "unknown", confidence: 0 };
-  }
-}
-
 export async function handleChat(
   db: Db,
   input: ChatInput,
@@ -150,8 +94,8 @@ export async function handleChat(
     throw new ChatError("text or image required");
   }
 
-  if (hasImage && !text) {
-    return runImageTask(db, input.image!, input.device_id);
+  if (hasImage) {
+    return runImageTask(db, input.image!, text, input.device_id);
   }
 
   // Structural task path (not F4 intent classes): long meeting notes dump.
@@ -163,7 +107,7 @@ export async function handleChat(
   let intent: ChatIntent = input.intent ?? "unknown";
   let confidence = input.intent ? 1 : 0;
   if (!input.intent) {
-    const h = await resolveIntent(text);
+    const h = await triageWithLlm(text);
     intent = h.intent;
     confidence = h.confidence;
   }
@@ -209,6 +153,12 @@ async function runIdea(
   confidence: number,
 ): Promise<ChatResponse> {
   const body = text.replace(/^(灵感|idea)[:：]\s*/i, "").trim() || text;
+  const suggestion = await llmChat({
+    system: "用一句中文简短回应用户的灵感记录，可给一点轻量建议。不超过40字。",
+    user: body,
+    temperature: 0.4,
+    timeoutMs: Math.min(config.llm.timeoutMs, 15_000),
+  });
   const { node } = insertNode(db, {
     client_uuid: uuid(),
     kind: "idea",
@@ -227,9 +177,6 @@ async function runIdea(
       provenance: "user",
     },
   });
-  const suggestion = isLlmConfigured()
-    ? await tinySuggest(body).catch(() => "已记下这条灵感。")
-    : "已记下这条灵感，稍后可在 Future 里看到。";
   const agent = insertMessage(db, {
     role: "agent",
     content: suggestion,
@@ -252,7 +199,7 @@ async function runRetrieval(
   confidence: number,
 ): Promise<ChatResponse> {
   const q = text.replace(/^(搜|找|定位|搜索|search|find|lookup)\s*/i, "").trim() || text;
-  const result = await search(db, { q, limit: 10, semantic: true });
+  const result = await search(db, { q, limit: 10 });
   const nodeIds = result.results
     .map((h) => h.node?.id)
     .filter((x): x is string => Boolean(x));
@@ -284,33 +231,13 @@ async function runQuestion(
   userMessageId: string,
   confidence: number,
 ): Promise<ChatResponse> {
-  let reply: string;
-  let degraded = false;
-  try {
-    if (!isLlmConfigured()) {
-      const result = await search(db, { q: text, limit: 5, semantic: false });
-      if (result.results.length === 0) {
-        reply = "没在你的记录里找到相关内容。（未配置 LLM，无法生成回答）";
-      } else {
-        reply = result.results
-          .map((h, i) => `${i + 1}. [${h.kind}] ${h.snippet}`)
-          .join("\n");
-        degraded = true;
-      }
-    } else {
-      const askResult = await ask(db, { question: text });
-      reply = askResult.answer || "没在你的记录里找到相关内容。";
-      degraded = askResult.degraded;
-    }
-  } catch (err) {
-    reply = `提问失败：${err instanceof Error ? err.message : String(err)}`;
-    degraded = true;
-  }
+  const askResult = await ask(db, { question: text });
+  const reply = askResult.answer || "没在你的记录里找到相关内容。";
   const agent = insertMessage(db, {
     role: "agent",
     content: reply,
     intent: "question",
-    meta: { user_message_id: userMessageId, degraded },
+    meta: { user_message_id: userMessageId },
   });
   return {
     message_id: agent.id,
@@ -318,7 +245,7 @@ async function runQuestion(
     intent: "question",
     confidence,
     reply,
-    degraded,
+    degraded: false,
   };
 }
 
@@ -370,51 +297,113 @@ function runMeetingTask(
   return response;
 }
 
-function runImageTask(db: Db, image: string, deviceId: string | undefined): ChatResponse {
-  const task = insertTask(db, {
-    type: "image_extract",
-    status: "failed",
-    input: { image_ref: image.slice(0, 200), note: "vision API not configured" },
+async function runImageTask(
+  db: Db,
+  image: string,
+  note: string,
+  deviceId: string | undefined,
+): Promise<ChatResponse> {
+  const imageUrl = normalizeImage(image);
+  const extracted = await llmChat({
+    system: "提取图片中可见的文字并整理为简洁笔记。只描述图片中能确认的内容，不要猜测。",
+    user: note || "请提取并整理这张图片中的文字。",
+    imageUrl,
+    temperature: 0.1,
   });
-  const reply = "截图提取尚未接入视觉 API。请粘贴文本提交会议纪要，我会按 Task 处理。";
-  const agent = insertMessage(db, {
-    role: "agent",
-    content: reply,
-    task_id: task.id,
-  });
-  updateTask(db, task.id, {
-    status: "failed",
-    result_message_id: agent.id,
-    finished_at: nowIso(),
-  });
-  const userMsg = insertMessage(db, {
-    role: "user",
-    content: "[image]",
-    task_id: task.id,
-  });
-  void deviceId;
-  return {
-    message_id: agent.id,
-    user_message_id: userMsg.id,
-    intent: "unknown",
-    confidence: 1,
-    reply,
-    task_id: task.id,
-    degraded: true,
-  };
+
+  return db.transaction(() => {
+    const task = insertTask(db, {
+      type: "image_extract",
+      status: "running",
+      input: { note: note || null },
+    });
+    const userMsg = insertMessage(db, {
+      role: "user",
+      content: note || "[image]",
+      task_id: task.id,
+      meta: { has_image: true },
+    });
+    const { node } = insertNode(db, {
+      client_uuid: task.id,
+      kind: "image",
+      title: note.slice(0, 60) || "图片笔记",
+      content: extracted,
+      device_id: deviceId ?? null,
+      date: todayDate(),
+      source_meta: {
+        source: "task",
+        task_id: task.id,
+        weight: "high",
+        processed: true,
+      },
+    });
+    const reply = "图片内容已提取并入库。";
+    const agent = insertMessage(db, {
+      role: "agent",
+      content: reply,
+      task_id: task.id,
+      meta: { phase: "done", node_id: node.id, user_message_id: userMsg.id },
+    });
+    updateTask(db, task.id, {
+      status: "done",
+      result_message_id: agent.id,
+      finished_at: nowIso(),
+    });
+    return {
+      message_id: agent.id,
+      user_message_id: userMsg.id,
+      intent: "idea" as const,
+      confidence: 1,
+      reply,
+      task_id: task.id,
+      degraded: false,
+    };
+  })();
 }
 
-async function tinySuggest(idea: string): Promise<string> {
-  try {
-    return await llmChat({
-      system: "用一句中文简短回应用户的灵感记录，可给一点轻量建议。不超过40字。",
-      user: idea,
-      temperature: 0.4,
-      timeoutMs: Math.min(config.llm.timeoutMs, 15_000),
-    });
-  } catch {
-    return "已记下这条灵感。";
+function normalizeImage(image: string): string {
+  const value = image.trim();
+  if (/^https:/i.test(value)) {
+    let url: URL;
+    try {
+      url = new URL(value);
+    } catch {
+      throw new ChatError("image contains an invalid HTTPS URL");
+    }
+    if (url.protocol !== "https:" || !url.hostname) {
+      throw new ChatError("image URL must use HTTPS");
+    }
+    return url.toString();
   }
+
+  const dataUrl = value.match(
+    /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+=*)$/i,
+  );
+  const declaredMime = dataUrl?.[1]?.toLowerCase() ?? null;
+  const encoded = (dataUrl?.[2] ?? value).replace(/\s+/g, "");
+  if (!/^[A-Za-z0-9+/]+=*$/.test(encoded)) {
+    throw new ChatError("image must be an HTTPS URL, data URL, or base64 image");
+  }
+  const bytes = Buffer.from(encoded, "base64");
+  const canonical = bytes.toString("base64").replace(/=+$/, "");
+  if (!bytes.length || canonical !== encoded.replace(/=+$/, "")) {
+    throw new ChatError("image contains invalid base64");
+  }
+  const mime = bytes.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))
+    ? "image/jpeg"
+    : bytes
+          .subarray(0, 8)
+          .equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+      ? "image/png"
+      : bytes.subarray(0, 4).toString("ascii") === "RIFF" &&
+          bytes.subarray(8, 12).toString("ascii") === "WEBP"
+        ? "image/webp"
+        : null;
+  if (!mime) throw new ChatError("image must be JPEG, PNG, or WebP");
+  if (declaredMime && declaredMime !== mime) {
+    throw new ChatError("image data does not match its declared MIME type");
+  }
+  return `data:${mime};base64,${encoded}`;
 }
 
 export class ChatError extends Error {
