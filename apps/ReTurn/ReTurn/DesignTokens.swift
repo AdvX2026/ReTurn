@@ -48,24 +48,25 @@ enum ReTurnDesign {
         /// categories). Every accent below is referenced only through
         /// `Accents`, so swapping in the real palette is a one-file change.
         ///
-        /// **One accent per card, and it appears only on the header icon and
-        /// title.** Everything else in a card is primary or secondary label.
-        /// Apple Health only breaks this where colour carries fixed meaning —
-        /// legend dots matching a chart's segments, or the Activity rings — and
-        /// the five stats have neither, so they are deliberately uncoloured.
+        /// One accent per card, on the header icon and title. Beyond that,
+        /// colour is allowed where it **classifies** — the five stats read as a
+        /// legend, the way Apple's sleep score tints its three components — but
+        /// not where it would **judge**. Review points are the case to avoid:
+        /// green/orange over win/miss turns the card into a scorecard, and PRD
+        /// §4.3 requires the tone to describe the day rather than grade it.
         enum Accents {
+            static let intake = Color.blue
+            static let focus = Color.indigo
+            static let output = Color.orange
+            static let continuity = Color.green
+            static let energy = Color.pink
+
             static let brief = Color.blue
             static let review = Color.purple
             static let todo = Color.blue
             static let health = Color.pink
             static let idea = Color.orange
             static let unknown = Color.secondary
-
-            /// Review point kinds are the sanctioned exception: win/miss/insight
-            /// is fixed semantics, the same way Health tints a status dot.
-            static let win = Color.green
-            static let miss = Color.orange
-            static let insight = Color.purple
         }
     }
 
@@ -168,8 +169,9 @@ enum ReTurnDesign {
         static let headerIconSpacing: CGFloat = 5
         /// Vertical breathing room above and below each detail row, so the
         /// separators land in the middle of real whitespace.
-        static let rowVerticalPadding: CGFloat = 12
+        static let rowVerticalPadding: CGFloat = 9
         static let rowTextSpacing: CGFloat = 3
+        static let dotSize: CGFloat = 9
         static let mascotWidth: CGFloat = 132
     }
 

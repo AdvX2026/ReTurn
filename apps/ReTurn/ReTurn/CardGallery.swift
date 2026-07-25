@@ -73,7 +73,8 @@ struct CardGallery: View {
                 CardMetricRow(
                     name: stat.name,
                     value: stat.value,
-                    caption: stat.caption
+                    caption: stat.caption,
+                    marker: .dot(stat.color)
                 )
             }
         }
@@ -93,8 +94,10 @@ struct CardGallery: View {
         }
     }
 
-    /// Main visual: kind-coded symbols. Win/miss/insight is fixed semantics,
-    /// which is the one case where extra colour earns its place.
+    /// Main visual: kind-coded symbols, deliberately untinted. Green over "做到了"
+    /// and orange over "没做到" would read as a scorecard, and PRD §4.3 requires
+    /// the tone to describe the day rather than grade it. The symbol shape
+    /// carries the distinction instead.
     private var reviewCard: some View {
         Card {
             CardHeader(
@@ -108,7 +111,7 @@ struct CardGallery: View {
                 CardMetricRow(
                     name: point.name,
                     caption: point.text,
-                    symbol: (point.symbol, point.color)
+                    marker: .symbol(point.symbol)
                 )
             }
         }
@@ -266,13 +269,13 @@ enum SampleData {
         let name: String
         let value: String?
         let caption: String
+        let color: Color
     }
 
     struct ReviewPoint {
         let name: String
         let text: String
         let symbol: String
-        let color: Color
     }
 
     enum Provenance {
@@ -295,11 +298,36 @@ enum SampleData {
     }
 
     static let stats: [Stat] = [
-        Stat(name: "摄取", value: "27", caption: "收入了 17 个 idea、10 张图片。"),
-        Stat(name: "专注", value: "82", caption: "今天你的注意力很集中。"),
-        Stat(name: "产出", value: "64", caption: "做了 6/17 个 Todo。"),
-        Stat(name: "连贯", value: "91", caption: "和过去完美连续。"),
-        Stat(name: "精力", value: nil, caption: "暂时还没有数据。"),
+        Stat(
+            name: "摄取",
+            value: "27",
+            caption: "收入了 17 个 idea、10 张图片。",
+            color: ReTurnDesign.Colors.Accents.intake
+        ),
+        Stat(
+            name: "专注",
+            value: "82",
+            caption: "今天你的注意力很集中。",
+            color: ReTurnDesign.Colors.Accents.focus
+        ),
+        Stat(
+            name: "产出",
+            value: "64",
+            caption: "做了 6/17 个 Todo。",
+            color: ReTurnDesign.Colors.Accents.output
+        ),
+        Stat(
+            name: "连贯",
+            value: "91",
+            caption: "和过去完美连续。",
+            color: ReTurnDesign.Colors.Accents.continuity
+        ),
+        Stat(
+            name: "精力",
+            value: nil,
+            caption: "暂时还没有数据。",
+            color: ReTurnDesign.Colors.Accents.energy
+        ),
     ]
 
     static let summary = "昨天几乎整天都在 ReTurn 的前端上，把输入框的性能问题拆干净了。"
@@ -308,20 +336,17 @@ enum SampleData {
         ReviewPoint(
             name: "做到了",
             text: "找出了 composer 的卡顿根因。",
-            symbol: "checkmark.circle.fill",
-            color: ReTurnDesign.Colors.Accents.win
+            symbol: "checkmark.circle"
         ),
         ReviewPoint(
             name: "没做到",
             text: "卡片外壳还没有测试覆盖。",
-            symbol: "exclamationmark.circle.fill",
-            color: ReTurnDesign.Colors.Accents.miss
+            symbol: "circle.dashed"
         ),
         ReviewPoint(
             name: "发现",
             text: "菜单和玻璃融合是 iOS 26 的既定行为。",
-            symbol: "lightbulb.fill",
-            color: ReTurnDesign.Colors.Accents.insight
+            symbol: "lightbulb"
         ),
     ]
 
