@@ -11,6 +11,12 @@ struct MacBeforeView: View {
 
     @State private var selectedDate: Date?
     @State private var selectedItemID: String?
+    /// Committed pinch-zoom level; 1 means the track fits the viewport.
+    @State private var zoom: CGFloat = 1
+    /// Live pinch multiplier while the gesture is in flight.
+    @GestureState private var magnifyDelta: CGFloat = 1
+    /// Viewport width the track width (viewport × zoom) is derived from.
+    @State private var timelineViewportWidth: CGFloat = 600
 
     init(days: [TimelineDay]) {
         self.days = days
@@ -19,6 +25,13 @@ struct MacBeforeView: View {
 
     private var selectedDay: TimelineDay? {
         days.first { $0.date == selectedDate } ?? days.first
+    }
+
+    private var liveZoom: CGFloat {
+        min(
+            max(zoom * magnifyDelta, 1),
+            ReTurnDesign.Desktop.Before.timelineMaxZoom
+        )
     }
 
     var body: some View {
@@ -97,7 +110,7 @@ struct MacBeforeView: View {
             if let day = selectedDay {
                 dayHeader(day)
 
-                MacDayTimelineView(day: day, selectedItemID: $selectedItemID)
+                timelineViewport(day: day)
                     .padding(.vertical, ReTurnDesign.Spacing.medium)
 
                 Divider()
@@ -129,10 +142,113 @@ struct MacBeforeView: View {
                 )
                 .font(TimelineDesign.Typography.eventCount)
                 .foregroundStyle(.tertiary)
+
+                // Step through recorded days; the calendar jumps anywhere.
+                HStack(spacing: 2) {
+                    Button {
+                        stepDay(by: -1)
+                    } label: {
+                        Image(systemName: "chevron.left")
+                    }
+                    .disabled(!canStepDay(by: -1))
+                    .accessibilityLabel("Previous recorded day")
+
+                    Button {
+                        stepDay(by: 1)
+                    } label: {
+                        Image(systemName: "chevron.right")
+                    }
+                    .disabled(!canStepDay(by: 1))
+                    .accessibilityLabel("Next recorded day")
+                }
+                .buttonStyle(.borderless)
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.leading, ReTurnDesign.Spacing.small)
             }
         }
         .padding(.horizontal, ReTurnDesign.Spacing.large)
         .padding(.top, TimelineDesign.Layout.contentTopPadding)
+    }
+
+    /// Days that have any content, ascending; stepping moves within them.
+    private var recordedDates: [Date] {
+        days.map(\.date).sorted()
+    }
+
+    private func canStepDay(by delta: Int) -> Bool {
+        guard
+            let current = selectedDay?.date,
+            let index = recordedDates.firstIndex(of: current)
+        else { return false }
+        return recordedDates.indices.contains(index + delta)
+    }
+
+    private func stepDay(by delta: Int) {
+        guard
+            let current = selectedDay?.date,
+            let index = recordedDates.firstIndex(of: current),
+            recordedDates.indices.contains(index + delta)
+        else { return }
+        selectedDate = recordedDates[index + delta]
+    }
+
+    /// The 24-hour track in its own horizontal ScrollView: at zoom 1 it fits
+    /// exactly; pinching (trackpad) zooms up to `timelineMaxZoom` and the
+    /// overflow scrolls — a two-finger swipe over the track browses time
+    /// instead of turning the page, which is the expected priority here.
+    private func timelineViewport(day: TimelineDay) -> some View {
+        ScrollView(.horizontal) {
+            MacDayTimelineView(
+                day: day,
+                selectedItemID: $selectedItemID,
+                width: timelineViewportWidth * liveZoom
+            )
+        }
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.width
+        } action: { width in
+            timelineViewportWidth = width
+        }
+        // simultaneousGesture: the ScrollView's own pan/scroll handling must
+        // not swallow the pinch.
+        .simultaneousGesture(
+            MagnifyGesture()
+                .updating($magnifyDelta) { value, state, _ in
+                    state = value.magnification
+                }
+                .onEnded { value in
+                    zoom = liveZoomFrom(value.magnification)
+                }
+        )
+        .overlay(alignment: .topTrailing) {
+            if zoom > 1 || magnifyDelta != 1 {
+                Button {
+                    withAnimation(.easeOut(duration: 0.2)) { zoom = 1 }
+                } label: {
+                    Text("\(liveZoom, specifier: "%.1f")×")
+                        .font(.caption2.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.ultraThinMaterial, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .help("Reset zoom")
+                .padding(.trailing, ReTurnDesign.Spacing.medium)
+                .accessibilityLabel("Reset timeline zoom")
+            }
+        }
+        .onChange(of: selectedDate) { _, _ in
+            zoom = 1
+        }
+    }
+
+    private func liveZoomFrom(_ magnification: CGFloat) -> CGFloat {
+        min(
+            max(zoom * magnification, 1),
+            ReTurnDesign.Desktop.Before.timelineMaxZoom
+        )
     }
 
     private func eventList(_ day: TimelineDay) -> some View {

@@ -1,29 +1,30 @@
 #if os(macOS)
 import SwiftUI
 
-/// macOS root: the mobile pager translated to the desktop. A sidebar turned
-/// Before/Now/After into a document switcher and lost the time-flow metaphor,
-/// so navigation here is **directional**, mirroring the iOS swipe: left arrow
-/// key / left edge button goes one page into the past, right goes one page
-/// into the future, and pages slide in from the edge they conceptually live
-/// on. The top label row is the same word-mark the iOS pager uses.
+/// macOS root: the same paging `ScrollView` the iOS pager runs on, so a
+/// trackpad two-finger swipe or a Magic Mouse swipe turns pages exactly like
+/// the mobile gesture — the earlier simulated slide transition is gone, and
+/// with it any doubt about directions. Keyboard (arrow keys, Escape,
+/// Cmd-1/2/3), the floating window-edge arrows and the top label row all
+/// drive the same `scrollPosition` binding the gesture drives.
 struct MacRootView: View {
-    @State private var selection: TimelinePage = .now
-    /// Edge the incoming page enters from; the outgoing page leaves through
-    /// the opposite one. Set together with `selection` inside one transaction.
-    @State private var navigationEdge: Edge = .trailing
+    @State private var selection: TimelinePage? = .now
     @FocusState private var isComposerFocused: Bool
 
     var body: some View {
-        ZStack {
-            pageContent
-                .id(selection)
-                .transition(.asymmetric(
-                    insertion: .move(edge: navigationEdge),
-                    removal: .move(edge: navigationEdge.opposite)
-                ))
+        ScrollView(.horizontal) {
+            LazyHStack(spacing: 0) {
+                ForEach(TimelinePage.allCases) { page in
+                    pageContent(for: page)
+                        .containerRelativeFrame([.horizontal, .vertical])
+                        .id(page)
+                }
+            }
+            .scrollTargetLayout()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .scrollIndicators(.hidden)
+        .scrollTargetBehavior(.paging)
+        .scrollPosition(id: $selection)
         .background(ReTurnDesign.Colors.screenBackground)
         .safeAreaInset(edge: .top, spacing: 0) {
             pageIndicator
@@ -36,17 +37,17 @@ struct MacRootView: View {
             minHeight: ReTurnDesign.Desktop.windowMinimumHeight
         )
         .overlay(alignment: .leading) {
-            if selection != .before {
-                EdgeNavigationButton(systemImage: "chevron.left", help: "Before") {
-                    step(-1)
+            if let target = neighbor(-1) {
+                EdgeNavigationButton(systemImage: "chevron.left", help: target.rawValue) {
+                    select(target)
                 }
                 .padding(.leading, ReTurnDesign.Spacing.medium)
             }
         }
         .overlay(alignment: .trailing) {
-            if selection != .after {
-                EdgeNavigationButton(systemImage: "chevron.right", help: "After") {
-                    step(1)
+            if let target = neighbor(1) {
+                EdgeNavigationButton(systemImage: "chevron.right", help: target.rawValue) {
+                    select(target)
                 }
                 .padding(.trailing, ReTurnDesign.Spacing.medium)
             }
@@ -54,9 +55,11 @@ struct MacRootView: View {
         .background(shortcutButtons)
     }
 
+    private var currentPage: TimelinePage { selection ?? .now }
+
     @ViewBuilder
-    private var pageContent: some View {
-        switch selection {
+    private func pageContent(for page: TimelinePage) -> some View {
+        switch page {
         case .before:
             MacBeforeView(days: TimelinePreviewData.days)
         case .now:
@@ -66,19 +69,26 @@ struct MacRootView: View {
         }
     }
 
+    /// `scrollPosition` is two-way: assigning animates the pager to the page,
+    /// a swipe updates the selection back. One binding, no direction math.
     private func select(_ page: TimelinePage) {
-        guard page != selection else { return }
-        let forward = page.ordinal > selection.ordinal
-        withAnimation(.easeInOut(duration: 0.35)) {
-            navigationEdge = forward ? .trailing : .leading
+        withAnimation(
+            .easeInOut(duration: ReTurnDesign.Motion.navigationSelectionDuration)
+        ) {
             selection = page
         }
     }
 
     private func step(_ delta: Int) {
-        let index = selection.ordinal + delta
-        guard TimelinePage.allCases.indices.contains(index) else { return }
-        select(TimelinePage.allCases[index])
+        if let target = neighbor(delta) {
+            select(target)
+        }
+    }
+
+    private func neighbor(_ delta: Int) -> TimelinePage? {
+        let index = currentPage.ordinal + delta
+        guard TimelinePage.allCases.indices.contains(index) else { return nil }
+        return TimelinePage.allCases[index]
     }
 
     /// The same three words the iOS pager navigates with, clickable and kept
@@ -87,7 +97,7 @@ struct MacRootView: View {
     private var pageIndicator: some View {
         HStack(spacing: ReTurnDesign.Spacing.large) {
             ForEach(TimelinePage.allCases) { page in
-                let isSelected = page == selection
+                let isSelected = page == currentPage
 
                 Button {
                     select(page)
@@ -117,7 +127,7 @@ struct MacRootView: View {
         .padding(.bottom, ReTurnDesign.Spacing.extraSmall)
         .animation(
             .easeInOut(duration: ReTurnDesign.Motion.navigationSelectionDuration),
-            value: selection
+            value: currentPage
         )
     }
 
@@ -128,15 +138,15 @@ struct MacRootView: View {
         HStack {
             Button("Previous") { step(-1) }
                 .keyboardShortcut(.leftArrow, modifiers: [])
-                .disabled(isComposerFocused || selection == .before)
+                .disabled(isComposerFocused || currentPage == .before)
 
             Button("Next") { step(1) }
                 .keyboardShortcut(.rightArrow, modifiers: [])
-                .disabled(isComposerFocused || selection == .after)
+                .disabled(isComposerFocused || currentPage == .after)
 
             Button("Back to Now") { select(.now) }
                 .keyboardShortcut(.escape, modifiers: [])
-                .disabled(selection == .now)
+                .disabled(currentPage == .now)
 
             ForEach(Array(TimelinePage.allCases.enumerated()), id: \.element) { index, page in
                 Button(page.rawValue) {
@@ -186,19 +196,8 @@ private extension TimelinePage {
     }
 }
 
-private extension Edge {
-    var opposite: Edge {
-        switch self {
-        case .leading: .trailing
-        case .trailing: .leading
-        case .top: .bottom
-        case .bottom: .top
-        }
-    }
-}
-
-/// The same hero as mobile, at a fixed width: the desktop shell has no pager,
-/// so `containerRelativeFrame` has no scroll container to measure against.
+/// The same hero as mobile, at a fixed width: the desktop window is too wide
+/// for the iOS proportional sizing even inside the pager.
 private struct MacNowPage: View {
     var body: some View {
         VStack(spacing: ReTurnDesign.Spacing.medium) {

@@ -180,8 +180,9 @@ enum ReTurnDesign {
     enum Desktop {
         static let windowMinimumWidth: CGFloat = 940
         static let windowMinimumHeight: CGFloat = 600
-        /// The desktop Now page has no pager, so the mascot takes a fixed
-        /// width instead of a scroll-viewport ratio.
+        /// The desktop window is far wider than a phone screen, so the iOS
+        /// proportional mascot width would blow up; the desktop Now page
+        /// keeps a fixed width even though it lives inside the pager.
         static let nowMascotWidth: CGFloat = 220
         /// Horizontal breathing room around full-width desktop content.
         static let contentPadding: CGFloat = 32
@@ -205,6 +206,9 @@ enum ReTurnDesign {
             static let timelineLaneGap: CGFloat = 6
             /// A span bar shows its label only above this width.
             static let timelineSpanLabelMinimumWidth: CGFloat = 72
+            /// Pinch-zoom ceiling for the horizontal timeline; 1 means the
+            /// track fits the viewport exactly (no scrolling).
+            static let timelineMaxZoom: CGFloat = 4
         }
 
         enum After {

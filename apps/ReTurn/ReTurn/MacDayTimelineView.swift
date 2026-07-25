@@ -11,27 +11,27 @@ import SwiftUI
 struct MacDayTimelineView: View {
     let day: TimelineDay
     @Binding var selectedItemID: String?
+    /// Explicit instead of a GeometryReader: the track lives in a horizontal
+    /// ScrollView and may be zoomed wider than the viewport, so the parent
+    /// computes the width (viewport × zoom) and hands it down.
+    let width: CGFloat
 
     private typealias Tokens = ReTurnDesign.Desktop.Before
 
     var body: some View {
-        GeometryReader { proxy in
-            let width = proxy.size.width
+        VStack(alignment: .leading, spacing: ReTurnDesign.Spacing.extraSmall) {
+            hourLabels(width: width)
 
-            VStack(alignment: .leading, spacing: ReTurnDesign.Spacing.extraSmall) {
-                hourLabels(width: width)
-
-                ZStack(alignment: .topLeading) {
-                    gridLines(width: width)
-                    sleepBars(width: width)
-                    activityBars(width: width)
-                    inputDots(width: width)
-                    ambientDots(width: width)
-                }
-                .frame(width: width, height: contentHeight)
+            ZStack(alignment: .topLeading) {
+                gridLines(width: width)
+                sleepBars(width: width)
+                activityBars(width: width)
+                inputDots(width: width)
+                ambientDots(width: width)
             }
+            .frame(width: width, height: contentHeight)
         }
-        .frame(height: Tokens.timelineHourLabelHeight + ReTurnDesign.Spacing.extraSmall + contentHeight)
+        .frame(width: width)
     }
 
     // ── items by lane ────────────────────────────────────
@@ -245,7 +245,8 @@ struct MacDayTimelineView: View {
 #Preview {
     MacDayTimelineView(
         day: TimelinePreviewData.days[0],
-        selectedItemID: .constant(nil)
+        selectedItemID: .constant(nil),
+        width: 760
     )
     .padding()
 }
