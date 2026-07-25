@@ -26,7 +26,6 @@ describe("saveToday", () => {
       note_text: "明天把时间轴做完",
     });
     assert.equal(first.already_saved, false);
-    assert.equal(first.degraded, false);
     assert.ok(first.summary);
     assert.ok(first.saved_at);
     assert.ok(first.stats);

@@ -129,7 +129,7 @@ save_note + snapshot → ferment → summary/todos/edges/tags
 |---|---|---|
 | 当日节点 | `GET/DELETE /api/nodes` | 按日桶 |
 | 时间轴 | `GET /api/timeline` | 会话聚合 |
-| 存档 / 复盘 | `POST /api/save` · `GET /api/continue` | 日仪式 |
+| 存档 / 复盘 | `POST /api/save` · `GET /api/cards?direction=before` | 日仪式 |
 | 属性 | `GET /api/stats/today` · `/api/days` | 游戏层 |
 | 全局找 | `GET /api/search` | 跨日、跨 kind |
 | 全局问 | `POST /api/ask` | RAG + 引用 |

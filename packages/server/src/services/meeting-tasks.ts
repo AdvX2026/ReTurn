@@ -39,7 +39,7 @@ export class MeetingTaskRunner implements MeetingTaskDispatcher {
 
   constructor(
     private readonly db: Db,
-    private readonly processor: MeetingNotesProcessor = organizeMeetingNotes,
+    private readonly processor?: MeetingNotesProcessor,
   ) {}
 
   start(): void {
@@ -100,7 +100,9 @@ export class MeetingTaskRunner implements MeetingTaskDispatcher {
     }
 
     try {
-      const result = await this.processor(input.data.text);
+      const result = this.processor
+        ? await this.processor(input.data.text)
+        : await organizeMeetingNotes(this.db, input.data.text);
       this.persistSuccess(
         task,
         input.data.text,

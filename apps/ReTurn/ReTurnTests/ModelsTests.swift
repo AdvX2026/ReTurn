@@ -33,8 +33,7 @@ struct ModelsTests {
         #expect(res.taskId == nil)
     }
 
-    @Test func unknownEnumValuesFallBackInsteadOfThrowing() throws {
-        // Future backend adds NodeKind "email" (open PR): old builds must not crash.
+    @Test func nodeKindsStayAlignedAndFutureValuesRemainSafe() throws {
         let json = """
         {
           "id": "9c5c9e59-0000-4000-8000-000000000001",
@@ -50,8 +49,44 @@ struct ModelsTests {
         }
         """
         let node = try decode(NodeRecord.self, json)
-        #expect(node.kind == .unknown)
+        #expect(node.kind == .email)
         #expect(node.sourceMeta?["count"] == .number(3))
+
+        let future = json.replacingOccurrences(of: "\"email\"", with: "\"calendar_event\"")
+        #expect(try decode(NodeRecord.self, future).kind == .unknown)
+    }
+
+    @Test func decodesCollectionAndProviderUsage() throws {
+        let stats = try decode(
+            StatsTodayResponse.self,
+            """
+            {
+              "date": "2026-07-25",
+              "stats": {"intake": 1, "focus": 2, "output": 3, "continuity": 4, "energy": 5},
+              "character_state": "normal",
+              "saved": false,
+              "collection": {"device_count": 2, "sample_count": 18, "last_seen_at": "2026-07-25T10:00:00.000Z"},
+              "cadence": "active"
+            }
+            """
+        )
+        #expect(stats.collection.sampleCount == 18)
+
+        let usage = try decode(
+            UsageResponse.self,
+            """
+            {
+              "from": "2026-07-01",
+              "to": "2026-07-25",
+              "totals": {"calls": 2, "succeeded": 1, "failed": 1, "prompt_tokens": 20, "completion_tokens": 10, "total_tokens": 30},
+              "breakdown": [
+                {"kind": "llm", "operation": "ask", "model": "demo", "calls": 2, "succeeded": 1, "failed": 1, "prompt_tokens": 20, "completion_tokens": 10, "total_tokens": 30}
+              ]
+            }
+            """
+        )
+        #expect(usage.totals.failed == 1)
+        #expect(usage.breakdown.first?.operation == "ask")
     }
 
     @Test func decodesTypedCardContentByType() throws {

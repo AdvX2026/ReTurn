@@ -1,4 +1,6 @@
 import { NotConfiguredError, config, isWhisperConfigured } from "../config.js";
+import type { Db } from "../db/schema.js";
+import { recordProviderUsage } from "../usage.js";
 
 export class TranscribeError extends Error {
   constructor(
@@ -14,12 +16,13 @@ export class TranscribeError extends Error {
  * Whisper-compatible transcription (OpenAI /audio/transcriptions).
  */
 export async function transcribeAudio(
+  db: Db,
   buffer: Buffer,
   filename: string,
   mimeType: string,
 ): Promise<string> {
   if (!isWhisperConfigured()) {
-    throw new NotConfiguredError("Whisper", "set WHISPER_API_KEY or LLM_API_KEY");
+    throw new NotConfiguredError("Whisper", "set WHISPER_BASE_URL and WHISPER_API_KEY");
   }
   const form = new FormData();
   const blob = new Blob([new Uint8Array(buffer)], {
@@ -44,9 +47,31 @@ export async function transcribeAudio(
       const body = await res.text();
       throw new TranscribeError(`Whisper HTTP ${res.status}: ${body.slice(0, 300)}`);
     }
-    const data = (await res.json()) as { text?: string };
+    const data = (await res.json()) as {
+      text?: string;
+      usage?: {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+        total_tokens?: number;
+      };
+    };
     if (!data.text) throw new TranscribeError("empty transcript");
+    recordProviderUsage(db, {
+      kind: "transcription",
+      operation: "voice_transcription",
+      model: config.whisper.model,
+      status: "succeeded",
+      ...data.usage,
+    });
     return data.text.trim();
+  } catch (error) {
+    recordProviderUsage(db, {
+      kind: "transcription",
+      operation: "voice_transcription",
+      model: config.whisper.model,
+      status: "failed",
+    });
+    throw error;
   } finally {
     clearTimeout(timer);
   }

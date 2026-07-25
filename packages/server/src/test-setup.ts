@@ -34,10 +34,16 @@ if (!process.env.DATA_DIR) {
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (input, init) => {
   if (String(input).endsWith("/audio/transcriptions")) {
-    return new Response(JSON.stringify({ text: "Mock voice transcript" }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({
+        text: "Mock voice transcript",
+        usage: { total_tokens: 17 },
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
   if (String(input).endsWith("/embeddings")) {
     const body = JSON.parse(String(init?.body)) as { input: string[] };
@@ -47,6 +53,10 @@ globalThis.fetch = async (input, init) => {
           index,
           embedding: [1, index + 1, 0.5],
         })),
+        usage: {
+          prompt_tokens: body.input.length * 4,
+          total_tokens: body.input.length * 4,
+        },
       }),
       { status: 200, headers: { "Content-Type": "application/json" } },
     );
@@ -104,6 +114,7 @@ globalThis.fetch = async (input, init) => {
     return new Response(
       JSON.stringify({
         choices: [{ message: { content } }],
+        usage: { prompt_tokens: 20, completion_tokens: 10, total_tokens: 30 },
       }),
       { status: 200, headers: { "Content-Type": "application/json" } },
     );

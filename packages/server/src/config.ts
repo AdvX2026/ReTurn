@@ -82,9 +82,8 @@ export const config = {
   },
 
   whisper: {
-    // Whisper falls back to the LLM provider when not set explicitly.
-    baseUrl: baseUrl("WHISPER_BASE_URL") || llmBaseUrl,
-    apiKey: str("WHISPER_API_KEY", "").trim() || llmApiKey,
+    baseUrl: baseUrl("WHISPER_BASE_URL"),
+    apiKey: str("WHISPER_API_KEY", "").trim(),
     model: nonEmpty("WHISPER_MODEL", "whisper-1"),
     timeoutMs: positiveInt("WHISPER_TIMEOUT_MS", 60_000),
   },

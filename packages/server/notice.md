@@ -6,6 +6,9 @@
 - Shared Zod contracts live in `@return/shared` (API + ferment JSON). Server validates at trust boundary.
 - Stats/character are pure code (`src/stats/*`). LLM only produces text products (summary/opening/todos/tags/edges).
 - Save is idempotent per day; ferment failure leaves the day open and returns an error.
+- Save switches cadence to `night` through the next local 06:00 boundary.
+- Provider calls are recorded in `llm_usage` with model, operation, status, and
+  token counts only. Prompts, responses, errors, and user content are never stored.
 - Day bucketing uses **server local timezone** (`created_at` stamped server-side).
 - Meeting-notes Tasks use the SQLite `tasks` table as a durable queue. Startup
   requeues interrupted `running` work; the Task UUID is also the output node's
@@ -14,14 +17,14 @@
   the Task `failed` without claiming it was organized.
 
 ## Env
-See root `.env.example`. `LLM_API_KEY` / `HEALTH_TOKEN` never ship to clients. Health, LLM, Whisper, and embedding are optional: unconfigured features answer with an explicit 503 (never a fake success); embedding off → keyword-only search. Invalid numeric/URL configuration fails startup.
+See root `.env.example`. `LLM_API_KEY` / `HEALTH_TOKEN` never ship to clients. Health, LLM, Whisper, and embedding are optional and configured independently: unconfigured features answer with an explicit 503 (never a fake success); embedding off → keyword-only search. Invalid numeric/URL configuration fails startup.
 - Image chat uses the configured multimodal `LLM_MODEL`; successful extraction creates a completed high-weight image Task and node.
 
 ## Known
 - mDNS (`return.local`) not implemented yet — clients use IP for now.
 - URL fetch enrichment (title/body summary on `kind=url`) not done; desktop/server can add later.
 - Global search / node layering: see `docs/architecture-nodes-search.md` (PR #8).
-- Swift `Models.swift` mirror for Search/Ask + `git_commit` waits on `apps/ReturnApp`.
+- Swift `Models.swift` mirrors the shared API contract, including all sampler node kinds.
 - Voice transcription failure preserves the raw audio file and a pending voice node (`pending_transcript: true`), and returns HTTP 502/503 — no fake transcript.
 
 ## Todo preference loop (AI suggestions ↔ Apple Reminders)

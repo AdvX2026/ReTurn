@@ -9,7 +9,7 @@ Options:
   --base-url URL    Server URL (default: http://127.0.0.1:8787)
   --health DATE     Test authenticated health upsert for DATE (YYYY-MM-DD)
   --voice FILE      Test voice upload/transcription with an audio file
-  --save DATE       Seal DATE and require a non-degraded LLM result
+  --save DATE       Seal DATE and require a real LLM ferment result
   -h, --help        Show this help
 
 Environment:
@@ -153,8 +153,8 @@ curl_api "$base_url/api/nodes?date=$test_date" | \
   jq -e --arg uuid "$test_uuid" '.nodes | any(.client_uuid == $uuid)' >/dev/null
 
 echo "==> read APIs"
-curl_api "$base_url/api/continue" | jq -e '.future.date != null' >/dev/null
-curl_api "$base_url/api/stats/today" | jq -e '.stats.energy >= 0' >/dev/null
+curl_api "$base_url/api/stats/today" | \
+  jq -e '.stats.energy >= 0 and .collection.sample_count >= 0' >/dev/null
 curl_api "$base_url/api/timeline?date=$test_date" | jq -e '.segments != null' >/dev/null
 curl_api "$base_url/api/days?range=7" | jq -e '.days | length == 7' >/dev/null
 
@@ -195,7 +195,7 @@ if [ -n "$save_date" ]; then
   save_payload=$(jq -nc --arg date "$save_date" --arg device "$device_id" \
     '{date:$date,device_id:$device,note_text:"Deployment end-to-end validation"}')
   curl_api -H 'Content-Type: application/json' -d "$save_payload" \
-    "$base_url/api/save" | jq -e '.degraded == false and .saved_at != null' >/dev/null
+    "$base_url/api/save" | jq -e '.saved_at != null' >/dev/null
 fi
 
 echo "smoke test passed"

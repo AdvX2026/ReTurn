@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 /**
  * HTTP smoke via Fastify inject() — no real port, runs in CI.
- * Covers the Day Loop spine: register → nodes → health → stats → save → continue.
+ * Covers the Day Loop spine: register → nodes → health → stats → save.
  */
 import { after, before, describe, it } from "node:test";
 import type { FastifyInstance } from "fastify";
@@ -191,9 +191,34 @@ describe("http smoke", () => {
     const body = res.json() as {
       stats: { energy: number };
       character_state: string;
+      collection: {
+        device_count: number;
+        sample_count: number;
+        last_seen_at: string | null;
+      };
     };
     assert.ok(typeof body.stats.energy === "number");
     assert.ok(body.character_state);
+    assert.ok(body.collection.device_count >= 1);
+    assert.ok(body.collection.sample_count >= 1);
+    assert.ok(body.collection.last_seen_at);
+  });
+
+  it("GET /api/usage aggregates provider calls", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/usage" });
+    assert.equal(res.statusCode, 200, res.body);
+    const body = res.json() as {
+      totals: { calls: number; total_tokens: number };
+      breakdown: Array<{ kind: string; operation: string }>;
+    };
+    assert.ok(body.totals.calls >= 1);
+    assert.ok(body.totals.total_tokens >= 17);
+    assert.ok(
+      body.breakdown.some(
+        (item) =>
+          item.kind === "transcription" && item.operation === "voice_transcription",
+      ),
+    );
   });
 
   it("POST /api/save then idempotent", async () => {
@@ -209,13 +234,11 @@ describe("http smoke", () => {
     assert.equal(res.statusCode, 200, res.body);
     const body = res.json() as {
       already_saved: boolean;
-      degraded: boolean;
       summary: string | null;
       streak: number;
       todos: Array<{ id: string }>;
     };
     assert.equal(body.already_saved, false);
-    assert.equal(body.degraded, false);
     assert.ok(body.summary);
     assert.ok(body.streak >= 1);
     assert.equal(body.todos.length, 3);
@@ -251,20 +274,6 @@ describe("http smoke", () => {
       payload: { device_id: deviceId },
     });
     assert.equal(dismissed.statusCode, 200, dismissed.body);
-  });
-
-  it("GET /api/continue has before after save", async () => {
-    // continue uses server "today" — may not be 2026-07-24; still must 200
-    const res = await app.inject({ method: "GET", url: "/api/continue" });
-    assert.equal(res.statusCode, 200);
-    const body = res.json() as {
-      future: { todos: unknown[] };
-      stats: unknown;
-      character_state: string;
-    };
-    assert.ok(body.stats);
-    assert.ok(body.character_state);
-    assert.ok(Array.isArray(body.future.todos));
   });
 
   it("GET /api/timeline + /api/days", async () => {
@@ -340,9 +349,8 @@ describe("http smoke", () => {
       payload: { image: png, device_id: deviceId },
     });
     assert.equal(res.statusCode, 200, res.body);
-    const body = res.json() as { task_id: string; degraded: boolean };
+    const body = res.json() as { task_id: string };
     assert.ok(body.task_id);
-    assert.equal(body.degraded, false);
 
     const tasks = await app.inject({ method: "GET", url: "/api/tasks?status=done" });
     assert.equal(tasks.statusCode, 200, tasks.body);
@@ -446,6 +454,12 @@ describe("http smoke", () => {
       url: "/api/stats/today?date=not-a-date",
     });
     assert.equal(stats.statusCode, 400);
+
+    const usage = await app.inject({
+      method: "GET",
+      url: "/api/usage?from=2026-07-25&to=2026-07-24",
+    });
+    assert.equal(usage.statusCode, 400);
 
     const days = await app.inject({ method: "GET", url: "/api/days?range=7.5" });
     assert.equal(days.statusCode, 400);

@@ -46,9 +46,9 @@ describe("search/ask contracts", () => {
     );
   });
 
-  it("AskResponse degraded shape", () => {
+  it("AskResponse accepts a cited answer", () => {
     const parsed = AskResponse.safeParse({
-      answer: "",
+      answer: "找到相关记录。",
       citations: [
         {
           node_id: null,
@@ -59,7 +59,6 @@ describe("search/ask contracts", () => {
         },
       ],
       retrieved: 1,
-      degraded: true,
     });
     assert.equal(parsed.success, true);
   });
