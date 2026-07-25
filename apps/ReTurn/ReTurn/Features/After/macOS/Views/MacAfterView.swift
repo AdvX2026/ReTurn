@@ -1,5 +1,4 @@
 #if os(macOS)
-import AppKit
 import SwiftUI
 
 /// macOS After: the suggestion stream (/api/cards, future direction) as an
@@ -8,7 +7,6 @@ import SwiftUI
 /// do instead of stacking.
 struct MacAfterView: View {
     @Environment(CardsStore.self) private var cards: CardsStore
-    @Environment(\.colorScheme) private var colorScheme
 
     private let columns = [
         GridItem(
@@ -35,7 +33,6 @@ struct MacAfterView: View {
             .padding(.vertical, ReTurnDesign.Desktop.contentPadding)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(groupedPageBackground)
         .task { await cards.monitor() }
     }
 
@@ -95,17 +92,6 @@ struct MacAfterView: View {
                     .task(id: nextCursor) { await cards.loadNextPage() }
             }
         }
-    }
-
-    /// Health-style hierarchy: a grouped canvas behind raised card surfaces.
-    /// The second system alternating background is the native light-mode gray;
-    /// Dark Mode uses black so `.controlBackgroundColor` reads as elevated.
-    private var groupedPageBackground: Color {
-        guard colorScheme == .light else { return .black }
-        let systemBackground =
-            NSColor.alternatingContentBackgroundColors.dropFirst().first
-            ?? NSColor.windowBackgroundColor
-        return Color(nsColor: systemBackground)
     }
 }
 

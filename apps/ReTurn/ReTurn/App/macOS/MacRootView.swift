@@ -44,7 +44,14 @@ struct MacRootView: View {
             .scrollPosition(id: $selection)
         }
         .ignoresSafeArea(.container, edges: .top)
-        .background(ReTurnDesign.Colors.screenBackground)
+        .background {
+            windowBackgroundColor
+                .ignoresSafeArea()
+                .animation(
+                    reduceMotion ? nil : .easeInOut(duration: 0.6),
+                    value: currentPage
+                )
+        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 0) {
                 ConnectionStatusView()
@@ -84,6 +91,10 @@ struct MacRootView: View {
     }
 
     private var currentPage: TimelinePage { selection ?? .now }
+
+    private var windowBackgroundColor: Color {
+        currentPage == .after ? .black : ReTurnDesign.Colors.screenBackground
+    }
 
     private var pagePickerSelection: Binding<TimelinePage> {
         Binding(
