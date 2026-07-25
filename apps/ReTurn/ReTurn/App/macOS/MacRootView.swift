@@ -84,6 +84,13 @@ struct MacRootView: View {
 
     private var currentPage: TimelinePage { selection ?? .now }
 
+    private var pagePickerSelection: Binding<TimelinePage> {
+        Binding(
+            get: { currentPage },
+            set: { select($0) }
+        )
+    }
+
     /// Manual refresh (⌘R): no server push exists, so each page pulls
     /// its own stores again — stats on Now, the viewed day + overview on
     /// Before, the card stream on After.
@@ -136,23 +143,32 @@ struct MacRootView: View {
         return TimelinePage.allCases[index]
     }
 
-    /// Desktop navigation uses a macOS-only custom control because the native
-    /// segmented picker does not expose iPad's glass-lens selection treatment.
+    /// The native macOS segmented picker owns Calendar-style hover, selection
+    /// and unselected states while the pager remains the single state source.
     private var pageIndicator: some View {
-        MacTimelineGlassPicker(selection: currentPage, onSelect: select)
-            .padding(.top, ReTurnDesign.Spacing.small)
-            // The single definition of the gap between the indicator row and the
-            // pages below it.
-            .padding(.bottom, ReTurnDesign.Spacing.medium)
-            .frame(maxWidth: .infinity)
-            .background {
-                if #available(macOS 15.0, *) {
-                    Color.clear
-                        .contentShape(.rect)
-                        .gesture(WindowDragGesture())
-                        .allowsWindowActivationEvents(true)
-                }
+        Picker("Timeline page", selection: pagePickerSelection) {
+            ForEach(TimelinePage.allCases) { page in
+                Text(page.rawValue)
+                    .tag(page)
             }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .controlSize(.large)
+        .fixedSize(horizontal: true, vertical: false)
+        .padding(.top, ReTurnDesign.Spacing.small)
+        // The single definition of the gap between the indicator row and the
+        // pages below it.
+        .padding(.bottom, ReTurnDesign.Spacing.medium)
+        .frame(maxWidth: .infinity)
+        .background {
+            if #available(macOS 15.0, *) {
+                Color.clear
+                    .contentShape(.rect)
+                    .gesture(WindowDragGesture())
+                    .allowsWindowActivationEvents(true)
+            }
+        }
     }
 
     /// Keyboard navigation. ←/→ step through the flow and Escape returns to
