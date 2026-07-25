@@ -1,10 +1,30 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Owns the draft text so typing invalidates only the composer. Holding it on
 /// `ContentView` rebuilt the pager, its pages and the mascot on every keystroke.
 struct ComposerBar: View {
     @FocusState.Binding var isFocused: Bool
+    @Environment(ChatStore.self) private var chat: ChatStore
+    @Environment(APIEnvironment.self) private var api: APIEnvironment
     @State private var text = ""
+    @State private var recorder = VoiceRecorder()
+    @State private var isImportingImage = false
+    @State private var isImportingFile = false
+    @State private var errorMessage = ""
+    @State private var isShowingError = false
+
+    private var trimmedText: String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func send() {
+        guard !trimmedText.isEmpty, !chat.isSending, api.isConnected else { return }
+        let outgoing = trimmedText
+        text = ""
+        isFocused = false
+        Task { await chat.send(outgoing) }
+    }
 
     var body: some View {
         let composerShape = RoundedRectangle(
@@ -48,15 +68,10 @@ struct ComposerBar: View {
                 .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
                 .lineLimit(1...ReTurnDesign.Metrics.composerMaximumLineCount)
                 .focused($isFocused)
+                .onSubmit(send)
+                .disabled(!api.isConnected)
 
-            Image(systemName: text.isEmpty ? "waveform.mid" : "arrow.up")
-                .foregroundStyle(ReTurnDesign.Colors.voiceButtonForeground)
-                .frame(
-                    width: ReTurnDesign.Metrics.composerAccessorySize,
-                    height: ReTurnDesign.Metrics.composerAccessorySize
-                )
-                .background(ReTurnDesign.Colors.voiceButtonBackground, in: Circle())
-                .accessibilityHidden(true)
+            composerAction
         }
         .padding(.horizontal, ReTurnDesign.Metrics.composerHorizontalInset)
         .padding(.vertical, ReTurnDesign.Spacing.small)
@@ -125,22 +140,147 @@ struct ComposerBar: View {
             )
             .padding(.top, ReTurnDesign.Spacing.medium)
             .padding(.bottom, ReTurnDesign.Spacing.medium)
+            .fileImporter(
+                isPresented: $isImportingImage,
+                allowedContentTypes: [.image]
+            ) { result in
+                handleImage(result)
+            }
+            .fileImporter(
+                isPresented: $isImportingFile,
+                allowedContentTypes: [.plainText, .image]
+            ) { result in
+                handleFile(result)
+            }
+            .alert("Couldn't add attachment", isPresented: $isShowingError) {
+            } message: {
+                Text(errorMessage)
+            }
+    }
+
+    @ViewBuilder
+    private var composerAction: some View {
+        if chat.isSending {
+            ProgressView()
+                .controlSize(.small)
+                .frame(
+                    width: ReTurnDesign.Metrics.composerAccessorySize,
+                    height: ReTurnDesign.Metrics.composerAccessorySize
+                )
+        } else if trimmedText.isEmpty {
+            Button(
+                recorder.isRecording ? "Stop recording" : "Record voice",
+                systemImage: recorder.isRecording ? "stop.fill" : "waveform.mid"
+            ) {
+                toggleRecording()
+            }
+            .labelStyle(.iconOnly)
+            .foregroundStyle(ReTurnDesign.Colors.voiceButtonForeground)
+            .frame(
+                width: ReTurnDesign.Metrics.composerAccessorySize,
+                height: ReTurnDesign.Metrics.composerAccessorySize
+            )
+            .background(
+                recorder.isRecording ? Color.red : ReTurnDesign.Colors.voiceButtonBackground,
+                in: Circle()
+            )
+            .buttonStyle(.plain)
+            .disabled(!api.isConnected)
+        } else {
+            Button("Send", systemImage: "arrow.up", action: send)
+                .labelStyle(.iconOnly)
+                .foregroundStyle(ReTurnDesign.Colors.voiceButtonForeground)
+                .frame(
+                    width: ReTurnDesign.Metrics.composerAccessorySize,
+                    height: ReTurnDesign.Metrics.composerAccessorySize
+                )
+                .background(ReTurnDesign.Colors.voiceButtonBackground, in: Circle())
+                .buttonStyle(.plain)
+                .disabled(!api.isConnected)
+        }
     }
 
     @ViewBuilder
     private var attachmentMenuItems: some View {
         ControlGroup {
-            Button("Camera", systemImage: "camera") {
-                // TODO: Present camera capture.
-            }
-
-            Button("Photos", systemImage: "photo") {
-                // TODO: Present the photo picker.
+            Button("Image", systemImage: "photo") {
+                isImportingImage = true
             }
 
             Button("Files", systemImage: "folder") {
-                // TODO: Present the file importer.
+                isImportingFile = true
             }
         }
+        .disabled(!api.isConnected)
+    }
+
+    private func toggleRecording() {
+        Task {
+            do {
+                if recorder.isRecording {
+                    let capture = try recorder.stop()
+                    await chat.sendVoice(capture)
+                } else {
+                    try await recorder.start()
+                }
+            } catch {
+                show(error)
+            }
+        }
+    }
+
+    private func handleImage(_ result: Result<URL, Error>) {
+        Task {
+            do {
+                let url = try result.get()
+                let data = try readSecurityScoped(url)
+                let image = try ImageAttachment.dataURL(from: data)
+                let note = trimmedText.isEmpty ? nil : trimmedText
+                text = ""
+                isFocused = false
+                await chat.sendImage(image, note: note)
+            } catch {
+                show(error)
+            }
+        }
+    }
+
+    private func handleFile(_ result: Result<URL, Error>) {
+        Task {
+            do {
+                let url = try result.get()
+                let data = try readSecurityScoped(url)
+                if let type = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType,
+                   type.conforms(to: .image) {
+                    let image = try ImageAttachment.dataURL(from: data)
+                    await chat.sendImage(image, note: trimmedText.isEmpty ? nil : trimmedText)
+                } else {
+                    guard let contents = String(data: data, encoding: .utf8) else {
+                        throw CocoaError(.fileReadInapplicableStringEncoding)
+                    }
+                    let combined = [trimmedText, contents]
+                        .filter { !$0.isEmpty }
+                        .joined(separator: "\n\n")
+                    await chat.send(String(combined.prefix(8_000)))
+                }
+                text = ""
+                isFocused = false
+            } catch {
+                show(error)
+            }
+        }
+    }
+
+    private func readSecurityScoped(_ url: URL) throws -> Data {
+        let didStart = url.startAccessingSecurityScopedResource()
+        defer {
+            if didStart { url.stopAccessingSecurityScopedResource() }
+        }
+        return try Data(contentsOf: url)
+    }
+
+    private func show(_ error: Error) {
+        errorMessage = error.localizedDescription
+        isShowingError = true
     }
 }

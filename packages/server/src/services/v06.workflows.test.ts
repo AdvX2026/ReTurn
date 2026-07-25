@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
 import { parseMeetingNotesResult } from "../ai/meeting-notes.js";
 import {
+  dismissTodo,
   insertCard,
   insertMessage,
   insertNode,
   insertTask,
+  insertTodo,
   listCards,
   listMessages,
   listNodesByDate,
@@ -69,6 +71,27 @@ describe("v0.6 chat / cards / tasks / resume / timeline range", () => {
     assert.ok(msgs.messages.length >= 2);
     const cards = listCards(db, { direction: "future" });
     assert.ok(cards.cards.some((c) => c.type === "idea"));
+  });
+
+  it("future todo cards only return suggestions still actionable on the Pi", () => {
+    const day = insertNode(db, {
+      client_uuid: crypto.randomUUID(),
+      kind: "text",
+      content: "seed",
+      date: todayDate(),
+    }).day;
+    const keep = insertTodo(db, { day_id: day.id, text: "Keep" });
+    const hide = insertTodo(db, { day_id: day.id, text: "Hide" });
+    dismissTodo(db, hide.id);
+    insertCard(db, {
+      type: "todo_suggestion",
+      date: todayDate(),
+      content: { todos: ["Keep", "Hide"], todo_ids: [keep.id, hide.id] },
+    });
+
+    const card = listCards(db, { direction: "future" }).cards[0]!;
+    assert.deepEqual(card.content.todos, ["Keep"]);
+    assert.deepEqual(card.content.todo_ids, [keep.id]);
   });
 
   it("chat retrieval returns jump targets", async () => {

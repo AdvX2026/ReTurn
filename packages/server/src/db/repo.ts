@@ -966,7 +966,29 @@ export function listCards(
             .all(limit)
     ) as CardRow[];
   }
-  const cards = rows.map(cardToRecord);
+  const cards = rows.map(cardToRecord).map((card) => {
+    if (card.type !== "todo_suggestion") return card;
+    const ids = Array.isArray(card.content.todo_ids)
+      ? card.content.todo_ids.filter((id): id is string => typeof id === "string")
+      : [];
+    const texts = Array.isArray(card.content.todos)
+      ? card.content.todos.filter((text): text is string => typeof text === "string")
+      : [];
+    const suggested = ids.flatMap((id, index) => {
+      const todo = getTodo(db, id);
+      return todo?.status === "suggested" && texts[index]
+        ? [{ id, text: texts[index] }]
+        : [];
+    });
+    return {
+      ...card,
+      content: {
+        ...card.content,
+        todo_ids: suggested.map((item) => item.id),
+        todos: suggested.map((item) => item.text),
+      },
+    };
+  });
   const last = cards[cards.length - 1];
   let next_cursor: string | null = null;
   if (cards.length === limit && last) {
