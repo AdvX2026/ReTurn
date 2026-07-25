@@ -89,6 +89,94 @@ struct TimelinePresentationTests {
         #expect(emptyPreview.totalCount == 1)
     }
 
+    @Test func identifiesOnlyExplicitInputFeedCategories() throws {
+        let textInput = try #require(
+            TimelineDisplayItem(
+                segment: segment(
+                    kind: .feed,
+                    start: "2026-07-24T09:00:00Z",
+                    end: "2026-07-24T09:00:00Z",
+                    category: "text"
+                )
+            )
+        )
+        let voiceInput = try #require(
+            TimelineDisplayItem(
+                segment: segment(
+                    kind: .feed,
+                    start: "2026-07-24T10:00:00Z",
+                    end: "2026-07-24T10:00:00Z",
+                    category: "voice"
+                )
+            )
+        )
+        let ambientFeed = try #require(
+            TimelineDisplayItem(
+                segment: segment(
+                    kind: .feed,
+                    start: "2026-07-24T11:00:00Z",
+                    end: "2026-07-24T11:00:00Z",
+                    category: "git"
+                ),
+                presentation: .ambient
+            )
+        )
+        let savedNote = try #require(
+            TimelineDisplayItem(
+                segment: segment(
+                    kind: .feed,
+                    start: "2026-07-24T12:00:00Z",
+                    end: "2026-07-24T12:00:00Z",
+                    category: "save_note"
+                )
+            )
+        )
+        let generatedIdea = try #require(
+            TimelineDisplayItem(
+                segment: segment(
+                    kind: .feed,
+                    start: "2026-07-24T13:00:00Z",
+                    end: "2026-07-24T13:00:00Z",
+                    category: "idea"
+                )
+            )
+        )
+
+        #expect(textInput.isUserInput)
+        #expect(textInput.categoryLabel == "Input")
+        #expect(voiceInput.isUserInput)
+        #expect(voiceInput.categoryLabel == "Voice Input")
+        #expect(!ambientFeed.isUserInput)
+        #expect(!savedNote.isUserInput)
+        #expect(!generatedIdea.isUserInput)
+    }
+
+    @Test func dailyBriefingDoesNotChangeRepresentedEventCount() throws {
+        let item = try #require(
+            TimelineDisplayItem(
+                segment: segment(
+                    kind: .feed,
+                    start: "2026-07-24T09:00:00Z",
+                    end: "2026-07-24T09:00:00Z"
+                )
+            )
+        )
+        let briefing = TimelineDailyBriefing(
+            id: "briefing",
+            stateLabel: "Focused",
+            summary: "A concise archived summary."
+        )
+        let day = TimelineDay(
+            date: item.start,
+            items: [item],
+            dailyBriefing: briefing
+        )
+
+        #expect(day.dailyBriefing?.id == briefing.id)
+        #expect(day.dailyBriefing?.summary == briefing.summary)
+        #expect(day.representedEventCount == 1)
+    }
+
     @Test func groupsNewestDaysFirstAndEventsChronologically() {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
@@ -164,6 +252,7 @@ struct TimelinePresentationTests {
         start: String,
         end: String,
         label: String = "Event",
+        category: String? = nil,
         date: String? = nil
     ) -> TimelineSegment {
         TimelineSegment(
@@ -171,7 +260,7 @@ struct TimelinePresentationTests {
             start: start,
             end: end,
             label: label,
-            category: nil,
+            category: category,
             nodeId: nil,
             meta: nil,
             date: date

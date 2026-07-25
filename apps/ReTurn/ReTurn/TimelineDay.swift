@@ -4,8 +4,19 @@ import Foundation
 struct TimelineDay: Identifiable, Equatable {
     let date: Date
     let items: [TimelineDisplayItem]
+    let dailyBriefing: TimelineDailyBriefing?
 
     var id: Date { date }
+
+    init(
+        date: Date,
+        items: [TimelineDisplayItem],
+        dailyBriefing: TimelineDailyBriefing? = nil
+    ) {
+        self.date = date
+        self.items = items
+        self.dailyBriefing = dailyBriefing
+    }
 
     static func grouped(
         from segments: [TimelineSegment],

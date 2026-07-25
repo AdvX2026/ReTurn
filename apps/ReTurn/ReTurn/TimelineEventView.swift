@@ -5,20 +5,67 @@ struct TimelineEventView: View {
     let item: TimelineDisplayItem
     let isFirst: Bool
     let isLast: Bool
+    let onOpenInput: (TimelineDisplayItem) -> Void
 
+    init(
+        item: TimelineDisplayItem,
+        isFirst: Bool,
+        isLast: Bool,
+        onOpenInput: @escaping (TimelineDisplayItem) -> Void = { _ in }
+    ) {
+        self.item = item
+        self.isFirst = isFirst
+        self.isLast = isLast
+        self.onOpenInput = onOpenInput
+    }
+
+    @ViewBuilder
     var body: some View {
         let tint = TimelineDesign.Colors.accent(for: item)
 
-        Group {
-            switch item.presentation {
-            case .ambient:
-                TimelineAmbientEventView(item: item)
-            case .major:
-                TimelineEventCard(item: item)
-            case .point, .span:
-                TimelineEventDetailsView(item: item)
+        if item.isUserInput {
+            eventLayout(tint: tint) {
+                Button(action: openInput) {
+                    TimelineEventDetailsView(
+                        item: item,
+                        showsDisclosureIndicator: true
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .topLeading)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(
+                    TimelinePressableButtonStyle(
+                        pressedFill: tint.opacity(
+                            TimelineDesign.Interaction.inputPressedFillOpacity
+                        ),
+                        cornerRadius: TimelineDesign.Interaction.inputHighlightCornerRadius
+                    )
+                )
+                .accessibilityLabel(item.label)
+                .accessibilityValue(item.accessibilityValue)
             }
+        } else {
+            eventLayout(tint: tint) {
+                switch item.presentation {
+                case .ambient:
+                    TimelineAmbientEventView(item: item)
+                case .major:
+                    TimelineEventCard(item: item)
+                case .point, .span:
+                    TimelineEventDetailsView(item: item)
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(item.label)
+            .accessibilityValue(item.accessibilityValue)
         }
+    }
+
+    private func eventLayout<Content: View>(
+        tint: Color,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
         .padding(.leading, TimelineDesign.Layout.railWidth)
         .padding(
             .bottom,
@@ -38,10 +85,11 @@ struct TimelineEventView: View {
             )
             .frame(width: TimelineDesign.Layout.railWidth)
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(item.label)
-        .accessibilityValue(item.accessibilityValue)
         .id(item.id)
+    }
+
+    private func openInput() {
+        onOpenInput(item)
     }
 }
 #endif

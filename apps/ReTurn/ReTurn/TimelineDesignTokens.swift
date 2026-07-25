@@ -8,10 +8,22 @@ enum TimelineDesign {
         static let eventCardBackground = Color(uiColor: .secondarySystemGroupedBackground)
         static let clusterPreviewBackground = Color(uiColor: .quaternarySystemFill)
         static let ambient = Color(uiColor: .systemGray3)
+        static let briefingPressedFill = Color(uiColor: .tertiarySystemFill)
 
         static func accent(for item: TimelineDisplayItem) -> Color {
             if item.presentation == .ambient {
                 return ambient
+            }
+
+            if item.isUserInput {
+                return switch item.category {
+                case "voice":
+                    Color(uiColor: .systemTeal)
+                case "image":
+                    Color(uiColor: .systemCyan)
+                default:
+                    Color(uiColor: .systemGreen)
+                }
             }
 
             return switch item.kind {
@@ -65,6 +77,8 @@ enum TimelineDesign {
         static let contentBottomPadding: CGFloat = 36
         static let daySpacing: CGFloat = 38
         static let dayHeaderBottomPadding: CGFloat = 18
+        static let dailyBriefingTopSpacing: CGFloat = 12
+        static let dailyBriefingContentSpacing: CGFloat = 5
 
         static let railWidth: CGFloat = 48
         static let railAxisX: CGFloat = 12
@@ -129,6 +143,19 @@ enum TimelineDesign {
         static let ambientEvent = Font.caption
         static let clusterPreviewEvent = Font.subheadline
         static let clusterPreviewMetadata = Font.caption
+        static let inputTitle = Font.body.weight(.semibold)
+        static let dailyBriefingLabel = Font.caption.weight(.semibold)
+        static let dailyBriefingSummary = Font.subheadline
+    }
+
+    enum Interaction {
+        static let inputHighlightCornerRadius: CGFloat = 14
+        static let briefingHighlightCornerRadius: CGFloat = 12
+        static let highlightHorizontalOutset: CGFloat = 6
+        static let highlightVerticalOutset: CGFloat = 4
+        static let pressedContentOpacity = 0.88
+        static let inputPressedFillOpacity = 0.08
+        static let pressAnimationDuration = 0.12
     }
 }
 #endif

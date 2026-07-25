@@ -3,6 +3,18 @@ import SwiftUI
 
 struct BeforeView: View {
     let days: [TimelineDay]
+    let onOpenInput: (TimelineDisplayItem) -> Void
+    let onOpenDailyBriefing: (TimelineDailyBriefing) -> Void
+
+    init(
+        days: [TimelineDay],
+        onOpenInput: @escaping (TimelineDisplayItem) -> Void = { _ in },
+        onOpenDailyBriefing: @escaping (TimelineDailyBriefing) -> Void = { _ in }
+    ) {
+        self.days = days
+        self.onOpenInput = onOpenInput
+        self.onOpenDailyBriefing = onOpenDailyBriefing
+    }
 
     var body: some View {
         ZStack {
@@ -22,7 +34,11 @@ struct BeforeView: View {
                         spacing: TimelineDesign.Layout.daySpacing
                     ) {
                         ForEach(days) { day in
-                            TimelineView(day: day)
+                            TimelineView(
+                                day: day,
+                                onOpenInput: onOpenInput,
+                                onOpenDailyBriefing: onOpenDailyBriefing
+                            )
                         }
                     }
                 }

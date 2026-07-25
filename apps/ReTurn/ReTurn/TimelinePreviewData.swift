@@ -2,7 +2,21 @@
 import Foundation
 
 enum TimelinePreviewData {
-    static let days = TimelineDay.grouped(from: items)
+    static let days: [TimelineDay] = {
+        TimelineDay.grouped(from: items).enumerated().map { index, day in
+            TimelineDay(
+                date: day.date,
+                items: day.items,
+                dailyBriefing: index == 0 ? dailyBriefing : nil
+            )
+        }
+    }()
+
+    private static let dailyBriefing = TimelineDailyBriefing(
+        id: "briefing-2026-07-24",
+        stateLabel: "Focused",
+        summary: "Most of the day went into shaping ReTurn’s timeline and refining its input interactions."
+    )
 
     private static let clusterPreview = TimelineClusterPreview(
         entries: [
@@ -51,7 +65,7 @@ enum TimelinePreviewData {
             kind: .feed,
             start: "2026-07-24T08:42:00+08:00",
             end: "2026-07-24T08:42:00+08:00",
-            label: "Voice note captured",
+            label: "The daily briefing should stay attached to its date",
             category: "voice",
             nodeId: "3a19a166-3dbe-4d2e-8892-9ad2b51f6421",
             meta: nil,
@@ -91,7 +105,7 @@ enum TimelinePreviewData {
             kind: .feed,
             start: "2026-07-24T14:10:00+08:00",
             end: "2026-07-24T14:10:00+08:00",
-            label: "Meeting notes added",
+            label: "The input should open its related result in After",
             category: "text",
             nodeId: "ce118d40-621e-4c7c-83ef-b569012c2532",
             meta: nil,
@@ -121,7 +135,7 @@ enum TimelinePreviewData {
             kind: .feed,
             start: "2026-07-23T13:26:00+08:00",
             end: "2026-07-23T13:26:00+08:00",
-            label: "Saved a new idea",
+            label: "Related moments could become one project card",
             category: "idea",
             nodeId: "7104f3c9-ec42-4976-829a-81974f4f5bb9",
             meta: nil,

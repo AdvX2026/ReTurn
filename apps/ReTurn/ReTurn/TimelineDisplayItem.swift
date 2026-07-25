@@ -58,8 +58,34 @@ struct TimelineDisplayItem: Identifiable, Equatable {
         }
     }
 
+    var isUserInput: Bool {
+        guard kind == .feed, presentation == .point else {
+            return false
+        }
+
+        return switch category {
+        case "text", "url", "voice", "image":
+            true
+        default:
+            false
+        }
+    }
+
     var categoryLabel: String {
-        (category ?? kind.rawValue)
+        if isUserInput {
+            return switch category {
+            case "voice":
+                "Voice Input"
+            case "image":
+                "Image Input"
+            case "url":
+                "Link Input"
+            default:
+                "Input"
+            }
+        }
+
+        return (category ?? kind.rawValue)
             .replacing("_", with: " ")
             .localizedCapitalized
     }
@@ -89,7 +115,20 @@ struct TimelineDisplayItem: Identifiable, Equatable {
     }
 
     var symbolName: String {
-        switch kind {
+        if isUserInput {
+            return switch category {
+            case "voice":
+                "waveform"
+            case "image":
+                "photo"
+            case "url":
+                "link"
+            default:
+                "text.bubble"
+            }
+        }
+
+        return switch kind {
         case .agent:
             "terminal"
         case .sleep:
