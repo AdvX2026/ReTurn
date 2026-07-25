@@ -19,7 +19,7 @@ enum MascotAccessory {
             drawBeret(in: &context)
         case .manager:
             drawBowTie(in: &context)
-        case .researcher:
+        case .researcher, .generalist:
             break
         }
     }

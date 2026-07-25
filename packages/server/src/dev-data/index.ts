@@ -1,6 +1,7 @@
 import type { NodeKind } from "@return/shared";
 import {
   ensureDay,
+  getUserProfile,
   insertCard,
   insertEdge,
   insertMessage,
@@ -159,6 +160,13 @@ export function generateMockData(db: Db, options: MockDataOptions = {}): MockDat
 
   return db.transaction(() => {
     const existing = countData(db);
+    const profile = getUserProfile(db);
+    const hasProfileData =
+      profile.display_name !== null ||
+      profile.note !== null ||
+      profile.profession !== "generalist" ||
+      profile.profession_mode !== "auto" ||
+      profile.last_inferred_profession !== "generalist";
     if (
       existing.devices > 0 ||
       existing.days > 0 ||
@@ -166,7 +174,8 @@ export function generateMockData(db: Db, options: MockDataOptions = {}): MockDat
       existing.messages > 0 ||
       existing.tasks > 0 ||
       existing.cards > 0 ||
-      existing.llm_usage > 0
+      existing.llm_usage > 0 ||
+      hasProfileData
     ) {
       throw new Error(
         "database is not empty; inspect it or clear it before generating mock data",
@@ -630,6 +639,16 @@ export function clearData(db: Db): Record<DataTable, number> {
     db.exec(`DELETE FROM cards`);
     db.exec(`DELETE FROM llm_usage`);
     db.exec(`DELETE FROM devices`);
+    db.prepare(
+      `UPDATE user_profile SET
+         display_name = NULL,
+         profession = 'generalist',
+         profession_mode = 'auto',
+         note = NULL,
+         last_inferred_profession = 'generalist',
+         updated_at = ?
+       WHERE id = 1`,
+    ).run(new Date().toISOString());
   })();
   return before;
 }

@@ -61,23 +61,17 @@ struct ReTurnTests {
     }
 
     #if os(iOS)
-    @Test func nowPreviewHighlightsOneStatAtATime() {
+    @Test func sharedProfessionsMapToMascotPresentationVariants() {
         #expect(
-            NowPreviewData.demoLineup.map(\.profession)
-                == MascotProfession.allCases
-        )
-        #expect(
-            NowPreviewData.demoLineup.map(\.highlightedStat)
-                == ["intake", "focus", "output", "continuity", "energy"]
-        )
-        #expect(
-            NowPreviewData.demoLineup.map(\.stats)
+            [Profession.coder, .writer, .designer, .explorer, .communicator, .generalist]
+                .map(MascotProfession.init)
                 == [
-                    Stats(intake: 95, focus: 10, output: 10, continuity: 10, energy: 55),
-                    Stats(intake: 10, focus: 95, output: 10, continuity: 10, energy: 55),
-                    Stats(intake: 10, focus: 10, output: 95, continuity: 10, energy: 55),
-                    Stats(intake: 10, focus: 10, output: 10, continuity: 95, energy: 55),
-                    Stats(intake: 10, focus: 10, output: 10, continuity: 10, energy: 95),
+                    .coder,
+                    .writer,
+                    .designer,
+                    .researcher,
+                    .manager,
+                    .generalist,
                 ]
         )
     }

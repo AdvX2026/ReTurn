@@ -1,26 +1,23 @@
+import Foundation
 import SwiftUI
 
 struct NowPage: View {
     let isActive: Bool
 
-    #if os(macOS)
     @Environment(StatsStore.self) private var stats: StatsStore
-    #endif
 
     #if os(iOS)
+    @Environment(ProfileStore.self) private var profile: ProfileStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
-    @State private var demoIndex = 0
     #endif
 
     var body: some View {
         #if os(iOS)
-        let demo = NowPreviewData.demoLineup[demoIndex]
-
         VStack(spacing: ReTurnDesign.Spacing.medium) {
             MascotView(
-                stats: demo.stats,
-                profession: demo.profession,
+                stats: stats.stats ?? .empty,
+                profession: MascotProfession(stats.profession),
                 allowsContinuousMotion: allowsContinuousMotion
             )
             .containerRelativeFrame(.horizontal) { width, _ in
@@ -29,30 +26,17 @@ struct NowPage: View {
                 )
             }
 
-            Text("Teethe is back!")
+            Text(profileGreeting)
                 .font(ReTurnDesign.Typography.heroTitle)
                 .foregroundStyle(ReTurnDesign.Colors.primaryLabel)
                 .multilineTextAlignment(.center)
 
-            Text("\(demo.profession.displayName) · \(demo.highlightedStat)")
+            Text("\(stats.profession.displayName) · \(stats.characterState.rawValue)")
                 .font(ReTurnDesign.Typography.cardTag)
                 .foregroundStyle(ReTurnDesign.Colors.secondaryLabel)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.bottom, ReTurnDesign.Metrics.heroOpticalLift * 2)
-        .task(id: allowsContinuousMotion) {
-            guard allowsContinuousMotion else {
-                return
-            }
-
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(3))
-                guard !Task.isCancelled, allowsContinuousMotion else {
-                    return
-                }
-                demoIndex = (demoIndex + 1) % NowPreviewData.demoLineup.count
-            }
-        }
         #else
         VStack(spacing: ReTurnDesign.Spacing.medium) {
             MascotImage()
@@ -71,6 +55,14 @@ struct NowPage: View {
     }
 
     #if os(iOS)
+    private var profileGreeting: String {
+        let name = profile.profile?.displayName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let name, !name.isEmpty else {
+            return "You're back!"
+        }
+        return "\(name) is back!"
+    }
+
     private var allowsContinuousMotion: Bool {
         isActive && scenePhase == .active && !reduceMotion
     }

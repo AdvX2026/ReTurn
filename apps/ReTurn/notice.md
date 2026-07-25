@@ -20,7 +20,7 @@
 
 ## Models.swift (shared-contract mirror)
 
-- Mirror basis: `origin/main` after PR #33 (`feat/prd-api-completion-v2`) — includes `CollectionStatus`, `Usage*`, no `ContinueResponse`/`degraded`. Keep `packages/shared` and this mirror in the same commit (AGENTS.md contract rule).
+- Mirror basis: latest `origin/main` — includes `CollectionStatus`, `Usage*`, singleton `UserProfile`, and effective profession fields on `StatsTodayResponse`; no `ContinueResponse`/`degraded`. Keep `packages/shared` and this mirror in the same commit (AGENTS.md contract rule).
 - Decode/encode ONLY via `ReTurnAPI.makeDecoder()/makeEncoder()` — snake_case conversion lives in the coder strategy; models deliberately have no per-field CodingKeys.
 - Enum policy: all mirrored string enums are tolerant (`TolerantEnum`) — unknown raw values decode to a fallback, never throw. `NodeKind` currently mirrors `email`, `vscode_recent`, and `browse_history`; future server values still must not crash older app builds.
 - Card `content` is loose JSON in the contract; the mirror decodes it into typed per-`type` structs (shapes taken from what `services/save.ts` / `services/chat.ts` actually write on the mirror basis) with a `.raw` fallback on unknown type or shape drift. If backend tightens/changes card content, update `BriefingCardContent` & co. and `ModelsTests`.
@@ -35,10 +35,10 @@
 
 ## AppStores / live API
 
-- `AppStores` owns `APIEnvironment` + domain stores (`TimelineStore`, `ChatStore`, `CardsStore`, `StatsStore`, `SaveStore`, `TasksStore`, `NodesStore`, `SearchStore`, `HealthStore`, `UsageStore`). Views take only the stores they use via `@Environment`.
+- `AppStores` owns `APIEnvironment` + domain stores (`TimelineStore`, `ChatStore`, `CardsStore`, `StatsStore`, `ProfileStore`, `SaveStore`, `TasksStore`, `NodesStore`, `SearchStore`, `HealthStore`, `UsageStore`). Views take only the stores they use via `@Environment`.
 - Every Pi route in `docs/api.md` is reachable from a store method; transport stays in `APIClient`. Optional `API_TOKEN` and `HEALTH_TOKEN` are user-editable (Settings / connection recovery). UI outbox for `POST /api/nodes` is `NodesStore` JSON queue under Application Support.
 - Pi `messages` remain durable archive data, but the visible conversation is scoped to one App process lifetime: the first successful `/api/messages` page becomes a hidden baseline, later polling surfaces only messages first observed after that baseline, and repeated Resume results collapse to the latest one. Do not delete server messages to clear the UI; Task records and archived Inputs still reference them.
-- Before/Now/After data pages are live (not fixture-only). Fixtures remain for previews and `CardGallery`; the iOS mascot deliberately keeps the reviewed demo lineup because the live stats endpoint has no profession field (the contract's `Profession` is saved-day/briefing data), so do not bind it to `StatsStore` without a separate UI decision.
+- Before/Now/After data pages are live (not fixture-only). Fixtures remain for previews and `CardGallery`; iOS Now reads live dimensions/effective profession from `StatsStore` and the greeting name from `ProfileStore`.
 - `Info.plist` contains HealthKit usage text, but the Xcode project currently has no HealthKit entitlement/capability. Simulator builds do not prove real-device HealthKit authorization; add and verify the entitlement before relying on uploads in production.
 
 ## Main timeline UI
@@ -67,9 +67,9 @@
 
 ## Now mascot
 
-- iOS Now uses `MascotView`, a native Canvas renderer with profession accessories and stat-driven intake/focus/output/continuity/energy effects. `MascotProfession` is renderer presentation state; map the shared saved-day `Profession` to it at a view boundary if Now later receives a live profession source.
+- iOS Now uses `MascotView`, a native Canvas renderer with profession accessories and stat-driven intake/focus/output/continuity/energy effects. `MascotProfession` remains renderer presentation state; `NowPage` maps the shared profile `Profession` into it at the view boundary.
 - All renderer constants use the original 175×150 core coordinate space. The Canvas applies one padded stage transform for orbiting effects; do not introduce a second coordinate system or `GeometryReader`.
-- `NowPreviewData.demoLineup` is demo-only Home data: one dimension is 95, ordinary dimensions are 10, and non-highlighted energy is the neutral 55. The three-second cycle and `TimelineView` run only while Now is selected, the scene is active, and Reduce Motion is off.
+- The Canvas `TimelineView` runs only while Now is selected, the scene is active, and Reduce Motion is off; live stats do not change that lifecycle gate.
 - The mascot is a native `Button`. Reduce Motion pauses continuous animation and replaces the 26pt hop with opacity feedback; leaving Now or backgrounding the app pauses Canvas refresh. Keep static `MascotImage` in cards and macOS.
 - The right arm mirrors the left arm's rectangle, pivot, and base angle; do not restore the asymmetric raised-arm coordinates from the original Figma pose.
 - Idle wave / cheer / twirl emotes run only while continuous motion is allowed. Their scheduler is a `.task(id:)` loop, not an inline timer publisher; UI tests pin an emote through `MASCOT_EMOTE`. The manager bow tie is deep navy, not red.

@@ -28,6 +28,10 @@ export interface FermentContext {
   acceptedTodos: string[];
   /** Dismissed / expired suggestions — negative samples. */
   dismissedTodos: string[];
+  /** Optional standing profile note (user-edited). */
+  profileNote?: string | null;
+  /** Effective profile profession label for tone. */
+  profileProfession?: string | null;
 }
 
 export class FermentError extends Error {
@@ -94,6 +98,12 @@ function buildPrompt(ctx: FermentContext): string {
   const openRem = ctx.openReminders.map((t) => `- ${t}`).join("\n");
   const accepted = ctx.acceptedTodos.map((t) => `- ${t}`).join("\n");
   const dismissed = ctx.dismissedTodos.map((t) => `- ${t}`).join("\n");
+  const profileLine = [
+    ctx.profileProfession ? `profession=${ctx.profileProfession}` : null,
+    ctx.profileNote ? `note=${JSON.stringify(ctx.profileNote)}` : null,
+  ]
+    .filter(Boolean)
+    .join("; ");
 
   return `You are the ferment engine of ReTurn, a personal "daily save" second brain.
 Produce a structured JSON review for the user's day. Do NOT invent attributes/scores — text only.
@@ -127,6 +137,9 @@ Schema:
 }
 
 Date: ${ctx.date}
+
+User profile (standing identity; do not invent a different profession):
+${profileLine || "(none)"}
 
 Save note (anchor, may be empty):
 ${ctx.saveNote ?? "(none)"}
@@ -185,6 +198,8 @@ export function buildFermentContext(input: {
   openReminders?: string[];
   acceptedTodos?: string[];
   dismissedTodos?: string[];
+  profileNote?: string | null;
+  profileProfession?: string | null;
 }): FermentContext {
   const activeKinds = new Set<string>(ACTIVE_FEED_KINDS);
   return {
@@ -204,5 +219,7 @@ export function buildFermentContext(input: {
     openReminders: input.openReminders ?? [],
     acceptedTodos: input.acceptedTodos ?? [],
     dismissedTodos: input.dismissedTodos ?? [],
+    profileNote: input.profileNote ?? null,
+    profileProfession: input.profileProfession ?? null,
   };
 }

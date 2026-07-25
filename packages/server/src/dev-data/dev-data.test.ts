@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { getUserProfile, patchUserProfile } from "../db/repo.js";
 import { openMemoryDb } from "../db/schema.js";
 import { parseArgs } from "./cli.js";
 import { clearData, generateMockData, inspectData } from "./index.js";
@@ -53,13 +54,43 @@ test("clear removes business and derived data while preserving the schema", () =
       endDate: "2026-07-25",
       rng: seededRandom(7),
     });
+    patchUserProfile(db, {
+      display_name: "Mock Developer",
+      profession: "coder",
+      note: "temporary profile",
+    });
     const deleted = clearData(db);
     const after = inspectData(db);
+    const profile = getUserProfile(db);
 
     assert.ok(deleted.nodes > 0);
     assert.ok(deleted.search_fts > 0);
     assert.ok(Object.values(after.counts).every((count) => count === 0));
+    assert.equal(profile.display_name, null);
+    assert.equal(profile.profession, "generalist");
+    assert.equal(profile.profession_mode, "auto");
+    assert.equal(profile.note, null);
+    assert.equal(profile.last_inferred_profession, "generalist");
     assert.deepEqual(db.prepare(`PRAGMA foreign_key_check`).all(), []);
+  } finally {
+    db.close();
+  }
+});
+
+test("mock generation refuses to mix with a customized profile", () => {
+  const db = openMemoryDb();
+  try {
+    patchUserProfile(db, { display_name: "Existing User" });
+
+    assert.throws(
+      () =>
+        generateMockData(db, {
+          days: 1,
+          endDate: "2026-07-25",
+          rng: seededRandom(3),
+        }),
+      /database is not empty/,
+    );
   } finally {
     db.close();
   }

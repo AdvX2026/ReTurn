@@ -199,6 +199,14 @@ struct APIClient {
         try await get("/api/stats/today")
     }
 
+    func getProfile() async throws -> UserProfile {
+        try await get("/api/profile")
+    }
+
+    func patchProfile(_ body: PatchUserProfileRequest) async throws -> UserProfile {
+        try await send("PATCH", "/api/profile", body: body)
+    }
+
     func usage(from: String, to: String) async throws -> UsageResponse {
         try await get(
             "/api/usage",

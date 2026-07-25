@@ -120,6 +120,17 @@ CREATE TABLE IF NOT EXISTS llm_usage (
 CREATE INDEX IF NOT EXISTS idx_llm_usage_date ON llm_usage(date);
 CREATE INDEX IF NOT EXISTS idx_llm_usage_breakdown
   ON llm_usage(date, kind, operation, model);
+
+-- Single-user space profile (one row, id=1). No multi-tenant accounts.
+CREATE TABLE IF NOT EXISTS user_profile (
+  id                        INTEGER PRIMARY KEY CHECK (id = 1),
+  display_name              TEXT,
+  profession                TEXT NOT NULL DEFAULT 'generalist',
+  profession_mode           TEXT NOT NULL DEFAULT 'auto',
+  note                      TEXT,
+  last_inferred_profession  TEXT NOT NULL DEFAULT 'generalist',
+  updated_at                TEXT NOT NULL
+);
 `;
 
 /**
@@ -198,6 +209,19 @@ function migrate(db: Db): void {
      WHERE done = 1 AND (status IS NULL OR status = 'suggested')`,
   );
   db.exec(`CREATE INDEX IF NOT EXISTS idx_todos_status ON todos(status)`);
+
+  // Ensure singleton profile row exists (CREATE TABLE IF NOT EXISTS is not enough).
+  const profile = db.prepare(`SELECT id FROM user_profile WHERE id = 1`).get() as
+    | { id: number }
+    | undefined;
+  if (!profile) {
+    db.prepare(
+      `INSERT INTO user_profile (
+         id, display_name, profession, profession_mode, note,
+         last_inferred_profession, updated_at
+       ) VALUES (1, NULL, 'generalist', 'auto', NULL, 'generalist', ?)`,
+    ).run(new Date().toISOString());
+  }
 }
 
 export function openDb(dataDir: string, filename = "return.db"): Db {

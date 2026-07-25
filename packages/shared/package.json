@@ -14,7 +14,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --import tsx --test src/ferment.test.ts src/api.search.test.ts",
+    "test": "node --import tsx --test src/ferment.test.ts src/api.search.test.ts src/api.profile.test.ts",
     "dev": "tsc -p tsconfig.json --watch"
   },
   "dependencies": {

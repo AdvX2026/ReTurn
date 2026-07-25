@@ -10,6 +10,18 @@ enum MascotProfession: String, CaseIterable {
     case designer
     case researcher
     case manager
+    case generalist
+
+    init(_ profession: Profession) {
+        self = switch profession {
+        case .coder: .coder
+        case .writer: .writer
+        case .designer: .designer
+        case .explorer: .researcher
+        case .communicator: .manager
+        case .generalist: .generalist
+        }
+    }
 
     var displayName: String {
         rawValue.capitalized

@@ -11,6 +11,8 @@ final class StatsStore {
     private(set) var savedToday = false
     private(set) var collection: CollectionStatus?
     private(set) var cadence: CadenceMode?
+    private(set) var profession: Profession = .generalist
+    private(set) var professionMode: ProfessionMode = .auto
     private(set) var lastError: String?
 
     private let api: APIEnvironment
@@ -27,6 +29,8 @@ final class StatsStore {
             savedToday = response.saved
             collection = response.collection
             cadence = response.cadence
+            profession = response.profession
+            professionMode = response.professionMode
             lastError = nil
             api.markReachable()
         } catch {

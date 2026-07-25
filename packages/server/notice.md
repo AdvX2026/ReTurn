@@ -35,12 +35,21 @@ See root `.env.example`. `LLM_API_KEY` / `HEALTH_TOKEN` never ship to clients. H
 ## Development data
 - `pnpm --filter @return/server data:mock` fills an empty database with randomized, human-paced history (default: 14 days ending today). Use `--days`, `--end`, or `--db` to target another range/database.
 - `data:inspect` shows table counts, recent days, and nodes; filters include `--date`, `--kind`, `--limit`, and `--json`.
-- `data:clear -- --confirm` clears SQLite business data and derived indexes but preserves the schema and `data/audio/`. It refuses to run without explicit confirmation.
+- `data:clear -- --confirm` clears SQLite business data and derived indexes, resets the singleton profile, and preserves the schema and `data/audio/`. It refuses to run without explicit confirmation.
 - Mock generation refuses non-empty databases so generated data cannot silently mix with existing user data.
+
+## User profile (singleton)
+- Table `user_profile` (id=1 only). APIs: `GET/PATCH /api/profile`.
+- Fields: `display_name`, `profession`, `profession_mode` (`auto`|`manual`), `note`,
+  `last_inferred_profession`, plus live `accepted_todos` / `dismissed_todos` samples.
+- Save always writes day-inferred profession into briefing **and**
+  `last_inferred_profession`; when mode is `auto`, also copies to effective `profession`.
+- `GET /api/stats/today` includes effective `profession` + `profession_mode` for Now UI.
+- No multi-tenant accounts; one home-LAN user.
 
 ## Todo preference loop (AI suggestions ↔ Apple Reminders)
 - Real checklist = Mac Reminders. Server `todos` = AI suggestions only (`status`: suggested|accepted|dismissed).
 - Accept: `POST /api/todos/:id/accept` after UI EventKit write. Dismiss: `POST .../dismiss`.
 - Save: expire stale suggested → feed open reminders + accepted/dismissed texts into ferment prompt; server-side text dedupe on insert; `source_node_id` = save_note when present.
 - Output score primary signal = `reminderCompletionRate` (not `todos.done`).
-- No `user_profile` table — preference is live samples in prompt. Add table only if need cross-session summary beyond last N.
+- Preference samples are also listed on `GET /api/profile` (not a separate summary table).

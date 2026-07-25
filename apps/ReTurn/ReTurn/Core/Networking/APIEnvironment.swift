@@ -187,6 +187,7 @@ final class AppStores {
     let timeline: TimelineStore
     let chat: ChatStore
     let stats: StatsStore
+    let profile: ProfileStore
     let save: SaveStore
     let cards: CardsStore
     let tasks: TasksStore
@@ -201,6 +202,7 @@ final class AppStores {
         timeline = TimelineStore(api: api)
         chat = ChatStore(api: api)
         stats = StatsStore(api: api)
+        profile = ProfileStore(api: api)
         save = SaveStore(api: api)
         let reminders = ReminderService()
         cards = CardsStore(api: api, reminders: reminders)
@@ -224,6 +226,7 @@ extension View {
             .environment(stores.timeline)
             .environment(stores.chat)
             .environment(stores.stats)
+            .environment(stores.profile)
             .environment(stores.save)
             .environment(stores.cards)
             .environment(stores.tasks)

@@ -66,7 +66,9 @@ struct ModelsTests {
               "character_state": "normal",
               "saved": false,
               "collection": {"device_count": 2, "sample_count": 18, "last_seen_at": "2026-07-25T10:00:00.000Z"},
-              "cadence": "active"
+              "cadence": "active",
+              "profession": "coder",
+              "profession_mode": "auto"
             }
             """
         )
@@ -87,6 +89,29 @@ struct ModelsTests {
         )
         #expect(usage.totals.failed == 1)
         #expect(usage.breakdown.first?.operation == "ask")
+    }
+
+    @Test func decodesUserProfileSnakeCase() throws {
+        let profile = try decode(
+            UserProfile.self,
+            """
+            {
+              "display_name": "Teethe",
+              "profession": "coder",
+              "profession_mode": "manual",
+              "note": "Prefer deep work",
+              "last_inferred_profession": "writer",
+              "accepted_todos": ["Ship profile API"],
+              "dismissed_todos": [],
+              "updated_at": "2026-07-25T12:00:00.000Z"
+            }
+            """
+        )
+
+        #expect(profile.displayName == "Teethe")
+        #expect(profile.profession == .coder)
+        #expect(profile.professionMode == .manual)
+        #expect(profile.lastInferredProfession == .writer)
     }
 
     @Test func decodesTypedCardContentByType() throws {

@@ -21,6 +21,7 @@ struct ReTurnApp: App {
                 .environment(stores.timeline)
                 .environment(stores.chat)
                 .environment(stores.stats)
+                .environment(stores.profile)
                 .environment(stores.save)
                 .environment(stores.cards)
                 .environment(stores.tasks)
@@ -32,10 +33,11 @@ struct ReTurnApp: App {
                     if await stores.api.checkConnection() {
                         async let register: Void = stores.api.ensureRegistered()
                         async let stats: Void = stores.stats.refresh()
+                        async let profile: Void = stores.profile.refresh()
                         async let history: Void = stores.chat.loadHistory()
                         async let tasks: Void = stores.tasks.refresh()
                         async let outbox: Void = stores.nodes.flushOutbox()
-                        _ = await (register, stats, history, tasks, outbox)
+                        _ = await (register, stats, profile, history, tasks, outbox)
                         #if os(iOS)
                         await stores.health.uploadTodayIfPossible()
                         #endif
@@ -70,6 +72,7 @@ struct ReTurnApp: App {
             APISettingsView()
                 .environment(stores.api)
                 .environment(stores.stats)
+                .environment(stores.profile)
                 .environment(stores.usage)
                 .environment(stores.nodes)
                 .environment(stores.health)

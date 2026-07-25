@@ -23,6 +23,7 @@ import {
   type PatchMessageIntentResponse,
   PatchTodoRequest,
   type PatchTodoResponse,
+  PatchUserProfileRequest,
   type PingResponse,
   RegisterDeviceRequest,
   type RegisterDeviceResponse,
@@ -34,6 +35,7 @@ import {
   TaskStatus,
   type TimelineResponse,
   type UsageResponse,
+  type UserProfile,
   type VoiceResponse,
   uuidFromSeed,
 } from "@return/shared";
@@ -52,6 +54,7 @@ import {
   getMessage,
   getNodeById,
   getTodo,
+  getUserProfile,
   insertNode,
   insertNodes,
   listCards,
@@ -60,6 +63,7 @@ import {
   listNodesByDate,
   listSavedDays,
   listTasks,
+  patchUserProfile,
   setMessageIntent,
   setTodoDone,
   touchDevice,
@@ -404,6 +408,7 @@ export async function registerRoutes(
       return reply.code(400).send(badRequest("date must be YYYY-MM-DD"));
     }
     const live = computeLiveStats(db, date);
+    const profile = getUserProfile(db);
     const body: StatsTodayResponse = {
       date,
       stats: live.stats,
@@ -411,7 +416,32 @@ export async function registerRoutes(
       saved: live.saved,
       collection: collectionStatus(db, date),
       cadence: currentCadence(db, date),
+      profession: profile.profession,
+      profession_mode: profile.profession_mode,
     };
+    return body;
+  });
+
+  // ── user profile (singleton) ────────────────────────
+  app.get("/api/profile", async () => {
+    const body: UserProfile = getUserProfile(db);
+    return body;
+  });
+
+  app.patch("/api/profile", async (req, reply) => {
+    const parsed = PatchUserProfileRequest.safeParse(req.body);
+    if (!parsed.success) {
+      return reply.code(400).send(badRequest(parsed.error.message));
+    }
+    if (
+      parsed.data.display_name === undefined &&
+      parsed.data.profession === undefined &&
+      parsed.data.profession_mode === undefined &&
+      parsed.data.note === undefined
+    ) {
+      return reply.code(400).send(badRequest("at least one field required"));
+    }
+    const body: UserProfile = patchUserProfile(db, parsed.data);
     return body;
   });
 
