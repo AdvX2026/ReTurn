@@ -49,9 +49,12 @@ export function resolveProfession(input: {
     minutes[bucket] += s.durationMin;
   }
 
-  // Output signals boost coding even when UI sampling under-counts agent work.
+  // Floor coding minutes from git/agent signals when sampling under-counts agent UI.
+  // Do not add agentDurationMin on top of sessions — agent sessions already filled
+  // minutes.dev via workBucket(..., "agent").
   if (input.gitCommitCount > 0 || input.agentDurationMin >= 30) {
-    minutes.dev += Math.max(input.agentDurationMin, input.gitCommitCount * 15);
+    const signal = Math.max(input.agentDurationMin, input.gitCommitCount * 15);
+    if (signal > minutes.dev) minutes.dev = signal;
   }
 
   const total = Object.values(minutes).reduce((a, b) => a + b, 0);

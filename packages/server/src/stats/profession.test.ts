@@ -60,4 +60,27 @@ describe("resolveProfession", () => {
       "designer",
     );
   });
+
+  it("does not double-count agent sessions already in minutes.dev", () => {
+    // Figma 100 + agent 90 should stay designer; double-count would make coder.
+    assert.equal(
+      resolveProfession({
+        sessions: [sess("Figma", 100), sess("Claude Code", 90, "agent")],
+        gitCommitCount: 0,
+        agentDurationMin: 90,
+      }),
+      "designer",
+    );
+  });
+
+  it("floors dev from git when sessions under-count coding", () => {
+    assert.equal(
+      resolveProfession({
+        sessions: [sess("Safari", 40)],
+        gitCommitCount: 4,
+        agentDurationMin: 0,
+      }),
+      "coder",
+    );
+  });
 });

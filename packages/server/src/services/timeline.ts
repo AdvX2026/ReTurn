@@ -112,7 +112,7 @@ function projectDay(db: Db, date: string): TimelineSegment[] {
       kind: isAgent ? "agent" : "app",
       shape: "span",
       importance: isAgent ? "major" : ambient ? "ambient" : "normal",
-      role: isAgent ? "sample" : "sample",
+      role: "sample",
       start: s.start,
       end: s.end,
       label: s.app,
@@ -191,7 +191,9 @@ function clusterFeeds(feeds: TimelineSegment[], date: string): TimelineSegment[]
       const first = group[0]!;
       const last = group[group.length - 1]!;
       const cat = first.category ?? "feed";
-      const clusterSeed = `cluster:${date}:${first.start}:${cat}:${group.length}`;
+      // Anchor on earliest child id so the cluster id stays stable as later
+      // same-kind feeds join the burst (length/membership growth must not thrash).
+      const clusterSeed = `cluster:${date}:${cat}:${first.id}`;
       const clusterId = uuidFromSeed(clusterSeed);
       const child_ids = group.map((g) => g.id);
       const children: TimelineClusterChild[] = group.slice(0, 3).map((g) => ({

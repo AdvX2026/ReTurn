@@ -338,6 +338,24 @@ describe("v0.6 chat / cards / tasks / resume / timeline range", () => {
     assert.ok(cluster, "four close text feeds should cluster");
     assert.ok((cluster!.child_count ?? 0) >= 3);
     assert.equal(cluster!.destination?.type, "timeline_cluster");
+
+    // Cluster id must stay stable when a later same-kind feed joins the burst.
+    const idBefore = cluster!.id;
+    insertNode(db, {
+      client_uuid: crypto.randomUUID(),
+      kind: "text",
+      title: "note 4",
+      content: "c4",
+      date: "2026-07-20",
+      source_meta: {
+        client_created_at: new Date(base + 4 * 60_000).toISOString(),
+      },
+    });
+    const tl2 = buildTimeline(db, "2026-07-20");
+    const cluster2 = tl2.segments.find((s) => s.kind === "cluster");
+    assert.ok(cluster2);
+    assert.equal(cluster2!.id, idBefore, "cluster id stable across membership growth");
+    assert.ok((cluster2!.child_count ?? 0) > (cluster!.child_count ?? 0));
   });
 
   it("timeline rejects ranges over 31 days", () => {
