@@ -108,3 +108,10 @@ test("CLI defaults to a guarded clear and accepts filters", () => {
   assert.equal(inspect.json, true);
   assert.throws(() => parseArgs(["inspect", "--unknown", "value"]), /unknown option/);
 });
+
+test("CLI accepts pnpm's forwarded option separator", () => {
+  const options = parseArgs(["clear", "--", "--confirm"]);
+
+  assert.equal(options.command, "clear");
+  assert.equal(options.confirm, true);
+});

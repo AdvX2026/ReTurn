@@ -30,6 +30,7 @@ export function parseArgs(argv: string[]): CliOptions {
   const flags = new Set<string>();
   for (let index = 1; index < argv.length; index += 1) {
     const arg = argv[index]!;
+    if (arg === "--") continue;
     if (arg === "--confirm" || arg === "--json") {
       flags.add(arg);
       continue;
