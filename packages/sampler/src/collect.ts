@@ -62,6 +62,10 @@ export interface SampleResult {
  * boundary: failures are visible in stats while independent sources continue.
  */
 export async function collectSample(opts?: {
+  /**
+   * Orchestrator-only: emit an environment `snapshot` node after sources run.
+   * Not part of SampleContext — sources never branch on it.
+   */
   asSnapshot?: boolean;
   now?: Date;
   timezone?: string;
@@ -70,7 +74,6 @@ export async function collectSample(opts?: {
   const ctx: SampleContext = createSampleContext({
     now: opts?.now ?? config.fixedNow ?? undefined,
     timezone: opts?.timezone ?? config.timezone,
-    asSnapshot: opts?.asSnapshot,
   });
   const { at, platform } = ctx;
 
@@ -102,7 +105,7 @@ export async function collectSample(opts?: {
   }
 
   // Save Today: environment meta node (orchestrator-level, not a feature source).
-  if (ctx.asSnapshot) {
+  if (opts?.asSnapshot) {
     const env = getLastEnv();
     nodes.push({
       client_uuid: crypto.randomUUID(),

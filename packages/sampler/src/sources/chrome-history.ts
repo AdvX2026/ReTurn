@@ -3,6 +3,8 @@
  *
  * Copy-then-read today's History SQLite visits; emit browse_history nodes
  * with stable visit-based client_uuid.
+ *
+ * Node mapping is shared with Safari (same kind + source_meta shape).
  */
 import type { NodeInput } from "@return/shared";
 import {
@@ -31,6 +33,7 @@ function seedKey(v: BrowseVisit): string {
   return `browse:${v.browser}:${v.profile}:${v.visitId}`;
 }
 
+/** Map Chrome / Safari / Edge / Brave visits → browse_history nodes. */
 export function visitsToNodes(
   visits: BrowseVisit[],
   day: string,

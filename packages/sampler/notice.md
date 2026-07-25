@@ -19,9 +19,12 @@ UI closed must not stop sampling. Dev: `pnpm dev:sampler`. Prod later: launchd.
 
 ## Architecture — pluggable sources
 - `source.ts`: `SampleSource` contract + one `SampleContext` clock shared by every source.
-- `collect.ts`: orchestrator only — registry of sources, fan-out sample, assemble snapshot
+- `collect.ts`: orchestrator only — registry of sources, fan-out sample, assemble snapshot.
+  `asSnapshot` is orchestrator-only (emits env `snapshot` node); not on `SampleContext`.
 - `sources/<id>.ts`: one file per feature; owns collect → map → dedupe → `NodeInput[]`
 - Add a source: implement `SampleSource`, append to `SOURCES` in `collect.ts`. Never put feature logic in collect.
+- Chrome + Safari share `visitsToNodes` / `resetSeenVisits` in `sources/chrome-history.ts`.
+- `expandHome` lives in `config.ts` (used by path resolvers).
 - `SAMPLER_TIMEZONE` is the IANA day authority (defaults to the system timezone).
 - `SAMPLER_NOW` freezes the global clock for explicit replay/tests only; leave unset in production.
 - Every tick supplies `at`, `timezone`, `day`, `dayStart`, and `dayEnd`; sources must not derive their own day window.

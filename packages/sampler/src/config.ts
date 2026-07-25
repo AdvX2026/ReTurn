@@ -39,6 +39,15 @@ function str(name: string, defaultValue = ""): string {
   return process.env[name] ?? defaultValue;
 }
 
+/** Expand leading `~` to homedir; leave other paths as-is. */
+export function expandHome(p: string): string {
+  if (p === "~") return homedir();
+  if (p.startsWith("~/") || p.startsWith("~\\")) {
+    return join(homedir(), p.slice(2));
+  }
+  return p;
+}
+
 export function parseTimeZone(value?: string): string {
   const candidate =
     value?.trim() || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
@@ -81,16 +90,11 @@ function bool(name: string, defaultValue: boolean): boolean {
 function dirs(name: string): string[] {
   const raw = process.env[name] ?? "";
   if (!raw.trim()) return [];
-  const home = homedir();
   return raw
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean)
-    .map((p) => {
-      if (p === "~") return home;
-      if (p.startsWith("~/")) return join(home, p.slice(2));
-      return resolve(p);
-    });
+    .map((p) => resolve(expandHome(p)));
 }
 
 const dataDir = str("SAMPLER_DATA_DIR", join(homedir(), ".return", "sampler"));

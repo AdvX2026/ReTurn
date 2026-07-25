@@ -8,7 +8,7 @@ import type { NodeInput } from "@return/shared";
 
 export { uuidFromSeed } from "@return/shared";
 
-/** Shared clock / mode for one sample tick. */
+/** Shared clock for one sample tick. */
 export interface SampleContext {
   /** ISO timestamp of this sample tick. */
   at: string;
@@ -21,12 +21,6 @@ export interface SampleContext {
   /** Exclusive UTC ISO boundary for `day`. */
   dayEnd: string;
   platform: NodeJS.Platform;
-  /**
-   * true = Save Today / end-of-day flush.
-   * Sources may emit provisional data they would otherwise withhold
-   * (e.g. still-open agent intervals).
-   */
-  asSnapshot: boolean;
 }
 
 /** Result of one source for one tick. */
@@ -107,7 +101,6 @@ export function zonedDayStart(day: string, timezone: string): Date {
 export function createSampleContext(opts: {
   now?: Date;
   timezone: string;
-  asSnapshot?: boolean;
   platform?: NodeJS.Platform;
 }): SampleContext {
   const now = opts.now ?? new Date();
@@ -119,7 +112,6 @@ export function createSampleContext(opts: {
     dayStart: zonedDayStart(day, opts.timezone).toISOString(),
     dayEnd: zonedDayStart(addCalendarDay(day), opts.timezone).toISOString(),
     platform: opts.platform ?? process.platform,
-    asSnapshot: Boolean(opts.asSnapshot),
   };
 }
 
