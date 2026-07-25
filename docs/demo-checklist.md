@@ -15,8 +15,8 @@
 - [ ] No real secrets appear in Git, shell scripts, or service logs.
 - [ ] HealthKit data reaches `/api/health` with the real health token.
 - [ ] Voice upload returns a real transcript.
-- [ ] Save returns `degraded: false` with the production model.
-- [ ] At least one real previous day is saved for Continue.
+- [ ] Save succeeds with the production model and seals the day.
+- [ ] At least one real previous day has a briefing card.
 - [ ] Sampler offline outbox and reconnect flush were tested without duplicates.
 - [ ] A final backup was copied off the Pi to the maintenance Mac.
 - [ ] The same server commit and restored backup can run on the fallback Mac.

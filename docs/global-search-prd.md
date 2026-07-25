@@ -123,11 +123,11 @@ GET /api/search?q=&from=&to=&kinds=text,url&limit=20
 
 POST /api/ask { question, from?, to? }
 → { answer, citations: [{ node_id, date, kind, title, snippet }],
-    retrieved: number, degraded: boolean }
+    retrieved: number }
 ```
 
 - `limit` 默认 20、上限 50；`q` 必填（1–500 字符）。
-- Ask：top-8 注入 prompt；`degraded=true` 表示 LLM 不可用/失败，此时 `answer=""`、`citations` 为裸检索结果（前端按搜索结果渲染，体验不断崖）；embedding/LLM 未配置 → 503 明确报错。
+- Ask：top-8 注入 prompt；LLM 未配置或失败时明确返回错误，不用裸检索结果伪装生成答案；embedding 未配置时 `/api/search` 保持关键词通道。
 - 写接口鉴权现状不变（LAN 信任模型）；两接口均为只读。
 
 ## 9. Ask 生成侧约束（Phase 2）
@@ -149,7 +149,7 @@ POST /api/ask { question, from?, to? }
 3. 检索排序：构造 20 条语料（跨日、跨 kind），断言 top-5 顺序与时间衰减/kind 权重生效方向。
 4. RRF 融合纯函数：单通道退化、双通道交集加分。
 5. snippet 截取：命中窗口、无命中回退开头。
-6. Ask 引用校验：mock LLM 返回真实+捏造 node_id 混合，断言捏造引用被丢弃；LLM 失败 → degraded 路径。
+6. Ask 引用校验：mock LLM 返回真实+捏造 node_id 混合，断言捏造引用被丢弃；LLM 失败 → 明确错误。
 7. 契约：新 schema 的 zod safeParse 正反例。
 8. HTTP 层：沿 `http.smoke.test.ts` 风格补 `/api/search` 冒烟。
 
@@ -161,7 +161,7 @@ POST /api/ask { question, from?, to? }
 - [ ] 同日多条结果中，主动投喂排在采样之前；近期排在远期之前（其他条件相同）。
 - [ ] 删除节点后检索不再命中。
 - [ ] `/api/search` p95 < 200ms（1 万节点量级，Pi 实测）。
-- [ ] （Phase 2）Ask 答案每条引用都可回溯到真实节点；LLM 挂掉时 degraded 返回裸检索结果。
+- [ ] （Phase 2）Ask 答案每条引用都可回溯到真实节点；LLM 挂掉时明确失败且不返回伪答案。
 - [ ] `pnpm check`、`pnpm lint` 全绿；无新第三方依赖。
 
 ## 13. 方案现存问题（作者自评，诚实清单）

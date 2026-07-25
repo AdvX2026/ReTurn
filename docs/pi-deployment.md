@@ -130,8 +130,8 @@ HEALTH_TOKEN='set-outside-shell-history' ./deploy/smoke-test.sh --health 2026-07
 ./deploy/smoke-test.sh --save 2026-07-24
 ```
 
-`--save` seals the supplied date and requires `degraded: false`; never point it
-at valuable unsaved demo data by accident.
+`--save` seals the supplied date only after ferment succeeds; never point it at
+valuable unsaved demo data by accident.
 
 ## Backup and restore
 
@@ -178,7 +178,8 @@ Common causes:
 - Exit at startup: inspect `return.env`, directory ownership, and absolute Node
   path without printing secrets.
 - Health endpoint returns 503: `HEALTH_TOKEN` is empty or a known placeholder.
-- Save is degraded: verify model key, base URL, DNS, TLS, and outbound internet.
+- Save fails: verify model key, base URL, DNS, TLS, and outbound internet; the
+  day remains open and can be retried after the provider is healthy.
 - Node `fetch` times out while curl succeeds: confirm `NODE_OPTIONS` contains
   `--no-network-family-autoselection --dns-result-order=ipv4first` and restart
   `return-server`.

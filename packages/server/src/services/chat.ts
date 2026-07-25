@@ -33,11 +33,16 @@ const INTENTS = new Set<ChatIntent>(["idea", "retrieval", "question", "unknown"]
  * LLM triage with the same provider/model as ferment (config.llm).
  * Returns unknown on parse failure so the user can pick.
  */
-export async function triageWithLlm(text: string): Promise<{
+export async function triageWithLlm(
+  db: Db,
+  text: string,
+): Promise<{
   intent: ChatIntent;
   confidence: number;
 }> {
-  const raw = await llmChat({
+  const raw = await llmChat(db, {
+    operation: "intent_triage",
+    kind: "llm",
     system: `You are the intent classifier for ReTurn (a personal second-brain agent).
 Classify the user message into exactly one intent.
 
@@ -107,7 +112,7 @@ export async function handleChat(
   let intent: ChatIntent = input.intent ?? "unknown";
   let confidence = input.intent ? 1 : 0;
   if (!input.intent) {
-    const h = await triageWithLlm(text);
+    const h = await triageWithLlm(db, text);
     intent = h.intent;
     confidence = h.confidence;
   }
@@ -173,19 +178,14 @@ async function runIdea(
       provenance: "user",
     },
   });
-  let suggestion: string;
-  try {
-    suggestion = await llmChat({
-      system: "用一句中文简短回应用户的灵感记录，可给一点轻量建议。不超过40字。",
-      user: body,
-      temperature: 0.4,
-      timeoutMs: Math.min(config.llm.timeoutMs, 15_000),
-    });
-  } catch (err) {
-    // Idea is already saved; tell the truth about the missing AI response.
-    console.error("[chat] idea suggestion failed:", err);
-    suggestion = "灵感已记录。AI 回应暂时不可用。";
-  }
+  const suggestion = await llmChat(db, {
+    operation: "idea_response",
+    kind: "llm",
+    system: "用一句中文简短回应用户的灵感记录，可给一点轻量建议。不超过40字。",
+    user: body,
+    temperature: 0.4,
+    timeoutMs: Math.min(config.llm.timeoutMs, 15_000),
+  });
   const agent = insertMessage(db, {
     role: "agent",
     content: suggestion,
@@ -254,7 +254,6 @@ async function runQuestion(
     intent: "question",
     confidence,
     reply,
-    degraded: false,
   };
 }
 
@@ -313,7 +312,9 @@ async function runImageTask(
   deviceId: string | undefined,
 ): Promise<ChatResponse> {
   const imageUrl = normalizeImage(image);
-  const extracted = await llmChat({
+  const extracted = await llmChat(db, {
+    operation: "image_extraction",
+    kind: "vision",
     system: "提取图片中可见的文字并整理为简洁笔记。只描述图片中能确认的内容，不要猜测。",
     user: note || "请提取并整理这张图片中的文字。",
     imageUrl,
@@ -365,7 +366,6 @@ async function runImageTask(
       confidence: 1,
       reply,
       task_id: task.id,
-      degraded: false,
     };
   })();
 }

@@ -26,11 +26,11 @@ Listens on `http://0.0.0.0:8787` by default. SQLite at `$DATA_DIR/return.db`.
 | POST | `/api/voice` | multipart audio → whisper → voice node |
 | POST | `/api/health` | header `X-Return-Token` (Shortcuts); **503 if HEALTH_TOKEN unset/weak** |
 | POST | `/api/save` | ferment + stats freeze (idempotent) |
-| GET | `/api/continue` | Before / Future + character |
-| GET | `/api/stats/today` | live five-dim |
+| GET | `/api/stats/today` | live five-dim + collection status |
+| GET | `/api/usage?from=&to=` | provider calls, failures, and tokens |
 | GET | `/api/timeline?date=` | 24h sessions / feeds / sleep |
 | GET | `/api/days?range=30` | overview |
-| PATCH | `/api/todos/:id` | legacy check → `todo_check` only on false→true |
+| PATCH | `/api/todos/:id` | check → `todo_check` only on false→true |
 | POST | `/api/todos/:id/accept` | UI wrote Reminder → positive sample (`reminder_id?`) |
 | POST | `/api/todos/:id/dismiss` | ignore suggestion → negative sample |
 

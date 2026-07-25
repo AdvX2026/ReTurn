@@ -98,8 +98,9 @@ enum NodeKind: String, TolerantEnum {
     case text, url, voice, saveNote = "save_note"
     case appSample = "app_sample", tabSample = "tab_sample"
     case agentSession = "agent_session", gitCommit = "git_commit"
+    case email, reminder, vscodeRecent = "vscode_recent", browseHistory = "browse_history"
     case healthDaily = "health_daily", snapshot
-    case todoCheck = "todo_check", idea, image, reminder
+    case todoCheck = "todo_check", idea, image
     case unknown
     static let fallback = NodeKind.unknown
 }
@@ -274,7 +275,6 @@ struct SaveResponse: Codable {
     var date: String
     var savedAt: String
     var alreadySaved: Bool
-    var degraded: Bool
     var summary: String?
     var openingLine: String?
     var briefing: String?
@@ -288,39 +288,20 @@ struct SaveResponse: Codable {
     var cadence: CadenceMode?
 }
 
-// ── continue (LEGACY v0.5; superseded by cards + messages) ──
-
-struct ContinueResponse: Codable {
-    struct Before: Codable {
-        var date: String
-        var openingLine: String?
-        var summary: String?
-        var reviewPoints: [ReviewPoint]
-        var stats: Stats?
-        var characterState: CharacterState?
-        var statsDelta: Stats?
-    }
-
-    struct Future: Codable {
-        var date: String
-        var todos: [TodoRecord]
-    }
-
-    var before: Before?
-    var future: Future
-    var characterState: CharacterState
-    var stats: Stats
-    var streak: Int
-    var isColdStart: Bool
-}
-
 // ── stats / timeline / days ──────────────────────────────
+
+struct CollectionStatus: Codable {
+    var deviceCount: Int
+    var sampleCount: Int
+    var lastSeenAt: String?
+}
 
 struct StatsTodayResponse: Codable {
     var date: String
     var stats: Stats
     var characterState: CharacterState
     var saved: Bool
+    var collection: CollectionStatus
     var cadence: CadenceMode?
 }
 
@@ -434,7 +415,6 @@ struct AskResponse: Codable {
     var answer: String
     var citations: [AskCitation]
     var retrieved: Int
-    var degraded: Bool
 }
 
 // ── messages / chat / resume ─────────────────────────────
@@ -471,7 +451,6 @@ struct ChatResponse: Codable {
     /// Retrieval jump target (F10) — scroll timeline there.
     var jump: ChatJump?
     var taskId: String?
-    var degraded: Bool?
 }
 
 struct PatchMessageIntentRequest: Codable {
@@ -495,7 +474,41 @@ struct ResumeRequest: Codable {
 struct ResumeResponse: Codable {
     var messageId: String
     var reply: String
-    var degraded: Bool
+}
+
+// ── provider usage ──────────────────────────────────────
+
+enum UsageKind: String, TolerantEnum {
+    case llm, transcription, vision, embedding, unknown
+    static let fallback = UsageKind.unknown
+}
+
+struct UsageTotals: Codable {
+    var calls: Int
+    var succeeded: Int
+    var failed: Int
+    var promptTokens: Int
+    var completionTokens: Int
+    var totalTokens: Int
+}
+
+struct UsageBreakdown: Codable {
+    var kind: UsageKind
+    var operation: String
+    var model: String
+    var calls: Int
+    var succeeded: Int
+    var failed: Int
+    var promptTokens: Int
+    var completionTokens: Int
+    var totalTokens: Int
+}
+
+struct UsageResponse: Codable {
+    var from: String
+    var to: String
+    var totals: UsageTotals
+    var breakdown: [UsageBreakdown]
 }
 
 // ── tasks ────────────────────────────────────────────────

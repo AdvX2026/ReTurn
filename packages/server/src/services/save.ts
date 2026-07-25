@@ -145,7 +145,7 @@ async function saveTodayUnlocked(db: Db, input: SaveInput): Promise<SaveResponse
     acceptedTodos,
     dismissedTodos,
   });
-  const ferment = await runFerment(ctx);
+  const ferment = await runFerment(db, ctx);
 
   // ── persist ferment products ──────────────────────────
   // Re-check under lock: another waiter may have sealed while we fermented.
@@ -347,7 +347,6 @@ function buildSaveResponse(
     date,
     saved_at: day.saved_at,
     already_saved,
-    degraded: false,
     summary: day.summary,
     opening_line: day.opening_line,
     briefing: day.summary,

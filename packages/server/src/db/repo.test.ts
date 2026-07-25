@@ -8,6 +8,7 @@ import type { Stats } from "@return/shared";
 import {
   acceptTodo,
   countCrossDayEdges,
+  currentCadence,
   deleteNode,
   dismissTodo,
   ensureDay,
@@ -25,7 +26,6 @@ import {
   markDaySaved,
   reminderCompletionRate,
   setTodoDone,
-  todoCompletionRate,
   upsertDevice,
 } from "./repo.js";
 import { type Db, openDb, openMemoryDb } from "./schema.js";
@@ -99,18 +99,29 @@ describe("repo", () => {
     assert.deepEqual(JSON.parse(got.stats_json!), stats);
   });
 
-  it("todo check + completion rate", () => {
+  it("todo check updates accepted state", () => {
     const day = ensureDay(db, "2026-07-24");
     const t1 = insertTodo(db, { day_id: day.id, text: "A" });
     insertTodo(db, { day_id: day.id, text: "B" });
     setTodoDone(db, t1.id, true);
-    const rate = todoCompletionRate(db, day.id);
-    assert.equal(rate.total, 2);
-    assert.equal(rate.done, 1);
-    assert.equal(rate.rate, 0.5);
     assert.equal(listTodosByDay(db, day.id).filter((t) => t.done).length, 1);
     assert.equal(t1.status, "suggested");
     assert.equal(getTodo(db, t1.id)!.status, "accepted");
+  });
+
+  it("keeps night cadence until 06:00 after a saved day", () => {
+    const day = ensureDay(db, "2026-07-24");
+    markDaySaved(db, day.id, {
+      saved_at: "2026-07-24T21:00:00.000Z",
+      save_note_node_id: null,
+      summary: "saved",
+      opening_line: "morning",
+      review_points: [],
+      stats: { intake: 0, focus: 0, output: 0, continuity: 0, energy: 100 },
+      character_state: "normal",
+    });
+    assert.equal(currentCadence(db, "2026-07-25", new Date(2026, 6, 25, 5, 59)), "night");
+    assert.equal(currentCadence(db, "2026-07-25", new Date(2026, 6, 25, 6, 0)), "active");
   });
 
   it("accept / dismiss preference samples", () => {

@@ -5,6 +5,7 @@
 
 import { NotConfiguredError, config, isEmbeddingConfigured } from "../config.js";
 import type { Db } from "../db/schema.js";
+import { recordProviderUsage } from "../usage.js";
 import { nowIso } from "../util/time.js";
 import {
   EMBEDDABLE_KINDS,
@@ -54,7 +55,11 @@ export function cosineSimilarity(a: Float32Array, b: Float32Array): number {
   return dot / (Math.sqrt(na) * Math.sqrt(nb));
 }
 
-export async function embedTexts(texts: string[]): Promise<Float32Array[]> {
+export async function embedTexts(
+  db: Db,
+  texts: string[],
+  operation: "index" | "query",
+): Promise<Float32Array[]> {
   if (texts.length === 0) return [];
   if (!isEmbeddingConfigured()) {
     throw new NotConfiguredError("Embedding", "set EMBEDDING_BASE_URL/API_KEY/MODEL");
@@ -81,6 +86,10 @@ export async function embedTexts(texts: string[]): Promise<Float32Array[]> {
     }
     const data = (await res.json()) as {
       data?: Array<{ embedding?: number[]; index?: number }>;
+      usage?: {
+        prompt_tokens?: number;
+        total_tokens?: number;
+      };
     };
     const items = data.data ?? [];
     // Provider may return out of order — sort by index when present.
@@ -90,11 +99,27 @@ export async function embedTexts(texts: string[]): Promise<Float32Array[]> {
         `embedding count mismatch: got ${items.length}, want ${texts.length}`,
       );
     }
-    return items.map((it) => {
+    const vectors = items.map((it) => {
       const emb = it.embedding;
       if (!emb || emb.length === 0) throw new Error("empty embedding vector");
       return Float32Array.from(emb);
     });
+    recordProviderUsage(db, {
+      kind: "embedding",
+      operation,
+      model: config.embedding.model,
+      status: "succeeded",
+      ...data.usage,
+    });
+    return vectors;
+  } catch (error) {
+    recordProviderUsage(db, {
+      kind: "embedding",
+      operation,
+      model: config.embedding.model,
+      status: "failed",
+    });
+    throw error;
   } finally {
     clearTimeout(timer);
   }
@@ -185,7 +210,11 @@ export async function drainEmbedQueue(db: Db): Promise<number> {
 
   if (prepared.length === 0) return 0;
 
-  const vectors = await embedTexts(prepared.map((p) => p.text));
+  const vectors = await embedTexts(
+    db,
+    prepared.map((p) => p.text),
+    "index",
+  );
 
   const model = config.embedding.model;
   const at = nowIso();
@@ -304,13 +333,13 @@ export function semanticTopK(
 let queryCache: { key: string; vec: Float32Array; at: number } | null = null;
 const QUERY_CACHE_MS = 60_000;
 
-export async function embedQuery(text: string): Promise<Float32Array> {
+export async function embedQuery(db: Db, text: string): Promise<Float32Array> {
   const key = `${config.embedding.model}::${text}`;
   const now = Date.now();
   if (queryCache && queryCache.key === key && now - queryCache.at < QUERY_CACHE_MS) {
     return queryCache.vec;
   }
-  const [vec] = await embedTexts([text]);
+  const [vec] = await embedTexts(db, [text], "query");
   if (!vec) throw new Error("empty query embedding");
   queryCache = { key, vec, at: now };
   return vec;

@@ -30,7 +30,6 @@ export async function ask(db: Db, opts: AskOptions): Promise<AskResponse> {
       answer: "没在你的记录里找到相关内容。",
       citations: [],
       retrieved: 0,
-      degraded: false,
     };
   }
 
@@ -38,14 +37,13 @@ export async function ask(db: Db, opts: AskOptions): Promise<AskResponse> {
     retrieved.map((h) => citationId(h)).filter((x): x is string => x != null),
   );
 
-  const raw = await callAskLlm(opts.question, retrieved);
+  const raw = await callAskLlm(db, opts.question, retrieved);
   const { answer, cited } = parseAskOutput(raw, allowedIds);
   const citations = buildCitations(retrieved, cited);
   return {
     answer,
     citations,
     retrieved: retrieved.length,
-    degraded: false,
   };
 }
 
@@ -80,7 +78,7 @@ function buildCitations(hits: SearchHit[], cited: Set<string>): AskResponse["cit
   }));
 }
 
-async function callAskLlm(question: string, hits: SearchHit[]): Promise<string> {
+async function callAskLlm(db: Db, question: string, hits: SearchHit[]): Promise<string> {
   const context = hits
     .map((h, i) => {
       const id = citationId(h) ?? h.doc_id;
@@ -105,7 +103,13 @@ ${context}`;
   let lastErr: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      return await llmChat({ system, user, temperature: 0.2 });
+      return await llmChat(db, {
+        operation: "ask",
+        kind: "llm",
+        system,
+        user,
+        temperature: 0.2,
+      });
     } catch (err) {
       lastErr = err;
     }
