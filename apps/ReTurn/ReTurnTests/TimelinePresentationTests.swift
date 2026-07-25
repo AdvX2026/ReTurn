@@ -143,9 +143,9 @@ struct TimelinePresentationTests {
         )
 
         #expect(textInput.isUserInput)
-        #expect(textInput.categoryLabel == "Input")
+        #expect(textInput.categoryLabel == "Text")
         #expect(voiceInput.isUserInput)
-        #expect(voiceInput.categoryLabel == "Voice Input")
+        #expect(voiceInput.categoryLabel == "Voice")
         #expect(!ambientFeed.isUserInput)
         #expect(!savedNote.isUserInput)
         #expect(!generatedIdea.isUserInput)

@@ -72,20 +72,7 @@ struct TimelineDisplayItem: Identifiable, Equatable {
     }
 
     var categoryLabel: String {
-        if isUserInput {
-            return switch category {
-            case "voice":
-                "Voice Input"
-            case "image":
-                "Image Input"
-            case "url":
-                "Link Input"
-            default:
-                "Input"
-            }
-        }
-
-        return (category ?? kind.rawValue)
+        (category ?? kind.rawValue)
             .replacing("_", with: " ")
             .localizedCapitalized
     }

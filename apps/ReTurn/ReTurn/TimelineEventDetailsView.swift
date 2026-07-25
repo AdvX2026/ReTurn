@@ -24,6 +24,8 @@ struct TimelineEventDetailsView: View {
             Text(item.label)
                 .font(TimelineDesign.Typography.eventTitle)
                 .foregroundStyle(.primary)
+                .lineLimit(item.isUserInput ? 1 : nil)
+                .truncationMode(.tail)
                 .fixedSize(horizontal: false, vertical: true)
 
             if item.presentation == .span {
