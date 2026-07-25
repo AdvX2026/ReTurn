@@ -6,27 +6,36 @@
  * appending to SOURCES; never put feature code here.
  */
 import type { NodeInput } from "@return/shared";
+import { config } from "./config.js";
 import {
   type SampleContext,
   type SampleSource,
   type SourceResult,
-  todayLocal,
+  createSampleContext,
 } from "./source.js";
 import { agentsSource } from "./sources/agents.js";
+import { chromeHistorySource } from "./sources/chrome-history.js";
 import { envSource, getLastEnv } from "./sources/env.js";
 import { gitSource } from "./sources/git.js";
+import { gmailSource } from "./sources/gmail.js";
 import { remindersSource } from "./sources/reminders.js";
-
-export { todayLocal, uuidFromSeed } from "./source.js";
-export { resetSeenAgentKeys } from "./sources/agents.js";
-export { resetSeenCommitShas } from "./sources/git.js";
-export { resetSeenReminderKeys } from "./sources/reminders.js";
+import { safariHistorySource } from "./sources/safari-history.js";
+import { vscodeSource } from "./sources/vscode.js";
 
 /**
  * Registered sources, in emit order.
- * env first (app/tabs), then feature sources. Git / future sources append here.
+ * env first (app/tabs), then feature sources. T1 sources append here.
  */
-const SOURCES: SampleSource[] = [envSource, agentsSource, gitSource, remindersSource];
+export const SOURCES: readonly SampleSource[] = [
+  envSource,
+  agentsSource,
+  gitSource,
+  gmailSource,
+  remindersSource,
+  vscodeSource,
+  chromeHistorySource,
+  safariHistorySource,
+];
 
 /**
  * Snapshot of the last tick — status / control-plane surface.
@@ -39,6 +48,8 @@ export interface SampleSnapshot {
   platform: NodeJS.Platform;
   /** Per-source stats (e.g. agents.intervals, agents.emitted). */
   stats: Record<string, Record<string, number>>;
+  /** Explicit operational failures keyed by source id. */
+  errors: Record<string, string>;
 }
 
 export interface SampleResult {
@@ -47,35 +58,47 @@ export interface SampleResult {
 }
 
 /**
- * Run every registered source once. Per-source failures become empty results
- * so a broken feature never blocks the tick or the outbox flush.
+ * Run every registered source once. The orchestrator is the sole source-error
+ * boundary: failures are visible in stats while independent sources continue.
  */
 export async function collectSample(opts?: {
   asSnapshot?: boolean;
+  now?: Date;
+  timezone?: string;
+  sources?: readonly SampleSource[];
 }): Promise<SampleResult> {
-  const at = new Date().toISOString();
-  const platform = process.platform;
-  const ctx: SampleContext = {
-    at,
-    platform,
-    asSnapshot: Boolean(opts?.asSnapshot),
-  };
+  const ctx: SampleContext = createSampleContext({
+    now: opts?.now ?? config.fixedNow ?? undefined,
+    timezone: opts?.timezone ?? config.timezone,
+    asSnapshot: opts?.asSnapshot,
+  });
+  const { at, platform } = ctx;
 
   const results = await Promise.all(
-    SOURCES.map(async (src): Promise<{ id: string; result: SourceResult }> => {
-      try {
-        return { id: src.id, result: await src.sample(ctx) };
-      } catch {
-        return { id: src.id, result: { nodes: [], stats: { error: 1 } } };
-      }
-    }),
+    (opts?.sources ?? SOURCES).map(
+      async (src): Promise<{ id: string; result: SourceResult; error?: string }> => {
+        try {
+          return { id: src.id, result: await src.sample(ctx) };
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          console.error(`[sampler:${src.id}] ${message}`);
+          return {
+            id: src.id,
+            result: { nodes: [], stats: { error: 1 } },
+            error: message,
+          };
+        }
+      },
+    ),
   );
 
   const nodes: NodeInput[] = [];
   const stats: SampleSnapshot["stats"] = {};
-  for (const { id, result } of results) {
+  const errors: SampleSnapshot["errors"] = {};
+  for (const { id, result, error } of results) {
     nodes.push(...result.nodes);
     stats[id] = result.stats;
+    if (error) errors[id] = error;
   }
 
   // Save Today: environment meta node (orchestrator-level, not a feature source).
@@ -93,15 +116,17 @@ export async function collectSample(opts?: {
           browser: t.browser,
         })),
         stats,
+        errors,
         at,
       }),
       source_meta: {
         at,
         tab_count: env.tabs.length,
         stats,
+        errors,
       },
       client_created_at: at,
-      date: todayLocal(),
+      date: ctx.day,
     });
   }
 
@@ -113,6 +138,7 @@ export async function collectSample(opts?: {
       at,
       platform,
       stats,
+      errors,
     },
     nodes,
   };

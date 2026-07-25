@@ -1,5 +1,5 @@
 /**
- * Hybrid search: FTS5 keyword + optional embedding semantic, RRF fusion.
+ * Hybrid search: FTS5 keyword + embedding semantic, RRF fusion.
  */
 
 import type { DaySummary, NodeRecord, SearchHit, SearchResponse } from "@return/shared";
@@ -22,8 +22,6 @@ export interface SearchOptions {
   kinds?: string[];
   limit?: number;
   now?: Date;
-  /** Force-disable semantic even if configured (tests). */
-  semantic?: boolean;
 }
 
 interface RankedDoc {
@@ -81,32 +79,23 @@ export async function search(db: Db, opts: SearchOptions): Promise<SearchRespons
 
   // ── semantic channel ────────────────────────────────────
   const semanticRanks = new Map<string, number>();
-  const useSemantic =
-    opts.semantic !== false && isEmbeddingConfigured() && parsed.text.trim().length > 0;
-
-  if (useSemantic) {
-    try {
-      const qVec = await embedQuery(parsed.text);
-      let hits = semanticTopK(db, qVec, CHANNEL_TOP, config.embedding.model);
-      // Apply date/kind filters post-hoc (embeddings table has no date column).
-      hits = hits.filter((h) => {
-        const info = resolveMeta(db, h.doc_id, meta);
-        if (!info) return false;
-        if (parsed.from && info.day_date < parsed.from) return false;
-        if (parsed.to && info.day_date > parsed.to) return false;
-        if (kindsFilter && !kindsFilter.has(info.kind)) return false;
-        meta.set(h.doc_id, info);
-        return true;
-      });
-      hits.forEach((h, i) => {
-        semanticRanks.set(h.doc_id, i + 1);
-      });
-    } catch (err) {
-      console.warn(
-        "[search] semantic channel failed, keyword-only:",
-        err instanceof Error ? err.message : err,
-      );
-    }
+  // Semantic channel is off without EMBEDDING_* — keyword channel still answers.
+  if (parsed.text.trim().length > 0 && isEmbeddingConfigured()) {
+    const qVec = await embedQuery(parsed.text);
+    let hits = semanticTopK(db, qVec, CHANNEL_TOP, config.embedding.model);
+    // Apply date/kind filters post-hoc (embeddings table has no date column).
+    hits = hits.filter((h) => {
+      const info = resolveMeta(db, h.doc_id, meta);
+      if (!info) return false;
+      if (parsed.from && info.day_date < parsed.from) return false;
+      if (parsed.to && info.day_date > parsed.to) return false;
+      if (kindsFilter && !kindsFilter.has(info.kind)) return false;
+      meta.set(h.doc_id, info);
+      return true;
+    });
+    hits.forEach((h, i) => {
+      semanticRanks.set(h.doc_id, i + 1);
+    });
   }
 
   // ── fuse ────────────────────────────────────────────────
@@ -205,17 +194,11 @@ function keywordSearch(
     ORDER BY bm25(search_fts)
     LIMIT ?
   `;
-  try {
-    return db.prepare(sql).all(...params) as Array<{
-      doc_id: string;
-      kind: string;
-      day_date: string;
-    }>;
-  } catch (err) {
-    // Malformed MATCH (e.g. empty after sanitize) — treat as no hits.
-    console.warn("[search] FTS MATCH failed:", err instanceof Error ? err.message : err);
-    return [];
-  }
+  return db.prepare(sql).all(...params) as Array<{
+    doc_id: string;
+    kind: string;
+    day_date: string;
+  }>;
 }
 
 function listDocs(

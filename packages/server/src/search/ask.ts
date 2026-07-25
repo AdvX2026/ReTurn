@@ -5,9 +5,7 @@
 
 import type { AskResponse, SearchHit } from "@return/shared";
 import { llmChat } from "../ai/llm.js";
-import { isLlmConfigured } from "../config.js";
 import type { Db } from "../db/schema.js";
-import { originalTextForDoc } from "./index.js";
 import { search } from "./query.js";
 
 const ASK_TOP_K = 8;
@@ -19,13 +17,6 @@ export interface AskOptions {
 }
 
 export async function ask(db: Db, opts: AskOptions): Promise<AskResponse> {
-  if (!isLlmConfigured()) {
-    const err = new AskConfigError("LLM_API_KEY not configured — /api/ask unavailable");
-    throw err;
-  }
-  // Embedding optional: hybrid degrades to keyword inside search().
-  // PRD: embedding/LLM 未配置 → 503 for ask when LLM missing; embedding alone OK.
-
   const result = await search(db, {
     q: opts.question,
     from: opts.from,
@@ -47,42 +38,15 @@ export async function ask(db: Db, opts: AskOptions): Promise<AskResponse> {
     retrieved.map((h) => citationId(h)).filter((x): x is string => x != null),
   );
 
-  try {
-    const raw = await callAskLlm(opts.question, retrieved);
-    const { answer, cited } = parseAskOutput(raw, allowedIds);
-    const citations = buildCitations(retrieved, cited);
-    return {
-      answer,
-      citations,
-      retrieved: retrieved.length,
-      degraded: false,
-    };
-  } catch (err) {
-    console.error(
-      "[ask] LLM failed, degraded path:",
-      err instanceof Error ? err.message : err,
-    );
-    // Degraded: empty answer, bare retrieval as citations (PRD §8).
-    return {
-      answer: "",
-      citations: retrieved.map((h) => ({
-        node_id: h.node?.id ?? null,
-        date: h.node?.date ?? h.day?.date ?? "",
-        kind: h.kind,
-        title: h.node?.title ?? h.day?.summary?.slice(0, 60) ?? null,
-        snippet: h.snippet,
-      })),
-      retrieved: retrieved.length,
-      degraded: true,
-    };
-  }
-}
-
-export class AskConfigError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "AskConfigError";
-  }
+  const raw = await callAskLlm(opts.question, retrieved);
+  const { answer, cited } = parseAskOutput(raw, allowedIds);
+  const citations = buildCitations(retrieved, cited);
+  return {
+    answer,
+    citations,
+    retrieved: retrieved.length,
+    degraded: false,
+  };
 }
 
 function citationId(h: SearchHit): string | null {
@@ -105,10 +69,7 @@ function buildCitations(hits: SearchHit[], cited: Set<string>): AskResponse["cit
     const h = byId.get(id);
     if (h) ordered.push(h);
   }
-  if (ordered.length === 0) {
-    // Model forgot citations — attach top retrieved as soft citations.
-    ordered.push(...hits);
-  }
+  if (ordered.length === 0) throw new Error("ask response contains no valid citations");
 
   return ordered.map((h) => ({
     node_id: h.node?.id ?? null,
@@ -126,7 +87,6 @@ async function callAskLlm(question: string, hits: SearchHit[]): Promise<string> 
       const date = h.node?.date ?? h.day?.date ?? "";
       const title = h.node?.title ?? "";
       const body = h.node?.content ?? h.day?.summary ?? h.snippet ?? "";
-      // Prefer fuller original text when available via content; snippet as fallback.
       return `[#${i + 1} id=${id} date=${date} kind=${h.kind} title=${JSON.stringify(title)}]\n${truncate(body, 800)}`;
     })
     .join("\n\n");
@@ -145,16 +105,12 @@ ${context}`;
   let lastErr: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      return await chat(system, user);
+      return await llmChat({ system, user, temperature: 0.2 });
     } catch (err) {
       lastErr = err;
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error("ask LLM failed");
-}
-
-async function chat(system: string, user: string): Promise<string> {
-  return llmChat({ system, user, temperature: 0.2 });
 }
 
 /**
@@ -184,10 +140,4 @@ export function parseAskOutput(
 
 function truncate(s: string, n: number): string {
   return s.length <= n ? s : `${s.slice(0, n)}…`;
-}
-
-// re-export for tests that need original text expansion
-export function expandHitText(db: Db, hit: SearchHit): string {
-  const orig = originalTextForDoc(db, hit.doc_id);
-  return orig?.text ?? hit.snippet;
 }
