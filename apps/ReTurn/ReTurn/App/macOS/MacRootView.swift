@@ -70,24 +70,7 @@ struct MacRootView: View {
             }
         }
         .background(shortcutButtons)
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    Task { await refreshCurrentPage() }
-                } label: {
-                    if isRefreshing {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                }
-                .disabled(isRefreshing)
-                .accessibilityLabel("Refresh")
-                .help("Refresh the current page")
-                .keyboardShortcut("r", modifiers: .command)
-            }
-        }
+        .modifier(MacWindowChromeModifier())
         .onChange(of: chat.pendingJump) { _, jump in
             // Retrieval jump (F10): turn to Before and hand the date/node to
             // the timeline browser, which consumes the focus request.
@@ -100,7 +83,7 @@ struct MacRootView: View {
 
     private var currentPage: TimelinePage { selection ?? .now }
 
-    /// The toolbar refresh (⌘R): no server push exists, so each page pulls
+    /// Manual refresh (⌘R): no server push exists, so each page pulls
     /// its own stores again — stats on Now, the viewed day + overview on
     /// Before, the card stream on After.
     private func refreshCurrentPage() async {
@@ -186,6 +169,15 @@ struct MacRootView: View {
         // The single definition of the gap between the indicator row and the
         // pages below it.
         .padding(.bottom, ReTurnDesign.Spacing.medium)
+        .frame(maxWidth: .infinity)
+        .background {
+            if #available(macOS 15.0, *) {
+                Color.clear
+                    .contentShape(.rect)
+                    .gesture(WindowDragGesture())
+                    .allowsWindowActivationEvents(true)
+            }
+        }
         .animation(
             .easeInOut(duration: ReTurnDesign.Motion.navigationSelectionDuration),
             value: currentPage
@@ -208,6 +200,12 @@ struct MacRootView: View {
             Button("Back to Now") { select(.now) }
                 .keyboardShortcut(.escape, modifiers: [])
                 .disabled(currentPage == .now)
+
+            Button("Refresh") {
+                Task { await refreshCurrentPage() }
+            }
+            .keyboardShortcut("r", modifiers: .command)
+            .disabled(isRefreshing)
 
             ForEach(Array(TimelinePage.allCases.enumerated()), id: \.element) { index, page in
                 Button(page.rawValue) {
