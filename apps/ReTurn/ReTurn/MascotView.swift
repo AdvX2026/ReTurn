@@ -156,20 +156,24 @@ struct MascotView: View {
         body.translateBy(x: -Design.pivot.x, y: -Design.pivot.y)
 
         // Arms pivot where they meet the body; they wave with the bounce.
-        // Folded a few degrees inward from the Figma pose so they nestle
-        // against the body's slope instead of hovering off it.
+        // The left arm's pivot and angle are shared with the worn
+        // accessories so a gripped piece rides the wave. Folded a few
+        // degrees inward from the Figma pose so they nestle against the
+        // body's slope instead of hovering off it.
+        let leftArmAnchor = CGPoint(x: 38.5, y: 60.7349)
         let wave = sin(t * speed * .pi + 1.2) * Motion.armWaveAmplitude
+        let leftArmDegrees = -32 + wave
         drawLimb(
             &body,
             rect: CGRect(x: 31, y: 48.2349, width: 15, height: 25),
-            anchor: CGPoint(x: 38.5, y: 60.7349),
-            degrees: -32 + wave
+            anchor: leftArmAnchor,
+            degrees: leftArmDegrees
         )
         drawLimb(
             &body,
             rect: CGRect(x: 132.392, y: 39, width: 15, height: 25),
             anchor: CGPoint(x: 139.892, y: 51.5),
-            degrees: 32 - wave
+            degrees: -leftArmDegrees
         )
 
         for legX in [46.0, 113.0] as [CGFloat] {
@@ -180,7 +184,11 @@ struct MascotView: View {
         }
 
         fillBody(&body, color: Design.bodyColor)
-        MascotAccessory.drawWorn(profession, in: &body)
+        MascotAccessory.drawWorn(
+            profession,
+            in: &body,
+            leftArm: (anchor: leftArmAnchor, degrees: leftArmDegrees)
+        )
         drawEyes(in: &body, t: t)
         drawMouth(in: &body)
     }

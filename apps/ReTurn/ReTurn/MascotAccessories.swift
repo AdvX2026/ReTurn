@@ -21,12 +21,18 @@ enum MascotProfession: String, CaseIterable {
 /// caller's stage transform (pad + scale) maps it onto the canvas, so no
 /// piece here needs a `unit` or an offset of its own.
 enum MascotAccessory {
-    static func drawWorn(_ profession: MascotProfession, in context: inout GraphicsContext) {
+    /// `leftArm` mirrors the left arm's pivot and current angle in
+    /// `MascotView.drawBody`, so pieces gripped by the fist ride the wave.
+    static func drawWorn(
+        _ profession: MascotProfession,
+        in context: inout GraphicsContext,
+        leftArm: (anchor: CGPoint, degrees: Double)
+    ) {
         switch profession {
         case .coder:
             drawGlasses(in: &context)
         case .writer:
-            drawPencil(in: &context)
+            drawPencil(in: &context, leftArm: leftArm)
         case .designer:
             drawBeret(in: &context)
         case .manager:
@@ -97,37 +103,47 @@ enum MascotAccessory {
         }
     }
 
-    /// Writer: a pencil tucked behind the head, drawn parallel to the body's
-    /// right slope (~30° off vertical) with both ends sticking out, like a
-    /// pencil behind an ear.
-    private static func drawPencil(in context: inout GraphicsContext) {
+    /// Writer: a pencil gripped in the raised left fist. It shares the arm's
+    /// own pivot (`leftArm`) so it never detaches from the waving hand; a
+    /// further 15° tilt around the grip makes it read as held rather than
+    /// fused to the arm.
+    private static func drawPencil(
+        in context: inout GraphicsContext,
+        leftArm: (anchor: CGPoint, degrees: Double)
+    ) {
+        // The fist's top in the arm's unrotated frame; the eraser sinks in here.
+        let grip = CGPoint(x: 38.5, y: 48.5)
         var pencil = context
-        pencil.concatenate(
-            CGAffineTransform(translationX: 110, y: 30)
-                .rotated(by: -.pi / 6)
-        )
+        pencil.translateBy(x: leftArm.anchor.x, y: leftArm.anchor.y)
+        pencil.rotate(by: .degrees(leftArm.degrees))
+        pencil.translateBy(x: -leftArm.anchor.x, y: -leftArm.anchor.y)
+        pencil.translateBy(x: grip.x, y: grip.y)
+        pencil.rotate(by: .degrees(15))
+        pencil.translateBy(x: -grip.x, y: -grip.y)
+
+        // Local frame: a vertical pencil, tip up, eraser end at the grip.
         pencil.fill(
-            Path(CGRect(x: -3, y: -15, width: 6, height: 24)),
+            Path(CGRect(x: 35.5, y: 27, width: 6, height: 16)),
             with: .color(.orange)
         )
         var tip = Path()
-        tip.move(to: CGPoint(x: -3, y: -15))
-        tip.addLine(to: CGPoint(x: 0, y: -21))
-        tip.addLine(to: CGPoint(x: 3, y: -15))
+        tip.move(to: CGPoint(x: 35.5, y: 27))
+        tip.addLine(to: CGPoint(x: 38.5, y: 21))
+        tip.addLine(to: CGPoint(x: 41.5, y: 27))
         tip.closeSubpath()
         pencil.fill(tip, with: .color(Color(red: 0.96, green: 0.8, blue: 0.6)))
         var lead = Path()
-        lead.move(to: CGPoint(x: -1.2, y: -18.6))
-        lead.addLine(to: CGPoint(x: 0, y: -21))
-        lead.addLine(to: CGPoint(x: 1.2, y: -18.6))
+        lead.move(to: CGPoint(x: 36.8, y: 24.6))
+        lead.addLine(to: CGPoint(x: 38.5, y: 21))
+        lead.addLine(to: CGPoint(x: 40.2, y: 24.6))
         lead.closeSubpath()
         pencil.fill(lead, with: .color(.black.opacity(0.8)))
         pencil.fill(
-            Path(CGRect(x: -3, y: 9, width: 6, height: 2)),
+            Path(CGRect(x: 35.5, y: 43, width: 6, height: 2)),
             with: .color(Color(white: 0.75))
         )
         pencil.fill(
-            Path(roundedRect: CGRect(x: -3, y: 11, width: 6, height: 4), cornerRadius: 1.5),
+            Path(roundedRect: CGRect(x: 35.5, y: 45, width: 6, height: 5), cornerRadius: 1.5),
             with: .color(.pink)
         )
     }
