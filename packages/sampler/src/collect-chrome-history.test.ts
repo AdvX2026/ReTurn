@@ -1,0 +1,343 @@
+import assert from "node:assert/strict";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { afterEach, beforeEach, describe, it } from "node:test";
+import {
+  chromeTimeToIso,
+  collectChromeHistory,
+  isoToChromeTime,
+  resolveHistoryPaths,
+} from "./collect-chrome-history.js";
+import { uuidFromSeed } from "./source.js";
+import { resetSeenVisits, visitsToNodes } from "./sources/chrome-history.js";
+import { copySqliteWithWal } from "./sqlite-snapshot.js";
+
+const DAY = "2026-07-24";
+const RANGE = {
+  start: "2026-07-24T00:00:00.000Z",
+  end: "2026-07-25T00:00:00.000Z",
+};
+
+describe("chrome time conversion", () => {
+  it("chromeTimeToIso known epoch pairs", () => {
+    // Unix epoch 0 → Chrome WebKit µs = 11644473600000 * 1000
+    // Use bigint: µs values exceed Number.MAX_SAFE_INTEGER for modern dates.
+    assert.equal(chromeTimeToIso(11_644_473_600_000_000n), "1970-01-01T00:00:00.000Z");
+
+    // 2020-01-01T00:00:00.000Z
+    const ms2020 = Date.UTC(2020, 0, 1);
+    const chrome2020 = BigInt(ms2020 + 11_644_473_600_000) * 1000n;
+    assert.equal(chromeTimeToIso(chrome2020), "2020-01-01T00:00:00.000Z");
+
+    // 2026-07-24T12:00:00.000Z
+    const ms = Date.parse("2026-07-24T12:00:00.000Z");
+    const chrome = BigInt(ms + 11_644_473_600_000) * 1000n;
+    assert.equal(chromeTimeToIso(chrome), "2026-07-24T12:00:00.000Z");
+  });
+
+  it("isoToChromeTime round-trips with chromeTimeToIso", () => {
+    const iso = "2026-07-24T08:30:00.000Z";
+    const chrome = isoToChromeTime(iso);
+    assert.equal(typeof chrome, "bigint");
+    assert.equal(chromeTimeToIso(chrome), iso);
+
+    const d = new Date("2026-01-15T00:00:00.000Z");
+    assert.equal(chromeTimeToIso(isoToChromeTime(d)), d.toISOString());
+  });
+});
+
+describe("visitsToNodes", () => {
+  beforeEach(() => {
+    resetSeenVisits();
+  });
+
+  it("maps visits to browse_history with deterministic uuid", () => {
+    const visitedAt = "2026-07-24T02:00:00.000Z";
+    const nodes = visitsToNodes(
+      [
+        {
+          visitId: 42,
+          url: "https://example.com/a",
+          title: "Example A",
+          visitedAt,
+          browser: "chrome",
+          profile: "Default",
+        },
+      ],
+      DAY,
+    );
+    assert.equal(nodes.length, 1);
+    const n = nodes[0]!;
+    assert.equal(n.kind, "browse_history");
+    assert.equal(n.title, "Example A");
+    assert.equal(n.content, "https://example.com/a");
+    assert.equal(n.client_uuid, uuidFromSeed("browse:chrome:Default:42"));
+    assert.equal(n.client_created_at, visitedAt);
+    assert.deepEqual(n.source_meta, {
+      url: "https://example.com/a",
+      title: "Example A",
+      visited_at: visitedAt,
+      visit_id: 42,
+      browser: "chrome",
+      profile: "Default",
+    });
+  });
+
+  it("uses null for a missing title and truncates to 500", () => {
+    const long = "x".repeat(600);
+    const n1 = visitsToNodes(
+      [
+        {
+          visitId: 1,
+          url: "https://example.com/long",
+          title: "",
+          visitedAt: "2026-07-24T02:00:00.000Z",
+          browser: "edge",
+          profile: "Default",
+        },
+      ],
+      DAY,
+    )[0]!;
+    assert.equal(n1.title, null);
+
+    resetSeenVisits();
+    const n2 = visitsToNodes(
+      [
+        {
+          visitId: 2,
+          url: "https://example.com/t",
+          title: long,
+          visitedAt: "2026-07-24T02:00:00.000Z",
+          browser: "edge",
+          profile: "Default",
+        },
+      ],
+      DAY,
+    )[0]!;
+    assert.equal(n2.title!.length, 500);
+  });
+
+  it("uses the shared context day", () => {
+    const nodes = visitsToNodes(
+      [
+        {
+          visitId: 10,
+          url: "https://a.test",
+          title: "a",
+          visitedAt: "2026-07-24T01:00:00.000Z",
+          browser: "chrome",
+          profile: "Default",
+        },
+        {
+          visitId: 11,
+          url: "https://b.test",
+          title: "b",
+          visitedAt: "2026-07-24T15:00:00.000Z",
+          browser: "chrome",
+          profile: "Default",
+        },
+      ],
+      DAY,
+    );
+    assert.equal(nodes.length, 2);
+    assert.equal(nodes[0]!.date, DAY);
+    assert.equal(nodes[1]!.date, DAY);
+  });
+
+  it("dedupes by seed key; reset re-emits", () => {
+    const visits = [
+      {
+        visitId: 7,
+        url: "https://once.test",
+        title: "once",
+        visitedAt: "2026-07-24T02:00:00.000Z",
+        browser: "brave",
+        profile: "Profile 1",
+      },
+    ];
+    const first = visitsToNodes(visits, DAY);
+    assert.equal(first.length, 1);
+    assert.equal(visitsToNodes(visits, DAY).length, 0);
+    resetSeenVisits();
+    const third = visitsToNodes(visits, DAY);
+    assert.equal(third.length, 1);
+    assert.equal(third[0]!.client_uuid, first[0]!.client_uuid);
+  });
+});
+
+describe("collectChromeHistory against temp sqlite", () => {
+  let root: string;
+  let historyPath: string;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "return-chrome-hist-test-"));
+    // Put History under a Default profile dir so profileFromPath works
+    const profileDir = join(root, "Default");
+    mkdirSync(profileDir, { recursive: true });
+    historyPath = join(profileDir, "History");
+
+    const db = new DatabaseSync(historyPath);
+    db.exec(`
+      CREATE TABLE urls(id INTEGER PRIMARY KEY, url TEXT, title TEXT);
+      CREATE TABLE visits(id INTEGER PRIMARY KEY, url INTEGER, visit_time INTEGER);
+    `);
+
+    const start = isoToChromeTime(RANGE.start);
+    // Three visits today, one "yesterday"
+    const insertUrl = db.prepare(`INSERT INTO urls(id, url, title) VALUES (?, ?, ?)`);
+    const insertVisit = db.prepare(
+      `INSERT INTO visits(id, url, visit_time) VALUES (?, ?, ?)`,
+    );
+    insertUrl.run(1, "https://today-a.test", "Today A");
+    insertUrl.run(2, "https://today-b.test", "Today B");
+    insertUrl.run(3, "https://yesterday.test", "Yesterday");
+
+    // Offsets as bigint — Chrome µs exceed Number.MAX_SAFE_INTEGER.
+    insertVisit.run(100, 1, start + 3_600_000_000n); // +1h in µs
+    insertVisit.run(101, 2, start + 7_200_000_000n); // +2h
+    insertVisit.run(99, 3, start - 3_600_000_000n); // yesterday
+    db.close();
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it("copy-then-read returns only today's visits", async () => {
+    const visits = await collectChromeHistory(
+      [{ path: historyPath, browser: "chrome", profile: "Default" }],
+      100,
+      RANGE,
+    );
+    assert.equal(visits.length, 2);
+    const urls = visits.map((v) => v.url).sort();
+    assert.deepEqual(urls, ["https://today-a.test", "https://today-b.test"]);
+    // Newest first
+    assert.equal(visits[0]!.url, "https://today-b.test");
+    assert.equal(visits[0]!.visitId, 101);
+    assert.equal(visits[0]!.browser, "chrome");
+    assert.equal(visits[0]!.profile, "Default");
+    assert.match(visits[0]!.visitedAt, /Z$/);
+  });
+
+  it("respects total limit across results", async () => {
+    const visits = await collectChromeHistory(
+      [{ path: historyPath, browser: "chrome", profile: "Default" }],
+      1,
+      RANGE,
+    );
+    assert.equal(visits.length, 1);
+    assert.equal(visits[0]!.url, "https://today-b.test");
+  });
+
+  it("missing path rejects instead of reporting an empty sample", async () => {
+    await assert.rejects(
+      collectChromeHistory(
+        [
+          {
+            path: join(root, "nope", "History"),
+            browser: "chrome",
+            profile: "Default",
+          },
+        ],
+        100,
+        RANGE,
+      ),
+    );
+  });
+
+  it("WAL-mode History: includes uncheckpointed visits via -wal copy", async () => {
+    // Simulate Chrome: live connection holds recent rows only in History-wal.
+    // Main-file-only copy would miss them; copySqliteWithWal must not.
+    const profileDir = join(root, "WalProfile");
+    mkdirSync(profileDir, { recursive: true });
+    const hist = join(profileDir, "History");
+
+    const live = new DatabaseSync(hist);
+    live.exec(`
+      PRAGMA journal_mode = WAL;
+      CREATE TABLE urls(id INTEGER PRIMARY KEY, url TEXT, title TEXT);
+      CREATE TABLE visits(id INTEGER PRIMARY KEY, url INTEGER, visit_time INTEGER);
+    `);
+    const start = isoToChromeTime(RANGE.start);
+    live
+      .prepare(`INSERT INTO urls(id, url, title) VALUES (?, ?, ?)`)
+      .run(1, "https://wal-only.test", "WAL only");
+    live
+      .prepare(`INSERT INTO visits(id, url, visit_time) VALUES (?, ?, ?)`)
+      .run(200, 1, start + 1_800_000_000n);
+    // Keep `live` open so rows stay in the WAL (no checkpoint on close).
+
+    try {
+      const visits = await collectChromeHistory(
+        [{ path: hist, browser: "chrome", profile: "WalProfile" }],
+        100,
+        RANGE,
+      );
+      assert.equal(visits.length, 1);
+      assert.equal(visits[0]!.url, "https://wal-only.test");
+      assert.equal(visits[0]!.visitId, 200);
+    } finally {
+      live.close();
+    }
+  });
+});
+
+describe("copySqliteWithWal", () => {
+  it("copies -wal and -shm side-cars when present", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "return-sqlite-wal-copy-"));
+    try {
+      const src = join(dir, "History");
+      const db = new DatabaseSync(src);
+      db.exec(`PRAGMA journal_mode = WAL; CREATE TABLE t(x); INSERT INTO t VALUES (1);`);
+      db.close();
+      // After close SQLite may leave -wal/-shm; force side-cars for the assertion.
+      const { writeFileSync, existsSync } = await import("node:fs");
+      if (!existsSync(`${src}-wal`)) writeFileSync(`${src}-wal`, Buffer.from("wal-stub"));
+      if (!existsSync(`${src}-shm`)) writeFileSync(`${src}-shm`, Buffer.alloc(32 * 1024));
+
+      const tmpRoot = mkdtempSync(join(tmpdir(), "return-sqlite-wal-dst-"));
+      const dst = join(tmpRoot, "History");
+      try {
+        await copySqliteWithWal(src, dst);
+        assert.equal(existsSync(dst), true);
+        assert.equal(existsSync(`${dst}-wal`), true);
+        assert.equal(existsSync(`${dst}-shm`), true);
+      } finally {
+        rmSync(tmpRoot, { recursive: true, force: true });
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("resolveHistoryPaths", () => {
+  it("rejects a configured database that does not exist", () => {
+    assert.throws(
+      () => resolveHistoryPaths(process.platform, join(tmpdir(), "no-such-history-db")),
+      /does not exist/,
+    );
+  });
+
+  it("override existing path returns single chrome entry", () => {
+    const root = mkdtempSync(join(tmpdir(), "return-chrome-override-"));
+    try {
+      const profileDir = join(root, "Default");
+      mkdirSync(profileDir, { recursive: true });
+      const hist = join(profileDir, "History");
+      // empty file is enough for existsSync
+      const db = new DatabaseSync(hist);
+      db.close();
+      const paths = resolveHistoryPaths(process.platform, hist);
+      assert.equal(paths.length, 1);
+      assert.equal(paths[0]!.path, hist);
+      assert.equal(paths[0]!.browser, "chrome");
+      assert.equal(paths[0]!.profile, "Default");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});

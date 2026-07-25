@@ -33,22 +33,12 @@ const FIXTURE_JSON = JSON.stringify([
     creationDate: "2026-07-21T12:00:00.000Z",
     modificationDate: "2026-07-22T12:00:00.000Z",
   },
-  {
-    // missing id → hash fallback
-    list: "Inbox",
-    name: "No id item",
-    body: "",
-    completed: false,
-    due: "not-a-date",
-    creationDate: "2026-07-23T00:00:00.000Z",
-    modificationDate: null,
-  },
 ]);
 
 describe("parseRemindersOutput", () => {
   it("parses fixture JSON into ReminderItem fields", () => {
     const items = parseRemindersOutput(FIXTURE_JSON);
-    assert.equal(items.length, 3);
+    assert.equal(items.length, 2);
 
     assert.equal(items[0]!.id, "x-apple-reminder://ABC-123");
     assert.equal(items[0]!.list, "Work");
@@ -62,42 +52,44 @@ describe("parseRemindersOutput", () => {
     assert.equal(items[1]!.completed, true);
     assert.equal(items[1]!.body, null);
     assert.equal(items[1]!.due, null);
-
-    // fallback id is stable non-empty hash
-    assert.ok(items[2]!.id.length >= 16);
-    assert.equal(items[2]!.due, null); // garbage date dropped
-    assert.equal(items[2]!.body, null); // empty string → null
   });
 
-  it("returns empty for empty or garbage input", () => {
-    assert.deepEqual(parseRemindersOutput(""), []);
-    assert.deepEqual(parseRemindersOutput("   \n  "), []);
-    assert.deepEqual(parseRemindersOutput("not json"), []);
-    assert.deepEqual(parseRemindersOutput("{}"), []);
-    assert.deepEqual(parseRemindersOutput("null"), []);
-  });
-
-  it("accepts completed as string/number truthy forms", () => {
-    const items = parseRemindersOutput(
-      JSON.stringify([
-        { id: "1", list: "L", name: "a", completed: "true" },
-        { id: "2", list: "L", name: "b", completed: 1 },
-        { id: "3", list: "L", name: "c", completed: "yes" },
-        { id: "4", list: "L", name: "d", completed: false },
-      ]),
+  it("rejects rows without a stable Reminders id", () => {
+    assert.throws(
+      () =>
+        parseRemindersOutput(
+          JSON.stringify([{ list: "Inbox", name: "No id", completed: false }]),
+        ),
+      /stable id is required/,
     );
-    assert.equal(items.map((i) => i.completed).join(","), "true,true,true,false");
+  });
+
+  it("rejects malformed collector payloads", () => {
+    assert.throws(() => parseRemindersOutput(""));
+    assert.throws(() => parseRemindersOutput("not json"));
+    assert.throws(() => parseRemindersOutput("{}"), /expected an array/);
+    assert.throws(() => parseRemindersOutput("null"), /expected an array/);
+  });
+
+  it("rejects non-boolean completion values", () => {
+    assert.throws(
+      () =>
+        parseRemindersOutput(
+          JSON.stringify([{ id: "1", list: "L", name: "a", completed: "true" }]),
+        ),
+      /completed must be a boolean/,
+    );
   });
 });
 
 describe("parseMaybeIso", () => {
-  it("normalizes parseable dates to Z ISO; null on failure", () => {
+  it("normalizes parseable dates to Z ISO and rejects malformed dates", () => {
     assert.equal(parseMaybeIso("2026-07-24T10:00:00+08:00"), "2026-07-24T02:00:00.000Z");
     assert.equal(parseMaybeIso("2026-07-24T02:00:00.000Z"), "2026-07-24T02:00:00.000Z");
     assert.equal(parseMaybeIso(""), null);
     assert.equal(parseMaybeIso(null), null);
-    assert.equal(parseMaybeIso("not-a-date"), null);
-    assert.equal(parseMaybeIso("due date missing"), null);
+    assert.throws(() => parseMaybeIso("not-a-date"), /invalid reminder date/);
+    assert.throws(() => parseMaybeIso("due date missing"), /invalid reminder date/);
   });
 });
 
@@ -135,7 +127,7 @@ describe("reminders source emission", () => {
     assert.equal(n.content, "notes");
     assert.equal(n.client_uuid, uuidFromSeed("reminder:2026-07-24:r1:0"));
     assert.equal(n.date, date);
-    assert.equal(n.client_created_at, "2026-07-21T00:00:00.000Z");
+    assert.equal(n.client_created_at, at);
     assert.deepEqual(n.source_meta, {
       list: "Inbox",
       completed: false,
@@ -181,11 +173,14 @@ describe("reminders source emission", () => {
 
   it("truncates title to 500 chars", () => {
     const long = "x".repeat(600);
-    const n = remindersToNodes([item({ id: "long", name: long })], { at })[0]!;
+    const n = remindersToNodes([item({ id: "long", name: long })], {
+      at,
+      date: "2026-07-24",
+    })[0]!;
     assert.equal(n.title!.length, 500);
   });
 
-  it("falls back client_created_at to sample tick when dates missing", () => {
+  it("uses the shared sample tick for client_created_at", () => {
     const n = remindersToNodes(
       [
         item({
@@ -195,7 +190,7 @@ describe("reminders source emission", () => {
           modificationDate: null,
         }),
       ],
-      { at },
+      { at, date: "2026-07-24" },
     )[0]!;
     assert.equal(n.client_created_at, at);
   });

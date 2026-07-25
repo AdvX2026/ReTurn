@@ -8,9 +8,8 @@ import {
   decodeClaudeProjectDir,
   extractTimestamp,
   gapSplit,
-  localDayStartMs,
-  todayLocal,
 } from "./agents.js";
+import { createSampleContext } from "./source.js";
 
 const tmpDirs: string[] = [];
 
@@ -112,7 +111,10 @@ describe("collectAgentIntervals", () => {
 
     // Local day for fixed "now" — build timestamps on that local calendar day.
     const now = new Date(2026, 6, 24, 18, 0, 0); // 2026-07-24 18:00 local
-    const day = todayLocal(now);
+    const ctx = createSampleContext({
+      now,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    });
     // 09:00 and 09:10 local → one cluster; 14:00 local → second cluster (gap)
     const tMorning1 = new Date(2026, 6, 24, 9, 0, 0).toISOString();
     const tMorning2 = new Date(2026, 6, 24, 9, 10, 0).toISOString();
@@ -166,13 +168,14 @@ describe("collectAgentIntervals", () => {
         timestamp: new Date(2026, 6, 23, 12, 0, 0).toISOString(),
       },
     ]);
-    const yesterdayMs = localDayStartMs(day) - 60_000;
+    const yesterdayMs = Date.parse(ctx.dayStart) - 60_000;
     utimesSync(stale, new Date(yesterdayMs), new Date(yesterdayMs));
 
     const intervals = await collectAgentIntervals({
       roots: { claude: claudeRoot, codex: codexRoot },
       now,
-      day,
+      dayStartMs: Date.parse(ctx.dayStart),
+      dayEndMs: Date.parse(ctx.dayEnd),
       gapMs: 15 * 60_000,
     });
 
@@ -205,12 +208,19 @@ describe("collectAgentIntervals", () => {
   });
 
   it("missing roots yield empty list", async () => {
+    const now = new Date(2026, 6, 24, 12, 0, 0);
+    const ctx = createSampleContext({
+      now,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    });
     const intervals = await collectAgentIntervals({
       roots: {
         claude: join(tmp(), "nope-claude"),
         codex: join(tmp(), "nope-codex"),
       },
-      now: new Date(2026, 6, 24, 12, 0, 0),
+      now,
+      dayStartMs: Date.parse(ctx.dayStart),
+      dayEndMs: Date.parse(ctx.dayEnd),
     });
     assert.deepEqual(intervals, []);
   });

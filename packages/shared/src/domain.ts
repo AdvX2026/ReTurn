@@ -10,12 +10,14 @@ export const NodeKind = z.enum([
   "tab_sample",
   "agent_session",
   "git_commit",
+  "reminder",
+  "vscode_recent",
+  "browse_history",
   "health_daily",
   "snapshot",
   "todo_check",
   "idea",
   "image",
-  "reminder",
 ]);
 export type NodeKind = z.infer<typeof NodeKind>;
 
