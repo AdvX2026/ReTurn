@@ -41,3 +41,30 @@ See root `.env.example`. Keys stay on the Pi — never shipped to clients.
 - **`HEALTH_TOKEN`**: required for health writes. Empty / `change-me-health-token` disables the route (503).
 - **`API_TOKEN`** (optional): when set, all non-ping/health `/api/*` need the same header.
 - **`CORS_ORIGINS`** (optional): comma allowlist; empty reflects origin (dev).
+
+## Development data
+
+The development CLI operates on `$DATA_DIR/return.db` by default. Pass
+`--db /absolute/path/to/return.db` to target another database. Stop the server
+before clearing a database.
+
+```bash
+# Generate 14 random days ending today. The target database must be empty.
+pnpm --filter @return/server data:mock
+
+# Generate a different range.
+pnpm --filter @return/server data:mock -- --days 30 --end 2026-07-25
+
+# Show table counts, recent days, and the latest nodes.
+pnpm --filter @return/server data:inspect
+pnpm --filter @return/server data:inspect -- --date 2026-07-25 --kind idea
+pnpm --filter @return/server data:inspect -- --json
+
+# Clear SQLite business data and derived indexes. The explicit confirmation is required.
+pnpm --filter @return/server data:clear -- --confirm
+```
+
+`data:clear` preserves the database file, schema, and raw files under `data/audio/`.
+It prints the resolved database path before reporting its result.
+`data:mock` refuses to mix generated records into a non-empty database; inspect or
+clear the target first when you want a fresh random dataset.

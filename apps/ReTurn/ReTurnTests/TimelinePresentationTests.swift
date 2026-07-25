@@ -3,7 +3,69 @@ import Foundation
 import Testing
 @testable import ReTurn
 
+@MainActor
 struct TimelinePresentationTests {
+    @Test func timelineChromeHidesOnlyAfterMeaningfulDownwardTravel() {
+        let tracker = TimelineChromeScrollTracker()
+        tracker.setScrolling(true)
+
+        #expect(tracker.update(offset: 0, isChromeVisible: true) == nil)
+        #expect(tracker.update(offset: 12, isChromeVisible: true) == nil)
+        #expect(tracker.update(offset: 23, isChromeVisible: true) == nil)
+        #expect(tracker.update(offset: 24, isChromeVisible: true) == false)
+    }
+
+    @Test func timelineChromeRevealsSoonerWhenScrollingUp() {
+        let tracker = TimelineChromeScrollTracker()
+        tracker.setScrolling(true)
+
+        _ = tracker.update(offset: 0, isChromeVisible: true)
+        _ = tracker.update(offset: 24, isChromeVisible: true)
+
+        #expect(tracker.update(offset: 18, isChromeVisible: false) == nil)
+        #expect(tracker.update(offset: 12, isChromeVisible: false) == true)
+    }
+
+    @Test func timelineChromeDirectionReversalResetsItsTravelAnchor() {
+        let tracker = TimelineChromeScrollTracker()
+        tracker.setScrolling(true)
+
+        _ = tracker.update(offset: 0, isChromeVisible: true)
+        #expect(tracker.update(offset: 18, isChromeVisible: true) == nil)
+        #expect(tracker.update(offset: 10, isChromeVisible: true) == nil)
+        #expect(tracker.update(offset: 33, isChromeVisible: true) == nil)
+        #expect(tracker.update(offset: 34, isChromeVisible: true) == false)
+    }
+
+    @Test func timelineChromeAlwaysRevealsAtTheTop() {
+        let tracker = TimelineChromeScrollTracker()
+        tracker.setScrolling(true)
+
+        #expect(tracker.update(offset: 10, isChromeVisible: false) == nil)
+        #expect(tracker.update(offset: 8, isChromeVisible: false) == true)
+    }
+
+    @Test func timelineChromeIgnoresLayoutOffsetsWhileIdle() {
+        let tracker = TimelineChromeScrollTracker()
+
+        #expect(tracker.update(offset: 120, isChromeVisible: true) == nil)
+    }
+
+    @Test func timelineChromeResetsMotionBetweenScrollPhases() {
+        let tracker = TimelineChromeScrollTracker()
+        tracker.setScrolling(true)
+
+        _ = tracker.update(offset: 0, isChromeVisible: true)
+        #expect(tracker.update(offset: 20, isChromeVisible: true) == nil)
+
+        tracker.setScrolling(false)
+        #expect(tracker.update(offset: 80, isChromeVisible: true) == nil)
+
+        tracker.setScrolling(true)
+        #expect(tracker.update(offset: 80, isChromeVisible: true) == nil)
+        #expect(tracker.update(offset: 84, isChromeVisible: true) == nil)
+    }
+
     @Test func mapsContractKindsToTimelinePresentation() throws {
         let point = try #require(
             TimelineDisplayItem(
@@ -35,6 +97,36 @@ struct TimelinePresentationTests {
         #expect(point.presentation == .point)
         #expect(span.presentation == .span)
         #expect(major.presentation == .major)
+    }
+
+    @Test func preservesServerIdentityAndMapsDerivedKindSymbols() throws {
+        let cluster = try #require(
+            TimelineDisplayItem(
+                segment: TimelineSegment(
+                    id: "cluster-segment-id",
+                    kind: .cluster,
+                    start: "2026-07-24T09:00:00Z",
+                    end: "2026-07-24T10:00:00Z",
+                    label: "Cluster"
+                )
+            )
+        )
+        let briefing = try #require(
+            TimelineDisplayItem(
+                segment: TimelineSegment(
+                    id: "briefing-segment-id",
+                    kind: .briefing,
+                    start: "2026-07-24T08:00:00Z",
+                    end: "2026-07-24T08:00:00Z",
+                    label: "Daily Briefing"
+                )
+            )
+        )
+
+        #expect(cluster.id == "cluster-segment-id")
+        #expect(cluster.symbolName == "square.stack.3d.up.fill")
+        #expect(briefing.id == "briefing-segment-id")
+        #expect(briefing.symbolName == "sparkles")
     }
 
     @Test func acceptsExplicitAmbientAndClusterProjection() throws {
@@ -149,6 +241,18 @@ struct TimelinePresentationTests {
         #expect(!ambientFeed.isUserInput)
         #expect(!savedNote.isUserInput)
         #expect(!generatedIdea.isUserInput)
+
+        let browsePoint = try #require(
+            TimelineDisplayItem(
+                segment: segment(
+                    kind: .feed,
+                    start: "2026-07-24T14:00:00Z",
+                    end: "2026-07-24T14:00:00Z",
+                    category: "browse_history"
+                )
+            )
+        )
+        #expect(browsePoint.presentation == .point)
     }
 
     @Test func dailyBriefingDoesNotChangeRepresentedEventCount() throws {

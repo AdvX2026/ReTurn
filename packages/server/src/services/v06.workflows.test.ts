@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
 import { parseMeetingNotesResult } from "../ai/meeting-notes.js";
 import {
+  dismissTodo,
   insertCard,
   insertMessage,
   insertNode,
   insertTask,
+  insertTodo,
   listCards,
   listMessages,
   listNodesByDate,
@@ -69,6 +71,27 @@ describe("v0.6 chat / cards / tasks / resume / timeline range", () => {
     assert.ok(msgs.messages.length >= 2);
     const cards = listCards(db, { direction: "future" });
     assert.ok(cards.cards.some((c) => c.type === "idea"));
+  });
+
+  it("future todo cards only return suggestions still actionable on the Pi", () => {
+    const { node } = insertNode(db, {
+      client_uuid: crypto.randomUUID(),
+      kind: "text",
+      content: "seed",
+      date: todayDate(),
+    });
+    const keep = insertTodo(db, { day_id: node.day_id, text: "Keep" });
+    const hide = insertTodo(db, { day_id: node.day_id, text: "Hide" });
+    dismissTodo(db, hide.id);
+    insertCard(db, {
+      type: "todo_suggestion",
+      date: todayDate(),
+      content: { todos: ["Keep", "Hide"], todo_ids: [keep.id, hide.id] },
+    });
+
+    const card = listCards(db, { direction: "future" }).cards[0]!;
+    assert.deepEqual(card.content.todos, ["Keep"]);
+    assert.deepEqual(card.content.todo_ids, [keep.id]);
   });
 
   it("chat retrieval returns jump targets", async () => {
@@ -356,6 +379,84 @@ describe("v0.6 chat / cards / tasks / resume / timeline range", () => {
     assert.ok(cluster2);
     assert.equal(cluster2!.id, idBefore, "cluster id stable across membership growth");
     assert.ok((cluster2!.child_count ?? 0) > (cluster!.child_count ?? 0));
+  });
+
+  it("timeline projects sampler context with thick meta", () => {
+    insertNode(db, {
+      client_uuid: crypto.randomUUID(),
+      kind: "browse_history",
+      title: "ReTurn PRD",
+      content: "https://example.com/prd",
+      source_meta: {
+        url: "https://example.com/prd",
+        title: "ReTurn PRD",
+        browser: "safari",
+        visited_at: "2026-07-24T10:15:00.000Z",
+      },
+      date: "2026-07-24",
+    });
+    insertNode(db, {
+      client_uuid: crypto.randomUUID(),
+      kind: "agent_session",
+      title: "/Users/teethe/Developer/return",
+      content: "claude return 42min",
+      source_meta: {
+        provider: "claude",
+        project: "/Users/teethe/Developer/return",
+        start: "2026-07-24T09:00:00.000Z",
+        end: "2026-07-24T09:42:00.000Z",
+        duration_min: 42,
+        session_id: "sess-1",
+        open: false,
+      },
+      date: "2026-07-24",
+    });
+    insertNode(db, {
+      client_uuid: crypto.randomUUID(),
+      kind: "app_sample",
+      title: "Safari",
+      content: "Safari",
+      source_meta: {
+        app: "Safari",
+        bundle_id: "com.apple.Safari",
+        sampled_at: "2026-07-24T11:00:00.000Z",
+      },
+      date: "2026-07-24",
+    });
+    insertNode(db, {
+      client_uuid: crypto.randomUUID(),
+      kind: "git_commit",
+      title: "thicken timeline projection",
+      source_meta: {
+        repo: "/Users/teethe/Developer/return",
+        sha: "abc1234",
+        committed_at: "2026-07-24T12:00:00.000Z",
+      },
+      date: "2026-07-24",
+    });
+
+    const tl = buildTimeline(db, "2026-07-24");
+    const browse = tl.segments.find((s) => s.category === "browse_history");
+    assert.ok(browse);
+    assert.equal(browse!.label, "ReTurn PRD");
+    assert.equal((browse!.meta as { url?: string }).url, "https://example.com/prd");
+    assert.ok(browse!.node_id);
+
+    const agent = tl.segments.find((s) => s.kind === "agent");
+    assert.ok(agent);
+    assert.match(agent!.label, /claude/i);
+    assert.match(agent!.label, /return/i);
+    assert.equal((agent!.meta as { provider?: string }).provider, "claude");
+    assert.ok(agent!.node_id);
+
+    const app = tl.segments.find((s) => s.kind === "app" && s.label === "Safari");
+    assert.ok(app);
+    assert.equal(app!.category, "browser");
+    assert.equal((app!.meta as { sample_count?: number }).sample_count, 1);
+
+    const git = tl.segments.find((s) => s.category === "git_commit");
+    assert.ok(git);
+    assert.match(git!.label, /thicken timeline projection/);
   });
 
   it("timeline rejects ranges over 31 days", () => {

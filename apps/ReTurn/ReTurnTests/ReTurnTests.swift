@@ -25,4 +25,61 @@ struct ReTurnTests {
         #expect(ReTurnDesign.Layout.mascotWidth(in: 300) == 150)
         #expect(ReTurnDesign.Layout.mascotWidth(in: 1_024) == 195)
     }
+
+    @Test func afterPreviewCoversEveryAfterCardVariant() {
+        #expect(
+            AfterPreviewData.todoSuggestion.todos.count
+                == AfterPreviewData.todoSuggestion.todoIds.count
+        )
+        #expect(AfterPreviewData.health.sleepMinutes != nil)
+        #expect(AfterPreviewData.health.steps != nil)
+        #expect(AfterPreviewData.ideas.map(\.provenance) == [.user, .auto])
+    }
+
+    @MainActor
+    @Test func todoSuggestionsRequireStableIDsBeforeAcceptance() {
+        let card = TodoSuggestionCard(
+            content: TodoSuggestionCardContent(
+                todos: ["Has ID", "Missing ID", "Empty ID"],
+                todoIds: ["todo-1", ""]
+            )
+        )
+
+        #expect(card.todoID(at: 0) == "todo-1")
+        #expect(card.todoID(at: 1) == nil)
+        #expect(card.todoID(at: 2) == nil)
+    }
+
+    @MainActor
+    @Test func cancellingAnIdleVoiceRecorderIsIdempotent() {
+        let recorder = VoiceRecorder()
+
+        recorder.cancel()
+        recorder.cancel()
+
+        #expect(recorder.isRecording == false)
+    }
+
+    #if os(iOS)
+    @Test func nowPreviewHighlightsOneStatAtATime() {
+        #expect(
+            NowPreviewData.demoLineup.map(\.profession)
+                == MascotProfession.allCases
+        )
+        #expect(
+            NowPreviewData.demoLineup.map(\.highlightedStat)
+                == ["intake", "focus", "output", "continuity", "energy"]
+        )
+        #expect(
+            NowPreviewData.demoLineup.map(\.stats)
+                == [
+                    Stats(intake: 95, focus: 10, output: 10, continuity: 10, energy: 55),
+                    Stats(intake: 10, focus: 95, output: 10, continuity: 10, energy: 55),
+                    Stats(intake: 10, focus: 10, output: 95, continuity: 10, energy: 55),
+                    Stats(intake: 10, focus: 10, output: 10, continuity: 95, energy: 55),
+                    Stats(intake: 10, focus: 10, output: 10, continuity: 10, energy: 95),
+                ]
+        )
+    }
+    #endif
 }

@@ -23,26 +23,27 @@ final class ReTurnUITests: XCTestCase {
     }
 
     @MainActor
-    func testComposerWalkerAppearsWhileTyping() throws {
+    func testAfterPageCanBeOpened() throws {
         let app = XCUIApplication()
         app.launch()
 
-        let field = app.textFields["Ask Return Anything"]
-        XCTAssertTrue(field.waitForExistence(timeout: 5))
-        let walker = app.descendants(matching: .any)["ComposerWalker"]
-        XCTAssertFalse(walker.exists)
+        let afterButton = app.buttons["After"]
+        XCTAssertTrue(afterButton.waitForExistence(timeout: 2))
+        afterButton.tap()
 
-        field.tap()
-        XCTAssertTrue(walker.waitForExistence(timeout: 3))
-        // Keep a few frames of the pacing as visual evidence.
-        for index in 0..<3 {
-            if index > 0 { sleep(1) }
-            let frame = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-            frame.name = "ComposerWalker-\(index)"
-            frame.lifetime = .keepAlways
-            add(frame)
-        }
-        XCTAssertTrue(walker.exists)
+        let afterPage = app.descendants(matching: .any)["after.page"]
+        XCTAssertTrue(afterPage.waitForExistence(timeout: 2))
+    }
+
+    @MainActor
+    func testNowMascotUsesNativeButton() throws {
+        let app = XCUIApplication()
+        app.launch()
+
+        let mascot = app.buttons["NowMascot"]
+        XCTAssertTrue(mascot.waitForExistence(timeout: 2))
+        XCTAssertTrue(mascot.isHittable)
+        mascot.tap()
     }
 
     /// Launches once per emote kind with MASCOT_EMOTE pinning the idle
