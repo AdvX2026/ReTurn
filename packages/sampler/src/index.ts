@@ -22,7 +22,10 @@ let cadence: CadenceMode = "active";
 let sampleTimer: ReturnType<typeof setInterval> | null = null;
 
 function currentIntervalMin(): number {
-  return cadence === "night" ? config.sampleIntervalNightMin : config.sampleIntervalMin;
+  const min =
+    cadence === "night" ? config.sampleIntervalNightMin : config.sampleIntervalMin;
+  // Floor at 1 minute so a misconfigured env value cannot hammer sources.
+  return Math.max(1, min);
 }
 
 function applyCadence(next: CadenceMode | null | undefined): void {
@@ -117,11 +120,17 @@ async function main(): Promise<void> {
   // Opportunistic flush every minute when queue non-empty
   setInterval(() => {
     if (outbox.size() === 0) return;
-    void flushOutbox(outbox).then((r) => {
-      piOnline = r.online;
-      lastError = r.error;
-      applyCadence(r.cadence);
-    });
+    flushOutbox(outbox)
+      .then((r) => {
+        piOnline = r.online;
+        lastError = r.error;
+        applyCadence(r.cadence);
+      })
+      .catch((err) => {
+        // Never let a background flush reject unhandled — that kills the process.
+        lastError = err instanceof Error ? err.message : String(err);
+        console.error("[sampler] flush failed:", lastError);
+      });
   }, 60_000);
 
   const stop = () => {
