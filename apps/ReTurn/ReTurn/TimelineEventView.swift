@@ -1,4 +1,3 @@
-#if os(iOS)
 import SwiftUI
 
 struct TimelineEventView: View {
@@ -89,4 +88,3 @@ struct TimelineEventView: View {
         onOpenInput(item)
     }
 }
-#endif

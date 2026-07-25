@@ -1,4 +1,3 @@
-#if os(iOS)
 import SwiftUI
 
 struct TimelineEventCard: View {
@@ -60,4 +59,3 @@ struct TimelineEventCard: View {
         )
     }
 }
-#endif

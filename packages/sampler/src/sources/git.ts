@@ -5,7 +5,7 @@
  * with deterministic client_uuid. All discovery / spawn / dedupe lives here.
  */
 import type { NodeInput } from "@return/shared";
-import { type GitCommit, scanTodayCommits } from "../collect-git.js";
+import { type GitCommit, scanCommits } from "../collect-git.js";
 import { config } from "../config.js";
 import {
   type KeyDedupe,
@@ -13,7 +13,6 @@ import {
   type SampleSource,
   type SourceResult,
   createKeyDedupe,
-  todayLocal,
   uuidFromSeed,
 } from "../source.js";
 
@@ -26,6 +25,7 @@ export function resetSeenCommitShas(): void {
 
 export function commitsToNodes(
   commits: GitCommit[],
+  day: string,
   dedupe: KeyDedupe = seen,
 ): NodeInput[] {
   const nodes: NodeInput[] = [];
@@ -46,8 +46,7 @@ export function commitsToNodes(
         deletions: c.deletions,
       },
       client_created_at: c.committedAt,
-      // Bucket by author time so cross-midnight commits land on the right day.
-      date: todayLocal(new Date(c.committedAt)),
+      date: day,
     });
   }
   return nodes;
@@ -55,11 +54,12 @@ export function commitsToNodes(
 
 export const gitSource: SampleSource = {
   id: "git",
-  async sample(_ctx: SampleContext): Promise<SourceResult> {
-    const commits = await scanTodayCommits(config.gitScanDirs).catch(
-      () => [] as GitCommit[],
-    );
-    const nodes = commitsToNodes(commits);
+  async sample(ctx: SampleContext): Promise<SourceResult> {
+    const commits = await scanCommits(config.gitScanDirs, {
+      start: ctx.dayStart,
+      end: ctx.dayEnd,
+    });
+    const nodes = commitsToNodes(commits, ctx.day);
     return {
       nodes,
       stats: {

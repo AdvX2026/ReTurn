@@ -1,4 +1,3 @@
-#if os(iOS)
 import SwiftUI
 
 struct TimelineDailyBriefingView: View {
@@ -36,4 +35,3 @@ struct TimelineDailyBriefingView: View {
         .accessibilityValue(briefing.accessibilityValue)
     }
 }
-#endif

@@ -75,12 +75,6 @@ export class MeetingTaskRunner implements MeetingTaskDispatcher {
     }
     this.work = new Promise<void>((resolve) => setTimeout(resolve, 0))
       .then(() => this.drain())
-      .catch((err) => {
-        console.error(
-          "[meeting-task] runner failed:",
-          err instanceof Error ? err.message : err,
-        );
-      })
       .finally(() => {
         this.work = null;
         if (this.rerun && !this.closing) {
@@ -174,50 +168,42 @@ export class MeetingTaskRunner implements MeetingTaskDispatcher {
     reason: string,
     date = todayDate(),
   ): void {
-    try {
-      this.db.transaction(() => {
-        if (getTask(this.db, task.id)?.status !== "running") return;
-        const node = rawText
-          ? insertNode(this.db, {
-              client_uuid: task.id,
-              kind: "text",
-              title: `会议纪要原文: ${rawText.slice(0, 40).replace(/\s+/g, " ")}`,
-              content: rawText,
-              device_id: deviceId,
-              date,
-              source_meta: {
-                source: "task",
-                task_id: task.id,
-                weight: "high",
-                processed: false,
-                degraded: true,
-              },
-            }).node
-          : null;
-        const agent = insertMessage(this.db, {
-          role: "agent",
-          content: rawText
-            ? "会议纪要自动整理失败；原文已保存，但未标记为已整理。"
-            : "会议纪要任务数据无效，无法整理。",
-          intent: null,
-          task_id: task.id,
-          meta: {
-            phase: "failed",
-            ...(node ? { node_id: node.id } : {}),
-            reason,
-          },
-        });
-        updateTask(this.db, task.id, {
-          status: "failed",
-          result_message_id: agent.id,
-          finished_at: nowIso(),
-        });
-      })();
-    } catch (err) {
-      console.error(
-        `[meeting-task] ${task.id} failure state could not be persisted:`,
-        err instanceof Error ? err.message : err,
-      );
-    }
+    this.db.transaction(() => {
+      if (getTask(this.db, task.id)?.status !== "running") return;
+      const node = rawText
+        ? insertNode(this.db, {
+            client_uuid: task.id,
+            kind: "text",
+            title: `会议纪要原文: ${rawText.slice(0, 40).replace(/\s+/g, " ")}`,
+            content: rawText,
+            device_id: deviceId,
+            date,
+            source_meta: {
+              source: "task",
+              task_id: task.id,
+              weight: "high",
+              processed: false,
+            },
+          }).node
+        : null;
+      const agent = insertMessage(this.db, {
+        role: "agent",
+        content: rawText
+          ? "会议纪要自动整理失败；原文已保存，但未标记为已整理。"
+          : "会议纪要任务数据无效，无法整理。",
+        intent: null,
+        task_id: task.id,
+        meta: {
+          phase: "failed",
+          ...(node ? { node_id: node.id } : {}),
+          reason,
+        },
+      });
+      updateTask(this.db, task.id, {
+        status: "failed",
+        result_message_id: agent.id,
+        finished_at: nowIso(),
+      });
+    })();
   }
 }

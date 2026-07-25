@@ -1,4 +1,3 @@
-#if os(iOS)
 import Foundation
 
 struct TimelineDay: Identifiable, Equatable {
@@ -82,4 +81,3 @@ struct TimelineDay: Identifiable, Equatable {
         return calendar.startOfDay(for: date)
     }
 }
-#endif

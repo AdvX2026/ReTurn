@@ -40,3 +40,4 @@ GitHub Actions: `.github/workflows/ci.yml` on PR/push to `main`.
 - Product: `docs/PRD.md`
 - Server API: `packages/server/README.md`
 - Sampler: `packages/sampler/README.md`
+- Orange Pi installation and operations: `docs/pi-deployment.md`

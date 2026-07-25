@@ -1,4 +1,3 @@
-#if os(iOS)
 import Foundation
 
 struct TimelineDailyBriefing: Identifiable, Equatable {
@@ -10,4 +9,3 @@ struct TimelineDailyBriefing: Identifiable, Equatable {
         "\(stateLabel). \(summary)"
     }
 }
-#endif

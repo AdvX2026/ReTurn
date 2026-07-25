@@ -81,13 +81,8 @@ export interface DeviceRow {
 
 // ── mappers ──────────────────────────────────────────────
 
-function parseJson<T>(raw: string | null, fallback: T): T {
-  if (!raw) return fallback;
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
+function parseJson<T>(raw: string): T {
+  return JSON.parse(raw) as T;
 }
 
 export function nodeToRecord(row: NodeRow, date: string): NodeRecord {
@@ -98,7 +93,9 @@ export function nodeToRecord(row: NodeRow, date: string): NodeRecord {
     kind: row.kind as NodeKind,
     title: row.title,
     content: row.content,
-    source_meta: parseJson<Record<string, unknown> | null>(row.source_meta, null),
+    source_meta: row.source_meta
+      ? parseJson<Record<string, unknown>>(row.source_meta)
+      : null,
     client_uuid: row.client_uuid,
     created_at: row.created_at,
     date,
@@ -106,7 +103,7 @@ export function nodeToRecord(row: NodeRow, date: string): NodeRecord {
 }
 
 export function todoToRecord(row: TodoRow): TodoRecord {
-  const status = (row.status || "suggested") as TodoStatus;
+  const status = row.status as TodoStatus;
   return {
     id: row.id,
     day_id: row.day_id,
@@ -121,11 +118,11 @@ export function todoToRecord(row: TodoRow): TodoRecord {
 }
 
 export function dayStats(row: DayRow): Stats | null {
-  return parseJson<Stats | null>(row.stats_json, null);
+  return row.stats_json ? parseJson<Stats>(row.stats_json) : null;
 }
 
 export function dayReviewPoints(row: DayRow): ReviewPoint[] {
-  return parseJson<ReviewPoint[]>(row.review_points_json, []);
+  return row.review_points_json ? parseJson<ReviewPoint[]>(row.review_points_json) : [];
 }
 
 // ── devices ──────────────────────────────────────────────
@@ -636,7 +633,7 @@ function messageToRecord(row: MessageRow): MessageRecord {
     intent: (row.intent as ChatIntent | null) ?? null,
     task_id: row.task_id,
     created_at: row.created_at,
-    meta: parseJson<Record<string, unknown> | null>(row.meta_json, null),
+    meta: row.meta_json ? parseJson<Record<string, unknown>>(row.meta_json) : null,
   };
 }
 
@@ -739,7 +736,7 @@ function taskToRecord(row: TaskRow): TaskRecord {
     id: row.id,
     type: row.type as TaskType,
     status: row.status as TaskStatus,
-    input: parseJson<Record<string, unknown>>(row.input_json, {}),
+    input: parseJson<Record<string, unknown>>(row.input_json),
     result_message_id: row.result_message_id,
     created_at: row.created_at,
     finished_at: row.finished_at,
@@ -875,7 +872,7 @@ function cardToRecord(row: CardRow): CardRecord {
     id: row.id,
     type: row.type as CardType,
     date: row.date,
-    content: parseJson<Record<string, unknown>>(row.content_json, {}),
+    content: parseJson<Record<string, unknown>>(row.content_json),
     created_at: row.created_at,
   };
 }

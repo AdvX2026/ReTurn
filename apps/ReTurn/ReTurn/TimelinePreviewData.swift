@@ -1,4 +1,3 @@
-#if os(iOS)
 import Foundation
 
 enum TimelinePreviewData {
@@ -143,4 +142,3 @@ enum TimelinePreviewData {
         ),
     ]
 }
-#endif

@@ -1,4 +1,3 @@
-#if os(iOS)
 import SwiftUI
 
 struct TimelinePressableButtonStyle: ButtonStyle {
@@ -24,4 +23,3 @@ struct TimelinePressableButtonStyle: ButtonStyle {
             )
     }
 }
-#endif

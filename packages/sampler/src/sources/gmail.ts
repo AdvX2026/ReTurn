@@ -1,0 +1,93 @@
+/**
+ * Gmail SampleSource.
+ *
+ * Fetches today's received + sent mail (collect-gmail.ts), maps to email nodes
+ * with deterministic client_uuid. All discovery / connect / dedupe lives here;
+ * collect.ts only registers this source.
+ */
+import type { NodeInput } from "@return/shared";
+import { type EmailMessage, fetchEmails } from "../collect-gmail.js";
+import { config } from "../config.js";
+import {
+  type KeyDedupe,
+  type SampleContext,
+  type SampleSource,
+  type SourceResult,
+  createKeyDedupe,
+  uuidFromSeed,
+} from "../source.js";
+
+const seen: KeyDedupe = createKeyDedupe();
+
+/** Test helper: clear in-process email dedupe (simulates process restart). */
+export function resetSeenEmailKeys(): void {
+  seen.clear();
+}
+
+/**
+ * Stable dedupe key: direction-qualified so a self-addressed mail counts once
+ * as received (INBOX copy) and once as sent (Sent copy).
+ */
+function emailKey(m: EmailMessage): string {
+  return `${m.direction}:${m.messageId}`;
+}
+
+/** Deterministic seed → same message + direction → same client_uuid across restarts. */
+function emailSeed(m: EmailMessage): string {
+  return `gmail:${m.direction}:${m.messageId}`;
+}
+
+export function emailsToNodes(
+  emails: EmailMessage[],
+  day: string,
+  dedupe: KeyDedupe = seen,
+): NodeInput[] {
+  const nodes: NodeInput[] = [];
+  for (const m of emails) {
+    if (!dedupe.tryAdd(emailKey(m))) continue;
+    nodes.push({
+      client_uuid: uuidFromSeed(emailSeed(m)),
+      kind: "email",
+      title: m.subject || null,
+      content: m.snippet || null,
+      source_meta: {
+        direction: m.direction,
+        mailbox: m.direction === "sent" ? "SENT" : "INBOX",
+        from: m.from,
+        from_name: m.fromName,
+        to: m.to,
+        to_name: m.toName,
+        subject: m.subject,
+        received_at: m.receivedAt,
+        message_id: m.messageId,
+      },
+      client_created_at: m.receivedAt,
+      date: day,
+    });
+  }
+  return nodes;
+}
+
+export const gmailSource: SampleSource = {
+  id: "gmail",
+  async sample(ctx: SampleContext): Promise<SourceResult> {
+    if (!config.gmail) {
+      return { nodes: [], stats: { configured: 0 } };
+    }
+    const { emails, skipped, sentMailboxMissing } = await fetchEmails(config.gmail, {
+      start: ctx.dayStart,
+      end: ctx.dayEnd,
+    });
+    const nodes = emailsToNodes(emails, ctx.day);
+    const stats: Record<string, number> = {
+      configured: 1,
+      emails: emails.length,
+      received: emails.filter((e) => e.direction === "received").length,
+      sent: emails.filter((e) => e.direction === "sent").length,
+      emitted: nodes.length,
+      skipped,
+    };
+    if (sentMailboxMissing) stats.sent_mailbox_missing = 1;
+    return { nodes, stats };
+  },
+};
