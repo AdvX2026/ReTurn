@@ -2,14 +2,16 @@
 import SwiftUI
 
 /// The active Now conversation. The empty state remains the mascot hero; once
-/// an Input exists, replies become Health-style raised surfaces while the
-/// user's own text stays a compact trailing bubble.
+/// an Input exists, the transcript starts below the navigation and grows down.
+/// Replies use Health-style raised surfaces while the user's own text stays a
+/// compact trailing bubble.
 struct IOSNowConversationView: View {
     @Environment(APIEnvironment.self) private var api: APIEnvironment
     @Environment(ChatStore.self) private var chat: ChatStore
     @State private var scrollTarget: String?
 
     private static let sendingID = "chat-sending"
+    private static let bottomID = "chat-bottom"
 
     var body: some View {
         ScrollView {
@@ -23,6 +25,11 @@ struct IOSNowConversationView: View {
                     sendingSurface
                         .id(Self.sendingID)
                 }
+
+                Color.clear
+                    .frame(height: ReTurnDesign.Card.pageBottomPadding)
+                    .id(Self.bottomID)
+                    .accessibilityHidden(true)
             }
             .scrollTargetLayout()
         }
@@ -36,18 +43,13 @@ struct IOSNowConversationView: View {
             ReTurnDesign.Metrics.mainContentTopPadding,
             for: .scrollContent
         )
-        .contentMargins(
-            .bottom,
-            ReTurnDesign.Spacing.large,
-            for: .scrollContent
-        )
         .scrollIndicators(.hidden)
-        .scrollPosition(id: $scrollTarget, anchor: .bottom)
-        .defaultScrollAnchor(.bottom)
+        .scrollPosition(id: $scrollTarget)
+        .defaultScrollAnchor(.top)
         .onChange(of: latestTargetID, initial: true) { _, target in
-            guard let target else { return }
+            guard target != nil else { return }
             withAnimation(.easeOut(duration: 0.2)) {
-                scrollTarget = target
+                scrollTarget = Self.bottomID
             }
         }
         .accessibilityIdentifier("now.conversation")
