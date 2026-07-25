@@ -52,7 +52,11 @@ esac
 [ "$output_dir" != "/" ] || { echo "error: refusing to use / as output directory" >&2; exit 2; }
 [ -d /var/lib/return ] || { echo "error: /var/lib/return does not exist" >&2; exit 1; }
 
-install -d -m 0750 -o root -g return "$output_dir"
+# Only create missing dirs: never rewrite owner/mode of an existing directory
+# (e.g. --output-dir /tmp must not become root:return 0750).
+if [ ! -d "$output_dir" ]; then
+  install -d -m 0750 -o root -g return "$output_dir"
+fi
 manifest_dir=$(mktemp -d)
 archive_tmp=""
 service_was_active=0

@@ -2,6 +2,9 @@
 Description=ReTurn Orange Pi server
 Wants=network-online.target
 After=network-online.target
+# Broken config (e.g. missing required env) must fail visibly, not loop forever.
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple

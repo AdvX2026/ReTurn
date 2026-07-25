@@ -107,6 +107,17 @@ cleanup() {
 }
 
 trap cleanup 0
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+# Portable UUID: /proc is Linux-only, but --base-url supports macOS callers.
+new_uuid() {
+  if [ -r /proc/sys/kernel/random/uuid ]; then
+    cat /proc/sys/kernel/random/uuid
+  else
+    uuidgen | tr '[:upper:]' '[:lower:]'
+  fi
+}
 
 echo "==> ping"
 curl --fail --silent --show-error --connect-timeout 5 --max-time 10 \
@@ -117,7 +128,7 @@ device_payload=$(jq -nc '{name:"Pi deployment smoke",platform:"linux"}')
 device_id=$(curl_api -H 'Content-Type: application/json' \
   -d "$device_payload" "$base_url/api/devices/register" | jq -er '.device_id')
 
-test_uuid=$(cat /proc/sys/kernel/random/uuid)
+test_uuid=$(new_uuid)
 test_date=$(date +%F)
 test_title="deployment-smoke-$test_uuid"
 node_payload=$(jq -nc \
@@ -169,7 +180,7 @@ fi
 
 if [ -n "$voice_file" ]; then
   echo "==> voice upload and transcription"
-  voice_uuid=$(cat /proc/sys/kernel/random/uuid)
+  voice_uuid=$(new_uuid)
   voice_response=$(curl_api -X POST \
     -F "device_id=$device_id" \
     -F "client_uuid=$voice_uuid" \
