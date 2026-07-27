@@ -11,6 +11,7 @@
   <p>
     <img src="https://img.shields.io/badge/macOS-14%2B-111111?style=flat-square&logo=apple&logoColor=white" alt="macOS 14+">
     <img src="https://img.shields.io/badge/iOS-17%2B-111111?style=flat-square&logo=apple&logoColor=white" alt="iOS 17+">
+    <img src="https://img.shields.io/badge/Windows-Planned-0078D4?style=flat-square&logo=windows&logoColor=white" alt="Windows planned">
     <img src="https://img.shields.io/badge/SwiftUI-Native-F05138?style=flat-square&logo=swift&logoColor=white" alt="SwiftUI">
     <img src="https://img.shields.io/badge/Orange%20Pi-Home%20Server-F58220?style=flat-square" alt="Orange Pi home server">
     <img src="https://img.shields.io/badge/Hackathon-48h-5794F2?style=flat-square" alt="48 hour hackathon">
@@ -57,25 +58,25 @@ Re:Turn 的主界面不是文件夹，也不是聊天记录，而是一条以此
 - **每日 Briefing** — 将一天整理为摘要、复盘要点、建议与可解释状态，而不是给生活打一个冷冰冰的分数。
 - **高权重资料处理** — 会议纪要、文字与图片可进入异步 Task 管线，成为比自动采样更重要的上下文。
 - **真实健康信号** — iPhone 通过 HealthKit 同步睡眠与步数，用于生成克制、可解释的精力与健康建议。
-- **多设备、可离线** — 多台 Mac 与 iPhone 共享同一个 Pi 空间；短暂离线时先进入本地 outbox，恢复后幂等补传。
+- **多设备、可离线** — Mac、Windows PC 与 iPhone 共享同一个 Pi 空间；短暂离线时先进入本地 outbox，恢复后幂等补传。
 
 ## 🏠 架构
 
 ```text
-┌─ Mac · SwiftUI ─────────────────┐       ┌─ Orange Pi 3B · Debian ─────────┐
-│ UI App                          │       │ Fastify service                 │
+┌─ Apple clients ─────────────────┐       ┌─ Orange Pi 3B · Debian ─────────┐
+│ macOS / iOS · SwiftUI           │       │ Fastify service                 │
 │ Before / Now / After · Input    ├─ LAN ─▶ SQLite · workflows · ferment   │
-│                                 │       │                                 │
-│ Independent Node sampler        ├─ LAN ─▶ The only authoritative store   │
-│ metadata collection · outbox    │       │ API keys live here only         │
-└─────────────────────────────────┘       └───────────────┬─────────────────┘
-                                                         │ stateless calls
-┌─ iPhone · SwiftUI ──────────────┐                       ▼
-│ Full experience · HealthKit     ├─ LAN ─────────── LLM / STT / Vision API
+│ macOS: shared Node sampler      │       │                                 │
+│ iOS: HealthKit                  │       │ The only authoritative store   │
+└─────────────────────────────────┘       │ API keys live here only         │
+                                          └───────────────┬─────────────────┘
+┌─ Windows client · planned ──────┐                       │ stateless calls
+│ Native UI                       │                       ▼
+│ shared Node sampler             ├─ LAN ─────────── LLM / STT / Vision API
 └─────────────────────────────────┘
 ```
 
-macOS 的界面与采样器是两个独立进程：关闭窗口不会让采集消失，界面也永远不直接负责采样。采样器的本机控制面只绑定 `127.0.0.1`，不会暴露到局域网。
+桌面界面与 sampler 始终是两个独立进程：关闭窗口不会让采集消失，界面也永远不直接负责采样。Apple 与 Windows 共用 `packages/sampler` 的运行时，只在平台采集和常驻安装 adapter 上不同。采样器的本机控制面只绑定 `127.0.0.1`，不会暴露到局域网。
 
 ## 隐私边界
 
@@ -91,17 +92,18 @@ ReTurn 是 **local-first**，不是「永不联网」。当前版本会使用云
 
 | 层 | 技术 |
 | --- | --- |
-| macOS / iOS | Swift 6 · SwiftUI · URLSession async/await · HealthKit |
+| Apple client | Swift 6 · SwiftUI · URLSession async/await · HealthKit |
+| Windows client | 原生 UI，框架待单独评审 |
 | Home server | Node.js 22 · TypeScript · Fastify · `node:sqlite` |
-| Sampler | 独立 Node 进程 · launchd · AppleScript · SQLite outbox |
-| Contract | Zod schema + Swift Codable mirror |
-| UI | 原生系统组件 · SF Symbols · Swift Charts / Canvas |
+| Sampler | 共享独立 Node 进程 · SQLite outbox · 平台 source/service adapters |
+| Contract | Zod schema + 各原生客户端合同镜像 |
+| UI | 原生系统组件；Apple 使用 SF Symbols · Swift Charts / Canvas |
 
 没有 Electron、Tauri、WebView、ORM、向量数据库或第三方 UI 框架。客户端保持原生而轻，Pi 保持简单而可控。
 
 ## 当前阶段
 
-Re:Turn 是一个 **48 小时黑客松项目**，目前围绕 v0.6 产品方向快速开发。目标不是提前搭出一套庞大的平台，而是跑通一条真实、可演示的主线：
+Re:Turn 起源于一个 **48 小时黑客松项目**，当前 Apple 演示主线围绕 v0.6 方向完成；v0.7 已正式把 Windows 完整客户端纳入下一阶段。当前目标仍是先保证一条真实、可演示的 Apple 主线：
 
 1. Mac 与 iPhone 将真实数据写入家中的 Pi；
 2. 用户通过 Now 对话、检索与提交资料；
@@ -114,11 +116,12 @@ Re:Turn 是一个 **48 小时黑客松项目**，目前围绕 v0.6 产品方向�
 
 ```text
 ReTurn/
-├── apps/ReTurn/       SwiftUI macOS + iOS app
-├── packages/shared/   Zod API contract
-├── packages/server/   Orange Pi Fastify service
-├── packages/sampler/  Independent macOS sampler
-└── docs/              Product and deployment documents
+├── clients/apple/      SwiftUI macOS + iOS app
+├── clients/windows/    Planned native Windows app
+├── packages/shared/    Zod API contract
+├── packages/server/    Orange Pi Fastify service
+├── packages/sampler/   Shared cross-platform sampler runtime
+└── docs/               Product and deployment documents
 ```
 
 ## 开发文档

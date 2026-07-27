@@ -1,8 +1,8 @@
 # packages/sampler
 
 ## Role
-Independent Node process (PRD F2). Not part of Tauri UI process.
-UI closed must not stop sampling. Dev: `pnpm dev:sampler`. Prod later: launchd.
+One independent cross-platform Node process (PRD F2), shared by Apple and Windows desktop clients. It is never part of a UI process.
+UI closed must not stop sampling. Dev: `pnpm dev:sampler`. macOS uses launchd; the Windows service/Task Scheduler adapter is pending.
 
 ## Local control plane (127.0.0.1 only)
 - GET `/health` `/status` (includes `cadence` + effective `interval_min`)
@@ -29,11 +29,12 @@ UI closed must not stop sampling. Dev: `pnpm dev:sampler`. Prod later: launchd.
 - `SAMPLER_NOW` freezes the global clock for explicit replay/tests only; leave unset in production.
 - Every tick supplies `at`, `timezone`, `day`, `dayStart`, and `dayEnd`; sources must not derive their own day window.
 
-## macOS vs Windows
-- App/tabs (`sources/env.ts`, osascript): **darwin only**
-- Apple Reminders (`sources/reminders.ts`): **darwin only**
-- Agent session timeline (`agents.ts` + `sources/agents.ts`): all platforms
-- Git commits (`sources/git.ts`): all platforms (when `GIT_SCAN_DIRS` set)
+## Shared runtime vs platform adapters
+- Cadence, source orchestration, SQLite outbox, Pi upload, localhost control plane, and source contracts are shared. Do not duplicate them under `clients/apple` or `clients/windows`.
+- App/tabs (`sources/env.ts`, osascript): currently **darwin only**; add a Windows adapter rather than a second sampler.
+- Apple Reminders (`sources/reminders.ts`) and Safari history: **darwin only**.
+- Agent sessions, Git commits, Gmail, VS Code/Cursor recents, SQLite snapshot handling, and Chromium history are cross-platform; VS Code and Chromium path discovery already include `win32`.
+- `pi.ts` device platform/name defaults and Windows service installation still need platform-aware implementations before Windows production use.
 
 ## Agent providers (timeline only — no transcript content)
 - **claude**: `CLAUDE_HOME` or `~/.claude/projects/**/*.jsonl`

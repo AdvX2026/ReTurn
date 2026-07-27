@@ -29,7 +29,7 @@
 - 当前输入框使用 `.glassEffect(.regular.interactive(), in:)`。
 - 不再手工绘制高光、双角光晕、折射或模拟玻璃阴影。系统应负责按压高光、微缩、进入后台后的材质降级等行为。
 - iOS 26 以下只提供局部、简单的标准 Material fallback，不要求复刻 Liquid Glass。
-- 颜色、间距、尺寸和排版规则集中在 `apps/ReTurn/ReTurn/DesignTokens.swift`，不要在视图里散落新的 magic numbers。
+- 颜色、间距、尺寸和排版规则集中在 `clients/apple/ReTurn/DesignTokens.swift`，不要在视图里散落新的 magic numbers。
 
 ### 视觉检查与验证分工
 
@@ -65,8 +65,8 @@ PRD 原先描述过 Before / Now / After 上下滑动；用户已明确改成：
 
 主要代码：
 
-- `apps/ReTurn/ReTurn/ContentView.swift`
-- `apps/ReTurn/ReTurn/DesignTokens.swift`
+- `clients/apple/ReTurn/ContentView.swift`
+- `clients/apple/ReTurn/DesignTokens.swift`
 
 当前关键 token：
 
@@ -220,7 +220,7 @@ PRD 原先描述过 Before / Now / After 上下滑动；用户已明确改成：
 
 ```bash
 xcodebuild \
-  -project apps/ReTurn/ReTurn.xcodeproj \
+  -project clients/apple/ReTurn.xcodeproj \
   -scheme ReTurn \
   -configuration Debug \
   -destination 'generic/platform=iOS Simulator' \

@@ -1,6 +1,6 @@
 # ReTurn PRD（临时代号）
 
-> 版本：v0.6 · 2026-07-25 · 黑客松 48h 范围（Timeline 规范补充）
+> 版本：v0.7 · 2026-07-27 · 多平台客户端范围扩展
 > 一句话：一个住在你家里的第二大脑 Agent——Orange Pi 是它的身体，全天自动采集你的工作痕迹，对话即用；晚上 Save 进入夜间发酵，醒来收到昨日 briefing；在 Before / Now / After 之间左右滑动，回溯过去或看见建议。
 >
 > v0.5 相对 v0.4：UI 从 Tauri 2 + React 改为 SwiftUI 原生（macOS + iOS 单代码库）；健康数据改为 iOS App 内 HealthKit 直读上报为主，快捷指令降为备胎。
@@ -12,16 +12,18 @@
 > - **角色美术层砍掉**（状态立绘、结算画面、角色包），换品牌吉祥物；**五维属性与状态判定保留**（纯代码结算，状态降为文本标签）。
 > - **iOS 升级为与 macOS 对等的全功能端**（写接口全开放）。
 > - 后端相应扩展：`messages` / `tasks` / `cards` 三张新表 + chat / resume / cards 等新端点（见 §6.2）。功能编号自 v0.6 起重排。
+>
+> v0.7 相对 v0.6：正式将 Windows 纳入产品平台范围。Apple 与 Windows 各自拥有原生 UI App，但共用同一个独立 Node sampler runtime；平台专属采集能力以 sampler adapter 实现，不在客户端目录复制。Windows 是演示后的下一阶段完整端，UI 框架尚未选定，本版本只冻结目录与进程边界。
 
 ---
 
 ## 1. 产品概述
 
-- **形态**：Orange Pi 3B 家庭服务器（数据中枢，Node 服务 + SQLite）+ macOS 桌面端（**UI App 与常驻采样器双进程分离**，UI 用 SwiftUI）+ **iOS 端（SwiftUI，同一 Xcode 多平台工程，v0.6 起与桌面对等的全功能端）**。健康数据由 iOS App 内 HealthKit 直读上报 Pi（快捷指令备胎共存）。同一局域网内通信，客户端带离线缓冲。**平台范围就是 macOS + iOS，不做 Windows。**
+- **形态**：Orange Pi 3B 家庭服务器（数据中枢，Node 服务 + SQLite）+ Apple 原生客户端（macOS 与 iOS 共用 SwiftUI Xcode 工程）+ Windows 原生客户端。桌面 UI App 与常驻 sampler 始终双进程分离；Apple 与 Windows 共用 `packages/sampler` 的 Node runtime，仅平台采集 adapter 不同。健康数据由 iOS App 内 HealthKit 直读上报 Pi（快捷指令备胎共存）。同一局域网内通信，客户端带离线缓冲。**平台范围是 macOS + iOS + Windows；Windows 为演示后的下一阶段完整端，不属于当前 48h 演示验收。**
 - **核心概念**：一个**住在你家里的第二大脑 Agent**。它全天自动记录你在干什么（应用、标签页、Coding Agent 会话、健康），你随时通过对话使用它；界面是一条以 Now 为锚点的时间流——过去（Before）已被它整理成卡片和时间线，之后（After）是它给你的建议。
 - **节奏信号**：Save 与 Resume 不是仪式，而是你告诉系统自己工作节奏的开关。**Save**（晚间一次）= 大间隔、大休息：系统降低采集频率、跑长任务（发酵大复盘、备好次日 briefing）。**Resume**（白天随需，名称待定 Continue/Resume）= 短暂离开后回来：小复盘，告诉你刚才在干什么。
 - **目标用户**：知识工作者/学生，信息来源分散（网页、语音、灵感碎片），缺乏复盘习惯。
-- **用户模型**：**单用户、多设备**。多台 Mac + 一部 iPhone 连同一块 Pi，共享同一空间。不做多用户；sidebar 的「账号」即本空间身份展示，不做账号体系。
+- **用户模型**：**单用户、多设备**。多台 Mac、Windows PC 与 iPhone 连同一块 Pi，共享同一空间。不做多用户；sidebar 的「账号」即本空间身份展示，不做账号体系。
 - **黑客松交付目标**：48 小时内做出**假数据尽量少、可完整演示运行**的产品。
 
 ### 1.1 评委叙事（Pitch）
@@ -54,7 +56,7 @@
 
 | 编号 | 功能 | 说明 |
 |---|---|---|
-| F1 | 多端同步基座 | Pi 上 HTTP API + SQLite；设备注册、离线缓冲补传（`client_uuid` 幂等）；健康上报接口；**写接口对 macOS / iOS 全开放**，`device_id` 区分来源 |
+| F1 | 多端同步基座 | Pi 上 HTTP API + SQLite；设备注册、离线缓冲补传（`client_uuid` 幂等）；健康上报接口；**写接口对 macOS / iOS / Windows 全开放**，`device_id` 区分来源 |
 | F2 | 后台采样器 + 节奏模式 | 沿用 v0.5 独立进程采样器（osascript 采样 + Coding Agent jsonl 解析 + 主 outbox + localhost :8791 控制面）；**新增节奏模式**：每次上报时顺带从 Pi 拉取当前模式，Save 后转低频，次日固定时间（6:00）恢复 |
 | F3 | 双向流主视图 | iOS 以 Now 为锚点横向排列 Before / Now / After，顶部 label 与左右滑动位置共用 selection；Before 承载历史 Timeline 与历史 Product Card，After 承载灵感卡、todo 建议卡、健康建议卡；Now 承载对话消息、问候、吉祥物、Task 回传与待确认项（平时折叠/半隐藏，有内容时展开）。向上滑动露出 sidebar：空间身份 / 进行中 task / 设置&关于。macOS 布局另行设计 |
 | F4 | Input 与意图分诊 | Claude App 式底部输入。小模型分诊为 a.灵感 b.检索 c.提问，告知判断结果、可纠正，无法判断时交用户选择。**提问工作流是主线**：取相关节点+会话摘要塞 prompt 回答（“昨天干了什么”“刚刚在干什么”），回答落 Now。语音输入：录音 → Pi 转写 → 转写文本进分诊 |
@@ -85,10 +87,11 @@
 - 当日重复 Save 的覆盖重结算（P0 内 Save 幂等）。
 - 剪贴板监听（复制即候选节点，需用户确认收录）。
 - 断网/恢复的演示化呈现（拔网线 → 补传动画）。
+- Windows 完整客户端（演示后下一阶段）：原生 UI 覆盖 Before / Now / After、Input、Task、Save、Resume 与 Timeline；运行同一个 `@return/sampler`，补齐 Windows 前台应用采集与常驻服务 adapter。Windows UI 框架需单独评审，不在目录迁移时预设。
 
 ### P2 — 明确不做（黑客松内）
 
-- Windows、Android、平板、Web 等其他端。
+- Android、iPad 专用布局、Web 等其他端。Windows 已纳入下一阶段正式范围，但不进入当前 48h 演示验收。
 - 公网访问（Tailscale/frp）；仅局域网。真推送（APNs）——briefing 是「夜间备好、打开即见」。
 - After 侧时间线 / 计划轴。
 - 角色美术层：状态立绘、结算画面、角色包（v0.6 砍除；五维属性与状态判定保留，见 §4）。
@@ -277,7 +280,7 @@ none
 
 - `packages/shared` Zod schema；
 - server projection；
-- `apps/ReTurn/ReTurn/Models.swift` Codable 镜像；
+- `clients/apple/ReTurn/Models.swift` Codable 镜像；
 - 对应测试。
 
 #### 3.2.8 视觉与交互验收
@@ -362,7 +365,7 @@ cards(id, type /* briefing|idea|todo_suggestion|health|weekly */, date,
 ### 5.2 客户端离线缓冲
 
 - 采样器持有**主 outbox**（进程内 SQLite）：采样、Agent 会话先落本地再上报；Pi 不可达时静默积压，恢复后按序补传，靠 `client_uuid` 去重。
-- UI 进程（macOS 与 iOS 同构）持有**轻量 outbox**（本地 JSON 文件队列，重发复用同一 `client_uuid`）：可离线排队的只有落节点类写入（灵感记录、todo 勾选）；对话问答、检索、Resume、Save 依赖在线，离线时置灰并展示「未连接到空间」状态条。
+- UI 进程（macOS、iOS 与未来 Windows 端遵守同一语义）持有**轻量 outbox**（本地 JSON 文件队列，重发复用同一 `client_uuid`）：可离线排队的只有落节点类写入（灵感记录、todo 勾选）；对话问答、检索、Resume、Save 依赖在线，离线时置灰并展示「未连接到空间」状态条。
 - 读操作（流、时间线、卡片）离线时展示最后一次成功拉取的缓存。
 
 ## 6. 技术架构
@@ -370,33 +373,36 @@ cards(id, type /* briefing|idea|todo_suggestion|health|weekly */, date,
 ### 6.1 拓扑
 
 ```
-┌─ Mac（可多台，双进程分离） ─────┐        ┌────── Orange Pi 3B (Debian) ──────┐
-│ UI App (SwiftUI, macOS)        │        │  Node 服务 (Fastify)               │──▶ 云端 LLM API
-│   双向流/Input/录音/轻量outbox  ├─局域网─▶│  SQLite / 分诊与工作流编排 /        │──▶ 云端转写 API
-│ 采样器 (Node, launchd 常驻)     │  HTTP  │  发酵 / 五维属性结算                │──▶ 云端视觉 API(可选)
-│   采样/Agent会话/主 outbox      │        │  (所有 API key 只存在 Pi 上)        │
-│   ◀─ localhost 仅本机: 立即采样 │        └───────────────▲───────────────────┘
-│   （节奏模式随上报从 Pi 拉取）   │                        │
+┌─ Apple 客户端 ─────────────────┐        ┌────── Orange Pi 3B (Debian) ──────┐
+│ macOS / iOS App (SwiftUI)      │        │  Node 服务 (Fastify)               │──▶ 云端 LLM API
+│   Before/Now/After · Input     ├─局域网─▶│  SQLite / 分诊与工作流编排 /        │──▶ 云端转写 API
+│ macOS: shared Node sampler     │  HTTP  │  发酵 / 五维属性结算                │──▶ 云端视觉 API(可选)
+│   launchd · outbox · adapters  │        │  (所有 API key 只存在 Pi 上)        │
+│ iOS: HealthKit 上报             │        └───────────────▲───────────────────┘
 └────────────────────────────────┘                        │
-┌─ iPhone ───────────────────────┐                        │
-│  iOS 端 (SwiftUI, 同一工程)     ├─局域网────────────────┘
-│   对等全功能 + HealthKit 上报   │
+┌─ Windows 客户端（下一阶段） ────┐                        │
+│ Native Windows App             ├─局域网────────────────┘
+│ shared Node sampler            │
+│   Windows service · adapters   │
 └────────────────────────────────┘
+
+Desktop UI ◀── 127.0.0.1:8791 ──▶ shared sampler runtime
 ```
 
-后端全栈 TypeScript（server / sampler / shared 一种语言、一份合同）；前端 Swift/SwiftUI（macOS + iOS 单代码库）：
+server / sampler / shared 使用 TypeScript 与同一份 Zod 合同；Apple 前端使用 Swift/SwiftUI，Windows 使用独立原生客户端并消费同一 API 合同：
 
 | 层 | 选型 | 备注 |
 |---|---|---|
 | 运行时 | Node 22 LTS + tsx（开发与 Pi 上均直接跑 TS，不做构建） | 少一个 build 环节少一类演示事故 |
-| Monorepo | pnpm workspaces：`shared` / `server` / `sampler`；`apps/ReTurn` 为独立 Xcode 多平台工程（同仓、不进 pnpm workspace） | Swift 工程与后端契约改动在同一 diff 内可见 |
-| 合同 | `shared`：Zod schema（API 请求/响应 + 发酵 JSON + kind/intent/卡片枚举）是唯一事实来源；Swift 侧手写 Codable 镜像集中于 `Models.swift` | 改合同必须同步两份；REST 可 curl 调试 |
+| Monorepo | `clients/apple` 为独立 Xcode 多平台工程，`clients/windows` 为待选型的原生工程；pnpm workspaces 管理 `packages/shared` / `packages/server` / `packages/sampler` | 原生客户端与后端契约改动在同一 diff 内可见；不要给 Xcode 工程添加假的 `package.json` |
+| 合同 | `shared`：Zod schema（API 请求/响应 + 发酵 JSON + kind/intent/卡片枚举）是唯一事实来源；Apple 的手写 Codable 镜像集中于 `Models.swift`，Windows 落地后维护对应镜像 | 改合同必须同步所有已实现客户端镜像；REST 可 curl 调试 |
 | 服务端（Pi） | Fastify + fastify-type-provider-zod；`node:sqlite` + 手写 SQL + 编号迁移 | 表不多不上 ORM；systemd 常驻；LLM/转写/视觉 key 走 Pi 环境变量，**不下发客户端、不入 git** |
 | LLM 调用 | Pi 直接调用 OpenAI-compatible provider；结构化结果用 Zod 校验 | 发酵/提问用主模型；**分诊与 Resume 用廉价小模型**；语音走显式配置的 Whisper 兼容转写；截图走多模态模型；全部由 Pi 发起 |
-| 采样器 | 独立 Node 常驻进程（launchd 托管）：setInterval + execa 调 osascript；localhost 控制面用裸 `node:http`；节奏模式随上报响应从 Pi 拉取 | 与服务端同栈，outbox / schema 复用 `shared` |
-| 前端（双端） | SwiftUI 多平台工程（macOS 14 / iOS 17 基线），一份代码出双端对等功能 | URLSession async/await 直连 Pi 与采样器；无 WebView、无 JS 运行时 |
-| 状态管理 | `@Observable` store + `Task` 循环轮询（messages / cards / 采集状态；缓存、重试、离线降级）；纯 UI 状态用 `@State` | 不引路由、不上 TCA |
-| 录音 | AVAudioRecorder 录 `.m4a` → multipart 上传 `/api/voice` → 转写文本进分诊 | UI 轻量 outbox 用本地 JSON 文件队列 |
+| 采样器 | 一个独立跨平台 Node 常驻进程：共享 cadence、source orchestration、SQLite outbox、Pi upload 与裸 `node:http` localhost 控制面；macOS 由 launchd 托管，Windows 常驻方式待 adapter 落地 | 平台差异只存在于 source 与安装 adapter；不复制 sampler runtime |
+| Apple 前端 | SwiftUI 多平台工程（macOS 14 / iOS 17 基线），一份代码出双端对等功能 | URLSession async/await 直连 Pi 与采样器；无 WebView、无 JS 运行时 |
+| Windows 前端 | 原生 Windows App，目标覆盖与 Apple 客户端相同的核心体验；框架待单独评审 | 不在目录迁移阶段预设框架或引入依赖；通过同一 REST 合同与 localhost sampler 控制面通信 |
+| Apple 状态管理 | `@Observable` store + `Task` 循环轮询（messages / cards / 采集状态；缓存、重试、离线降级）；纯 UI 状态用 `@State` | 不引路由、不上 TCA；Windows 使用所选原生框架的最小状态方案 |
+| Apple 录音 | AVAudioRecorder 录 `.m4a` → multipart 上传 `/api/voice` → 转写文本进分诊 | Windows 端复用同一 multipart API；平台录音实现待框架选定 |
 | 健康 | HealthKit（仅 iOS target，`#if os(iOS)` 圈住）：进前台同步昨夜睡眠 + 当日步数 | 不做后台推送（BGTask 不碰） |
 | 组件/动效 | 系统组件 + SF Symbols；动效主战场是**双向流的滑动手感与 Now 展开/折叠**；吉祥物轻动效 | 零 UI 依赖 |
 | 图表 | 时间线（F7）用 Canvas 自绘；周/月视图（P1）用 Swift Charts | 零第三方图表依赖 |
@@ -431,7 +437,7 @@ GET  /api/usage?from=&to=           → provider 调用次数、成功/失败与
 GET  /api/ping                      → outbox 探活
 ```
 
-写接口对 macOS / iOS 全开放；采样器额外在上报响应中获得当前节奏模式。合同扩展与 Swift `Models.swift` 镜像同 diff 更新，扩展完成后重新冻结。
+写接口对 macOS / iOS / Windows 全开放；采样器额外在上报响应中获得当前节奏模式。合同扩展与 Swift `Models.swift` 镜像同 diff 更新；Windows 客户端落地后也必须维护对应合同镜像，扩展完成后重新冻结。
 
 ### 6.3 Agent 工作流与发酵 pipeline
 
@@ -464,6 +470,13 @@ v0.5 已完成：shared 合同（v0.5 面）、server（路由/SQLite/发酵/统
 4. **P0-B 工作流**：灵感、检索定位、Task（纪要文本）、健康建议卡；视觉 API 视时间。
 5. **收尾**：sampler 节奏模式联调、iOS 真机、属性公式与状态阈值调参、全队真实使用攒演示数据、排练、录备用视频。周/月视图等 P1 项有余力再进。
 
+v0.7 Windows 下一阶段按以下顺序推进：
+
+1. **仓库边界**：Apple 工程迁至 `clients/apple`，建立 `clients/windows`，删除旧 Tauri probe；共享 sampler 保持单一 package。
+2. **Windows 技术选型**：单独评审原生 UI 框架、安装与升级方式、合同镜像策略，不在目录迁移中预设。
+3. **Sampler adapters**：补齐 Windows 设备平台注册、默认数据目录、前台应用采集和常驻服务；复用现有 outbox、Pi upload、Agent/Git/Gmail/VS Code/Chromium sources。
+4. **功能对等**：按 Before / Now / After、Input、Task、Save/Resume、Timeline 顺序落地客户端；HealthKit 与 Apple Reminders 不做伪兼容。
+
 ## 9. 待定项与风险（需持续讨论）
 
 1. **iOS 端签名/权限风险**：免费开发者账号 profile 仅 7 天有效——演示前一天必须重新签名装机；本地网络权限被误拒会导致 App 全盲。签名受阻兜底是模拟器演示。
@@ -484,3 +497,5 @@ v0.5 已完成：shared 合同（v0.5 面）、server（路由/SQLite/发酵/统
 16. **视觉 API 链路风险**：多模态 provider 失败时接口明确报错，不创建伪造的提取结果；演示前用真实截图闭环验证模型能力与超时。
 17. **吉祥物形象未定**：本体形象（形态/性格）需尽早进美术排期——它是 Now 区的门面；表情图与微动效都要等形象定稿才能动工，是前端主线（§8 第 3 步）的前置依赖。
 18. **提醒事项全量回采的隐私敏感度**：已拍板回采全部提醒列表（采样的定位就是收集），其中含纯生活项（买菜/吃药等），会进入 Pi 并可能随发酵摘要送云端 LLM。叙事与 §9.7 一致：原始数据只在家里，推理是无状态调用；发酵 prompt 中提醒事项只用于 todo 偏好校准与环境上下文，briefing 文案不主动展开个人生活条目。
+19. **Windows UI 技术栈未选定**：不得因为仓库已经建立 `clients/windows` 就默认采用 Tauri、WinUI 或其他框架；先用最小 spike 验证原生体验、部署体积、localhost 通信与团队开发成本，再做架构决定。
+20. **Windows sampler 权限与常驻方式**：前台应用采集、浏览器数据目录与 Windows Service/Task Scheduler 的权限模型尚未实机验证。共享 runtime 不分叉；权限失败必须按 source 显式上报，不能拖垮其他采集源。

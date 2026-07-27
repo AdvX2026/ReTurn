@@ -21,7 +21,7 @@
 - 检索 UI（载体是未落地的 `apps/ReturnApp`，见 §13-a；本期交付 API + curl 可演示）。
 - 相关节点推荐、检索增强发酵连边（Phase 3 方向，仅预留接口形态）。
 - 向量数据库、cross-encoder 重排序、多模态（图片/音频直接检索）。
-- 对 `packages/client`（已弃用 Tauri 壳）的任何扩展。
+- 对当时的旧 Tauri probe shell 做任何扩展（该目录已在 v0.7 客户端重构中删除）。
 
 ## 3. 已验证的技术地基（2026-07-24 本机实测，Node 24.18 / SQLite 3.53.1）
 

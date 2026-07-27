@@ -117,7 +117,7 @@ sudo rsync -a --delete \
   --exclude '.env.*' \
   --exclude '.codegraph/' \
   --exclude 'data/' \
-  --exclude 'packages/client/' \
+  --exclude 'clients/' \
   --exclude 'packages/sampler/' \
   --exclude 'target/' \
   --exclude '*.log' \
