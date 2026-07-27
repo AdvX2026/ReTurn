@@ -1,7 +1,7 @@
 <div align="center">
   <img src="docs/assets/return-icon.png" width="168" alt="ReTurn mascot">
 
-  # ReTurn
+  # Re:Turn
 
   **一个住在你家里的第二大脑 Agent。**
 
