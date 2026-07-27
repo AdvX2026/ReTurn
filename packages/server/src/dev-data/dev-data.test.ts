@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { resolve } from "node:path";
 import test from "node:test";
 import { getUserProfile, patchUserProfile } from "../db/repo.js";
 import { openMemoryDb } from "../db/schema.js";
@@ -146,7 +147,7 @@ test("CLI defaults to a guarded clear and accepts filters", () => {
   ]);
 
   assert.equal(clear.confirm, false);
-  assert.equal(clear.dbPath, "/tmp/return-test.db");
+  assert.equal(clear.dbPath, resolve("/tmp/return-test.db"));
   assert.equal(inspect.date, "2026-07-25");
   assert.equal(inspect.kind, "idea");
   assert.equal(inspect.limit, 12);

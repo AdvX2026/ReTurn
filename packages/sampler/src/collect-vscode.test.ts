@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, it } from "node:test";
+import { pathToFileURL } from "node:url";
 import {
   collectVscodeRecents,
   parseRecentlyOpened,
@@ -15,14 +16,19 @@ import { uuidFromSeed } from "./source.js";
 import { recentsToNodes, resetSeenVscodeKeys } from "./sources/vscode.js";
 import { copySqliteWithWalSync } from "./sqlite-snapshot.js";
 
+const FIXTURE_ROOT = join(tmpdir(), "return-vscode-fixture");
+const FOLDER_URI = pathToFileURL(join(FIXTURE_ROOT, "proj")).href;
+const FILE_URI = pathToFileURL(join(FIXTURE_ROOT, "file.ts")).href;
+const WORKSPACE_URI = pathToFileURL(join(FIXTURE_ROOT, "ws", "demo.code-workspace")).href;
+
 const FIXTURE = JSON.stringify({
   entries: [
-    { folderUri: "file:///Users/me/proj" },
-    { fileUri: "file:///Users/me/file.ts" },
+    { folderUri: FOLDER_URI },
+    { fileUri: FILE_URI },
     {
       workspace: {
         id: "ws-1",
-        configPath: "file:///Users/me/ws/demo.code-workspace",
+        configPath: WORKSPACE_URI,
       },
     },
     { label: "orphan without uri" },
@@ -35,7 +41,7 @@ describe("parseRecentlyOpened", () => {
     assert.equal(recents.length, 3);
 
     assert.equal(recents[0]!.kind, "folder");
-    assert.equal(recents[0]!.uri, "file:///Users/me/proj");
+    assert.equal(recents[0]!.uri, FOLDER_URI);
     assert.equal(recents[0]!.editor, "code");
     assert.equal(recents[0]!.label, "proj");
     assert.ok(recents[0]!.path.includes("proj"));
@@ -64,7 +70,7 @@ describe("parseRecentlyOpened", () => {
 
   it("caps at 30 most recent entries", () => {
     const entries = Array.from({ length: 40 }, (_, i) => ({
-      folderUri: `file:///Users/me/p${i}`,
+      folderUri: pathToFileURL(join(FIXTURE_ROOT, `p${i}`)).href,
     }));
     const recents = parseRecentlyOpened(JSON.stringify({ entries }), "cursor");
     assert.equal(recents.length, 30);
@@ -108,10 +114,10 @@ describe("vscode source emission", () => {
     const n = nodes[0]!;
     assert.equal(n.kind, "vscode_recent");
     assert.equal(n.title, "proj");
-    assert.equal(n.client_uuid, uuidFromSeed("vscode:code:folder:file:///Users/me/proj"));
+    assert.equal(n.client_uuid, uuidFromSeed(`vscode:code:folder:${FOLDER_URI}`));
     assert.equal(n.client_created_at, at);
     assert.deepEqual(n.source_meta, {
-      uri: "file:///Users/me/proj",
+      uri: FOLDER_URI,
       path: recents[0]!.path,
       entry_kind: "folder",
       editor: "code",
