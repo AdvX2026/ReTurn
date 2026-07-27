@@ -6,7 +6,7 @@ APP_NAME="ReTurn"
 BUNDLE_ID="cn.TWJT.ReTurn"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PROJECT="$ROOT_DIR/apps/ReTurn/ReTurn.xcodeproj"
+PROJECT="$ROOT_DIR/clients/apple/ReTurn.xcodeproj"
 DERIVED_DATA="$ROOT_DIR/dist/ReTurnDerivedData"
 APP_BUNDLE="$DERIVED_DATA/Build/Products/Debug/$APP_NAME.app"
 APP_BINARY="$APP_BUNDLE/Contents/MacOS/$APP_NAME"

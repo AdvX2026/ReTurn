@@ -7,16 +7,16 @@ Keep it to durable, cross-session guidance — product, rules, standards, securi
 
 ## Product
 
-ReTurn — a 48h-hackathon "daily save" second brain. Orange Pi 3B home server (Fastify + `node:sqlite`; sole data authority; LLM/transcription API keys live here only) + macOS desktop (SwiftUI UI app + independent Node sampler — two separate processes) + iOS (SwiftUI read-only views + HealthKit upload). Single user, multi-device, home-LAN only. Platform scope is macOS + iOS — no Windows, no web. Product authority: `docs/PRD.md` (v0.5).
+ReTurn — a home-LAN second brain with an Orange Pi 3B server (Fastify + `node:sqlite`; sole data authority; LLM/transcription API keys live here only), native Apple clients (SwiftUI macOS + iOS), a planned native Windows client, and one independent cross-platform Node sampler runtime. UI and sampler are separate processes. Single user, multi-device, home-LAN only. Platform scope is macOS + iOS + Windows; no Android or web. Product authority: `docs/PRD.md` (v0.7).
 
 ## Project Phase
 
 <!-- Kept-current snapshot — update in place; don't append history. -->
 - **@return/shared**: Zod schemas (API contract + ferment JSON) — the single contract authority, frozen per PRD T+6h. Built, stable.
 - **@return/server**: Pi backend complete (routes, SQLite repo, ferment pipeline, stats/sessions/streak); 34 unit tests + HTTP smoke. On main.
-- **@return/sampler**: independent macOS sampler (osascript app/tab sampling, Claude Code jsonl agent sessions, SQLite outbox, loopback control plane :8791). On main.
-- **packages/client**: DEPRECATED Tauri probe shell — do not extend; deleted when `apps/ReTurn` product views land.
-- **apps/ReTurn** (scaffolded, views pending): SwiftUI multiplatform Xcode project (macOS 14 / iOS 17 deployment targets; built with Xcode 26 — system components auto-adopt Liquid Glass on OS 26, auto-fallback on older OSes; demo is only verified on OS 26) — all product views; Swift Codable mirror of the shared contract in `Models.swift`.
+- **@return/sampler**: one independent cross-platform Node sampler runtime with shared cadence, source orchestration, SQLite outbox, Pi upload, and loopback control plane on :8791. macOS environment/Reminders/Safari adapters exist; Windows environment and service adapters are pending.
+- **clients/apple**: SwiftUI multiplatform Xcode project (macOS 14 / iOS 17 deployment targets; built with Xcode 26 — system components auto-adopt Liquid Glass on OS 26, auto-fallback on older OSes; demo is only verified on OS 26) — current product views and the Swift Codable mirror of the shared contract in `Models.swift`.
+- **clients/windows**: planned native Windows client with core feature parity. No UI framework is selected or scaffolded yet; do not add one without an explicit architecture decision.
 
 ## Development Rules
 
@@ -51,9 +51,9 @@ ReTurn — a 48h-hackathon "daily save" second brain. Orange Pi 3B home server (
 
 ### Coding Standards
 - **Source of truth & persistence**: Pi SQLite is the only authoritative datastore. Clients hold outboxes only (sampler: SQLite; UI: JSON file queue) and replay with the original `client_uuid` — the idempotency key. Never regenerate a `client_uuid` on retry.
-- **Contract**: `packages/shared` Zod schemas are the API authority. Any contract change must update the Swift `Models.swift` mirror (`apps/ReTurn`) in the same commit.
-- **Architecture & boundaries**: sampling lives only in the sampler process — the UI never samples, and talks to the sampler via localhost :8791 only. The sampler control plane binds `127.0.0.1`, hardcoded — never configurable, never LAN. LLM/transcription keys exist only in the Pi server env — never in clients, never in git.
-- **Language / framework conventions**: backend is TS strict + Biome (`pnpm lint`), Node ≥ 22.13 with `node:sqlite` — no native-module DB deps. Swift side is SwiftUI + URLSession async/await; HealthKit code is always guarded by `#if os(iOS)`.
+- **Contract**: `packages/shared` Zod schemas are the API authority. Any contract change must update the Swift `Models.swift` mirror (`clients/apple`) in the same commit and the Windows contract mirror once that client selects a framework.
+- **Architecture & boundaries**: sampling lives only in the shared `packages/sampler` process — Apple and Windows UIs never sample, and talk to the sampler via localhost :8791 only. The sampler control plane binds `127.0.0.1`, hardcoded — never configurable, never LAN. Platform-specific collectors are adapters inside the sampler package, not duplicated client code. LLM/transcription keys exist only in the Pi server env — never in clients, never in git.
+- **Language / framework conventions**: backend and sampler are TS strict + Biome (`pnpm lint`), Node ≥ 22.13 with `node:sqlite` — no native-module DB deps. Apple is SwiftUI + URLSession async/await; HealthKit code is always guarded by `#if os(iOS)`. The Windows UI framework is intentionally undecided and must not be scaffolded without explicit approval.
 - **Security boundary**: trust model is a single user on a home LAN. `/api/health` requires the fixed token; other write endpoints are deliberately unauthenticated (hackathon scope) — therefore the server must never be exposed beyond the LAN.
 
 ### Secrets & Sensitive Data

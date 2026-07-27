@@ -31,7 +31,7 @@
 
 1. 当前会话中的最新用户要求；
 2. `docs/PRD.md` §3.2；
-3. `apps/ReTurn/notice.md`；
+3. `clients/apple/notice.md`；
 4. `Context-5.md`；
 5. `context-4.md`；
 6. `context-3.md`。
@@ -39,7 +39,7 @@
 本轮已经明确的覆盖关系：
 
 - `context-4.md:106` 曾记录“背景渐变已否决”，已被本轮“为顶部 label 增加可读性渐变”的要求覆盖。
-- `apps/ReTurn/notice.md:38` 当前规定导航闲置时只变暗、不隐藏；本轮只在 **Before 垂直向下滚动**时增加隐藏状态。恢复显示后，原有闲置变暗逻辑仍可继续工作。
+- `clients/apple/notice.md:38` 当前规定导航闲置时只变暗、不隐藏；本轮只在 **Before 垂直向下滚动**时增加隐藏状态。恢复显示后，原有闲置变暗逻辑仍可继续工作。
 - `context-4.md:153` 的“不要碰 Before”是旧并行分工，已过期。
 - `Context-5.md:41-42,44` 的旧并行分工和“Before 尚未接入 Main”均已过期；其中 `43,45` 的非 UI 任务边界仍有效。
 - `context-3.md:50-62` 的 segmented `Picker` 和 Before 空白状态均已过期。
@@ -47,13 +47,13 @@
 ## 3. 平台与页面边界
 
 - 当前 Main/Before 视觉只按 iOS 设计；macOS 使用不同产品布局，不直接复用 iOS Timeline。工程仍需保持 macOS 可编译。
-  来源：`context-3.md:21-23`、`Context-5.md:28-31`、`apps/ReTurn/notice.md:35`
+  来源：`context-3.md:21-23`、`Context-5.md:28-31`、`clients/apple/notice.md:35`
 - Before / Now / After 仍是横向 pager，顶部 label 与 pager 共用 selection，默认打开 Now。
-  来源：`context-3.md:55-60`、`apps/ReTurn/notice.md:36`
+  来源：`context-3.md:55-60`、`clients/apple/notice.md:36`
 - 顶部导航继续使用三个纯文字 label，不恢复 segmented `Picker`。每个 label 按 semibold 宽度占位，避免字重切换推挤相邻项。
-  来源：`context-4.md:31-38`、`apps/ReTurn/notice.md:37`
+  来源：`context-4.md:31-38`、`clients/apple/notice.md:37`
 - 本轮只调整 Before 的页面 chrome、滚动反馈和外层内容起点，不顺手实现 macOS 产品页、After、历史详情页、API Store 或真实路由。
-  来源：`Context-5.md:43,45`、`apps/ReTurn/notice.md:55`
+  来源：`Context-5.md:43,45`、`clients/apple/notice.md:55`
 
 ## 4. 本轮允许修改的范围
 
@@ -82,7 +82,7 @@
 - 渐变不得演变为 Timeline 上的 Liquid Glass、自制 glow、重阴影或高光。
 - Timeline 起点应通过 `BeforeView` 外层 content inset/padding 下移，而不是修改事件内部锚点或 Rail 几何。
 - 新尺寸优先进入现有 design token，避免在多个 View 中散落 magic number。
-  来源：`context-3.md:27-32`、`Context-5.md:343-350`、`docs/PRD.md:283-297`、`apps/ReTurn/notice.md:39,52`
+  来源：`context-3.md:27-32`、`Context-5.md:343-350`、`docs/PRD.md:283-297`、`clients/apple/notice.md:39,52`
 
 ### 5.2 滚动显隐
 
@@ -104,7 +104,7 @@
 - 使用最小位移阈值与迟滞，避免手指轻微抖动导致闪烁。
 - 隐藏应保留导航和 Composer 的 View 身份；不要通过条件分支销毁 Composer。
 - Composer 的 draft 必须继续由 `ComposerBar` 持有，显隐不能让输入文字丢失，也不能让输入过程重新触发整个 pager 重排。
-  来源：`context-4.md:27-38`、`apps/ReTurn/notice.md:38,44`
+  来源：`context-4.md:27-38`、`clients/apple/notice.md:38,44`
 
 仍需通过手工交互确认：
 
@@ -117,7 +117,7 @@
 - 不把 Composer draft 提升回 Home/pager。
 - 不用会改变 safe-area 高度并驱动 pager 每帧重排的实现来做隐藏动画。
 - 顶部导航现有的 scroll-phase 唤醒与取消保护应保留；被替换的计时任务不能反向覆盖最新状态。
-  来源：`context-4.md:27-38`、`apps/ReTurn/notice.md:38,44`
+  来源：`context-4.md:27-38`、`clients/apple/notice.md:38,44`
 
 ## 6. Timeline 内容不变量
 
@@ -126,7 +126,7 @@
 - Timeline 是明细/索引层，Product Card 是总结/归因层。
 - Timeline Cluster 虽可使用白色圆角面，仍是带真实时间范围的轨道结构，不是 `CardType`。
 - 本轮不得因为增加顶部渐变或调整 chrome，而重新设计 Timeline 条目。
-  来源：`Context-5.md:47-80`、`docs/PRD.md:124-141`、`apps/ReTurn/notice.md:52`
+  来源：`Context-5.md:47-80`、`docs/PRD.md:124-141`、`clients/apple/notice.md:52`
 
 ### 6.2 Input
 
@@ -134,14 +134,14 @@
 - 保持两行 Point：第一行来源类型与时间，第二行单行原输入。
 - 保留圆点和箭头；不增加卡片背景、尾部 chevron、玻璃或重阴影。
 - 保持原生 `Button`、至少 44pt 命中区和完整 VoiceOver value。
-  来源：`Context-5.md:206-270`、`docs/PRD.md:198-229`、`apps/ReTurn/notice.md:53`
+  来源：`Context-5.md:206-270`、`docs/PRD.md:198-229`、`clients/apple/notice.md:53`
 
 ### 6.3 Daily Briefing
 
 - 日期标题下只显示一行弱入口。
 - 不画 Rail 节点，不计入 Event count，不在 Timeline 展开完整摘要。
 - 完整 Card Group 属于独立历史页面。
-  来源：`Context-5.md:274-312`、`docs/PRD.md:231-245`、`apps/ReTurn/notice.md:54`
+  来源：`Context-5.md:274-312`、`docs/PRD.md:231-245`、`clients/apple/notice.md:54`
 
 ### 6.4 已稳定的 Timeline 几何
 
@@ -194,4 +194,4 @@
 | `context-4.md` | `27-38` pager 性能与顶部导航；`163-202` 交互验收、构建与提交踩坑 |
 | `Context-5.md` | `28-43` 平台与旧任务边界；`47-80` Timeline/Card 分层；`206-270` Input；`274-401` Briefing、材质与几何；`491-556` 禁止项与验收 |
 | `docs/PRD.md` | `124-141` 信息层级；`183-245` Timeline/Input/Briefing；`283-297` 视觉与无障碍验收 |
-| `apps/ReTurn/notice.md` | `35-48` Main/pager/Composer；`50-55` Before Timeline 现行约束 |
+| `clients/apple/notice.md` | `35-48` Main/pager/Composer；`50-55` Before Timeline 现行约束 |

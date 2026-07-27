@@ -22,7 +22,7 @@ macOS 常驻 sampler 进程每 5 分钟扫描用户配置的代码目录，把**
 - 时间轴（timeline）git 打点。
 - checkpoint 状态文件、commit amend/rebase 的节点回删、hook 注入、fsnotify 监听。
 - Swift `Models.swift` 镜像（`apps/ReturnApp` 尚未落地，合同同步记为 app 开工待办）。
-- 不修改 `docs/PRD.md`，不动 `packages/client`。
+- 不修改 `docs/PRD.md`，不动当时仍存在的旧 Tauri probe shell（该目录已在 v0.7 客户端重构中删除）。
 
 ## 3. 总体数据流（与现有管线同构，server 入库路径零改动）
 

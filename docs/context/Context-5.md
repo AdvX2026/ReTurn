@@ -19,7 +19,7 @@
 - 当前 API 不能自然表达的语义，以及需要合同评审的候选能力；
 - 构建、测试、手工验收和提交规范。
 
-下一位 Agent 不应只看一张截图后重新设计。先读本文和 `docs/PRD.md` §3.2；`apps/ReTurn/notice.md` 只用于了解本分支的 API/工程约束，它对 Main 顶部导航的描述已经落后于并行 `feat/app-models` 分支，合并时应以该分支的最新 notice、`context-4.md` 与 `docs/prd-drift.md` 为准。
+下一位 Agent 不应只看一张截图后重新设计。先读本文和 `docs/PRD.md` §3.2；`clients/apple/notice.md` 只用于了解本分支的 API/工程约束，它对 Main 顶部导航的描述已经落后于并行 `feat/app-models` 分支，合并时应以该分支的最新 notice、`context-4.md` 与 `docs/prd-drift.md` 为准。
 
 ## 1. 已确认的范围与协作方式
 
@@ -486,7 +486,7 @@ server 当前：
 - 以 briefing `CardRecord.id` 定位历史 Daily Briefing；
 - Cluster nested timeline 查询。
 
-这些能力可以来自 server projection、现有字段组合或后续 endpoint，具体字段名和归属要先经过合同评审。不要把 Context 里的概念名直接复制成 shared enum。任何获批的 shared 合同变更必须同步 `packages/shared` Zod 与 `apps/ReTurn/ReTurn/Models.swift`，并在同一 commit 验证。
+这些能力可以来自 server projection、现有字段组合或后续 endpoint，具体字段名和归属要先经过合同评审。不要把 Context 里的概念名直接复制成 shared enum。任何获批的 shared 合同变更必须同步 `packages/shared` Zod 与 `clients/apple/ReTurn/Models.swift`，并在同一 commit 验证。
 
 ## 11. 已否决或需要避免的做法
 
@@ -512,7 +512,7 @@ server 当前：
 
 ```bash
 xcodebuild -quiet \
-  -project apps/ReTurn/ReTurn.xcodeproj \
+  -project clients/apple/ReTurn.xcodeproj \
   -scheme ReTurn \
   -configuration Debug \
   -destination 'generic/platform=iOS Simulator' \
@@ -524,7 +524,7 @@ xcodebuild -quiet \
 
 ```bash
 xcodebuild -quiet \
-  -project apps/ReTurn/ReTurn.xcodeproj \
+  -project clients/apple/ReTurn.xcodeproj \
   -scheme ReTurn \
   -configuration Debug \
   -destination 'platform=iOS Simulator,id=CDF74C34-C104-47B4-BB01-D423783742C0' \
@@ -579,7 +579,7 @@ MVP 优先 iOS 26，因此当前不阻塞；若要恢复严格 iOS 17/Swift 6 �
 - 另一分支存在 `context-4.md` 与 `docs/prd-drift.md`，记录 Card/Composer 决策
 - `docs/PRD.md` 在两个 worktree 整理前内容一致
 - 原始设计预览分支：`codex/before-original-preview` → `072b02f`
-- 本分支 `apps/ReTurn/notice.md` 仍描述旧 segmented `Picker`；不要让它覆盖并行分支已经实现的纯文字顶部导航。
+- 本分支 `clients/apple/notice.md` 仍描述旧 segmented `Picker`；不要让它覆盖并行分支已经实现的纯文字顶部导航。
 - 并行 `docs/prd-drift.md` §6.4 中“`date == today` 才进 Now”以及“Before 直接铺完整历史早报卡”的旧判断，已被本轮更晚的用户决定覆盖：Now 展示最新昨日 briefing；历史状态下，Before 只在被总结日期下放单行入口，点击进入完整视觉组。合并 drift 时必须以 `docs/PRD.md` §3.2.6 为准。
 
 合并时：

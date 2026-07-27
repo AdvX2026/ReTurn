@@ -1,4 +1,4 @@
-# apps/ReTurn — Agent Notice
+# clients/apple — Agent Notice
 
 - SwiftUI multiplatform Xcode project (deployment targets iOS 17.0 / macOS 14.0), built with Xcode 26. MVP UI implementation and demo verification prioritize iOS/macOS 26. Prefer native OS-26 SwiftUI behavior over hand-drawn approximations; preserve the older deployment targets with small, localized `#available` branches and standard-system fallbacks unless the user explicitly changes the minimum versions. visionOS removed. macOS App Sandbox is OFF per PRD §6.1 (sandbox without outgoing-network entitlement blocks LAN access to Pi/sampler).
 - Use root `./script/build_and_run.sh` as the single macOS kill + clean-build + run entrypoint; `--verify` also confirms the launched `ReTurn` process, and the Codex `Run` action invokes the same script.
@@ -31,7 +31,7 @@
 
 - Transport only: typed async methods over URLSession for every Pi endpoint (port 8787). The default client address is `http://return.local:8787` so a real iPhone reaches the Pi instead of its own loopback; startup migrates only the exact legacy `http://127.0.0.1:8787` default and leaves user-entered URLs intact. The existing inline recovery editor remains the static-IP fallback. No caching, no outbox, no retries — those belong in the stores (PRD §5.2). LLM-backed calls (save/chat/ask/resume/voice/intent) use a 180 s per-request timeout; plain reads use the URLSession default.
 - Health upload sends the fixed token as `x-return-token`. Fastify error bodies (`{statusCode, error, message}`) surface as `APIError.http`.
-- Networking config lives in `apps/ReTurn/Info.plist` (deliberately OUTSIDE the synchronized `ReTurn/` folder — inside it, the sync group copies it into Copy Bundle Resources and Xcode warns). It merges with `GENERATE_INFOPLIST_FILE=YES` via `INFOPLIST_FILE=Info.plist` and carries `NSAppTransportSecurity.NSAllowsLocalNetworking` (scoped, NOT arbitrary loads) plus iOS `NSLocalNetworkUsageDescription`. Add future plist keys here, not as INFOPLIST_KEY_ build settings for dict-valued keys.
+- Networking config lives in `clients/apple/Info.plist` (deliberately OUTSIDE the synchronized `ReTurn/` folder — inside it, the sync group copies it into Copy Bundle Resources and Xcode warns). It merges with `GENERATE_INFOPLIST_FILE=YES` via `INFOPLIST_FILE=Info.plist` and carries `NSAppTransportSecurity.NSAllowsLocalNetworking` (scoped, NOT arbitrary loads) plus iOS `NSLocalNetworkUsageDescription`. Add future plist keys here, not as INFOPLIST_KEY_ build settings for dict-valued keys.
 
 
 ## AppStores / live API

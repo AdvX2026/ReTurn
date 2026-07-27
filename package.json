@@ -6,8 +6,6 @@
   "scripts": {
     "dev:server": "pnpm --filter @return/server dev",
     "dev:sampler": "pnpm --filter @return/sampler dev",
-    "dev:client": "pnpm --filter @return/client dev",
-    "dev:desktop": "pnpm --filter @return/client tauri:dev",
     "build": "pnpm --filter @return/shared build && pnpm -r build",
     "typecheck": "pnpm --filter @return/shared build && pnpm -r typecheck",
     "test": "pnpm --filter @return/shared build && pnpm -r test",

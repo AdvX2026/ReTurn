@@ -11,10 +11,10 @@
 本轮跨了三件事：修 composer 的性能与命中问题、重做顶部导航、从零建立卡片体系。第三件占了大部分时间，且**产生了大量产品决策**。
 
 - **产品与设计决策全部落在 `docs/prd-drift.md`**，本文档只做索引，不复制内容——那份清单是唯一权威，且已核对过本轮无遗漏。
-- **代码约束落在 `apps/ReTurn/notice.md`**（8 条）。
+- **代码约束落在 `clients/apple/notice.md`**（8 条）。
 - 本文档记录的是**过程信息**：为什么这么做、哪些路走不通、下一位应该从哪接。
 
-⚠️ **工作区有一处未提交的临时改动**：`apps/ReTurn/ReTurn/ReTurnApp.swift` 的入口指向 `CardGallery()` 而非 `ContentView()`，为的是在模拟器里查看卡片设计。**看完请 `git checkout apps/ReTurn/ReTurn/ReTurnApp.swift` 还原**，不要提交。
+⚠️ **工作区有一处未提交的临时改动**：`clients/apple/ReTurn/ReTurnApp.swift` 的入口指向 `CardGallery()` 而非 `ContentView()`，为的是在模拟器里查看卡片设计。**看完请 `git checkout clients/apple/ReTurn/ReTurnApp.swift` 还原**，不要提交。
 
 ---
 
@@ -82,7 +82,7 @@ CardGallery + SampleData
 
 ### 2.3 一个提交失误
 
-`git add -A apps/ReTurn/ReTurn` 把明确说过不提交的临时入口切换扫进了 commit，已用 `reset --soft` + `restore --staged` 修正。**提交时列具体文件，不要用 `-A`**（AGENTS.md 已有此要求）。
+`git add -A clients/apple/ReTurn` 把明确说过不提交的临时入口切换扫进了 commit，已用 `reset --soft` + `restore --staged` 修正。**提交时列具体文件，不要用 `-A`**（AGENTS.md 已有此要求）。
 
 ---
 
@@ -184,7 +184,7 @@ Before/After 内容、上滑 sidebar、相机/照片/文件选择、语音录制
 
 ```bash
 # iOS（本轮验证机：iPhone 17 Pro Max / iOS 26.5, UDID 4142C213-2C46-4EE3-9A12-D9422B6CB5BD）
-xcodebuild -project apps/ReTurn/ReTurn.xcodeproj -scheme ReTurn -configuration Debug \
+xcodebuild -project clients/apple/ReTurn.xcodeproj -scheme ReTurn -configuration Debug \
   -destination 'platform=iOS Simulator,id=<UDID>' \
   -derivedDataPath <scratch>/dd-sim CODE_SIGNING_ALLOWED=NO build
 
@@ -241,7 +241,7 @@ xcodebuild ... -destination 'platform=macOS,arch=arm64' -derivedDataPath <scratc
 ## 7. 给下一位 agent 的建议顺序
 
 1. **先读 `docs/prd-drift.md`** —— 产品决策的唯一权威，尤其 §6.0（卡片/时间线分层）和 §6.3（字段语义与直觉不符）。
-2. **再读 `apps/ReTurn/notice.md`** —— 8 条代码约束，每条都对应一个已经踩过的坑（无 `GeometryReader`、命中区不可裁剪、玻璃融合不要修、导航淡出的 keying 等）。
+2. **再读 `clients/apple/notice.md`** —— 8 条代码约束，每条都对应一个已经踩过的坑（无 `GeometryReader`、命中区不可裁剪、玻璃融合不要修、导航淡出的 keying 等）。
 3. **还原 `ReTurnApp.swift`** 的临时入口。
 4. 待用户确认后再动工的事项：
    - 契约变更（职业 / 分项计数 / `streak`）向后端提出后，才能接真实数据
