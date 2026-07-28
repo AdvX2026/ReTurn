@@ -44,4 +44,30 @@ jobs:
       - name: Build
         run: pnpm build
 
-      # Tauri / darwin sampler not in this PR; add when desktop lands on main.
+  swift:
+    name: Swift · macOS test · iOS build
+    runs-on: macos-26
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Xcode version
+        run: xcodebuild -version
+
+      - name: Test macOS
+        run: |
+          xcodebuild clean test \
+            -project apps/ReTurn/ReTurn.xcodeproj \
+            -scheme ReTurn \
+            -destination 'platform=macOS' \
+            -skip-testing:ReTurnUITests \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Build iOS Simulator
+        run: |
+          xcodebuild clean build \
+            -project apps/ReTurn/ReTurn.xcodeproj \
+            -scheme ReTurn \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO
