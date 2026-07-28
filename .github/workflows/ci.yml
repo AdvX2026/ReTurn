@@ -2,9 +2,13 @@ name: ci
 
 on:
   push:
-    branches: [main, feat/**, chore/**]
+    branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -44,10 +48,64 @@ jobs:
       - name: Build
         run: pnpm build
 
-  swift:
-    name: Swift · macOS test · iOS build
+  apple_changes:
+    name: detect · Apple changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run_apple: ${{ steps.diff.outputs.run_apple }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect Apple changes
+        id: diff
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "run_apple=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            range="$PR_BASE_SHA...$PR_HEAD_SHA"
+          elif [[ -z "$PUSH_BEFORE_SHA" || "$PUSH_BEFORE_SHA" =~ ^0+$ ]]; then
+            echo "run_apple=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          else
+            range="$PUSH_BEFORE_SHA..$CURRENT_SHA"
+          fi
+
+          if git diff --quiet "$range" -- \
+            clients/apple \
+            ':(exclude)clients/apple/notice.md' \
+            packages/shared/src/api.ts \
+            packages/shared/src/domain.ts \
+            .github/workflows/ci.yml
+          then
+            echo "run_apple=false" >> "$GITHUB_OUTPUT"
+          else
+            # A matching change or an invalid diff range must run the safe path.
+            echo "run_apple=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Detector failures intentionally skip platform runners; the required gate below fails closed.
+  swift_macos:
+    name: Swift · macOS tests
+    needs: apple_changes
+    if: ${{ needs.apple_changes.outputs.run_apple == 'true' }}
     runs-on: macos-26
     timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
 
     steps:
       - uses: actions/checkout@v4
@@ -58,16 +116,96 @@ jobs:
       - name: Test macOS
         run: |
           xcodebuild clean test \
-            -project apps/ReTurn/ReTurn.xcodeproj \
+            -project clients/apple/ReTurn.xcodeproj \
             -scheme ReTurn \
             -destination 'platform=macOS' \
             -skip-testing:ReTurnUITests \
+            -resultBundlePath "$RUNNER_TEMP/ReTurn-macOS.xcresult" \
             CODE_SIGNING_ALLOWED=NO
 
-      - name: Build iOS Simulator
+      - name: Upload macOS Xcode results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcode-results-macos-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ReTurn-macOS.xcresult
+          if-no-files-found: warn
+          retention-days: 7
+
+  swift_ios:
+    name: Swift · iOS tests
+    needs: apple_changes
+    if: ${{ needs.apple_changes.outputs.run_apple == 'true' }}
+    runs-on: macos-26
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Xcode version
+        run: xcodebuild -version
+
+      - name: Test iOS Simulator
         run: |
-          xcodebuild clean build \
-            -project apps/ReTurn/ReTurn.xcodeproj \
+          xcodebuild clean test \
+            -project clients/apple/ReTurn.xcodeproj \
             -scheme ReTurn \
-            -destination 'generic/platform=iOS Simulator' \
+            -destination 'platform=iOS Simulator,OS=26.5,name=iPhone 17 Pro' \
+            -skip-testing:ReTurnUITests \
+            -parallel-testing-enabled NO \
+            -resultBundlePath "$RUNNER_TEMP/ReTurn-iOS.xcresult" \
             CODE_SIGNING_ALLOWED=NO
+
+      - name: Upload iOS Xcode results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcode-results-ios-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ReTurn-iOS.xcresult
+          if-no-files-found: warn
+          retention-days: 7
+
+  # Keep this job name stable: main branch protection requires this aggregate check.
+  swift:
+    name: Swift · macOS + iOS tests
+    needs: [apple_changes, swift_macos, swift_ios]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      DETECT_RESULT: ${{ needs.apple_changes.result }}
+      RUN_APPLE: ${{ needs.apple_changes.outputs.run_apple }}
+      MACOS_RESULT: ${{ needs.swift_macos.result }}
+      IOS_RESULT: ${{ needs.swift_ios.result }}
+
+    steps:
+      - name: Verify Apple checks
+        shell: bash
+        run: |
+          if [[ "$DETECT_RESULT" != "success" ]]; then
+            echo "::error::Apple change detection ended with $DETECT_RESULT."
+            exit 1
+          fi
+
+          if [[ "$RUN_APPLE" == "true" ]]; then
+            if [[ "$MACOS_RESULT" == "success" && "$IOS_RESULT" == "success" ]]; then
+              echo "Apple changes detected; macOS and iOS tests passed."
+              exit 0
+            fi
+            echo "::error::Apple changes require both test jobs to pass (macOS=$MACOS_RESULT, iOS=$IOS_RESULT)."
+            exit 1
+          fi
+
+          if [[ "$RUN_APPLE" == "false" ]]; then
+            if [[ "$MACOS_RESULT" == "skipped" && "$IOS_RESULT" == "skipped" ]]; then
+              echo "No Apple changes detected; macOS and iOS jobs were skipped."
+              exit 0
+            fi
+            echo "::error::Unexpected Apple job results (macOS=$MACOS_RESULT, iOS=$IOS_RESULT)."
+            exit 1
+          fi
+
+          echo "::error::Apple change detection returned an invalid value: $RUN_APPLE"
+          exit 1
