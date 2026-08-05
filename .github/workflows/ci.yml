@@ -60,6 +60,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Test Apple change detector
+        run: bash .github/scripts/detect-apple-changes.test.sh
+
       - name: Detect Apple changes
         id: diff
         shell: bash
@@ -69,33 +72,7 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PUSH_BEFORE_SHA: ${{ github.event.before }}
           CURRENT_SHA: ${{ github.sha }}
-        run: |
-          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            echo "run_apple=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if [[ "$EVENT_NAME" == "pull_request" ]]; then
-            range="$PR_BASE_SHA...$PR_HEAD_SHA"
-          elif [[ -z "$PUSH_BEFORE_SHA" || "$PUSH_BEFORE_SHA" =~ ^0+$ ]]; then
-            echo "run_apple=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          else
-            range="$PUSH_BEFORE_SHA..$CURRENT_SHA"
-          fi
-
-          if git diff --quiet "$range" -- \
-            clients/apple \
-            ':(exclude)clients/apple/notice.md' \
-            packages/shared/src/api.ts \
-            packages/shared/src/domain.ts \
-            .github/workflows/ci.yml
-          then
-            echo "run_apple=false" >> "$GITHUB_OUTPUT"
-          else
-            # A matching change or an invalid diff range must run the safe path.
-            echo "run_apple=true" >> "$GITHUB_OUTPUT"
-          fi
+        run: bash .github/scripts/detect-apple-changes.sh
 
   # Detector failures intentionally skip the Apple runner; the required gate below fails closed.
   swift_apple:
