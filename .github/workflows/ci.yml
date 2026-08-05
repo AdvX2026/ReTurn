@@ -2,9 +2,13 @@ name: ci
 
 on:
   push:
-    branches: [main, feat/**, chore/**]
+    branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -44,4 +48,118 @@ jobs:
       - name: Build
         run: pnpm build
 
-      # Tauri / darwin sampler not in this PR; add when desktop lands on main.
+  apple_changes:
+    name: detect · Apple changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      run_apple: ${{ steps.diff.outputs.run_apple }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Test Apple change detector
+        run: bash .github/scripts/detect-apple-changes.test.sh
+
+      - name: Detect Apple changes
+        id: diff
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.sha }}
+        run: bash .github/scripts/detect-apple-changes.sh
+
+  # Detector failures intentionally skip the Apple runner; the required gate below fails closed.
+  swift_apple:
+    name: Swift · Apple platform tests
+    needs: apple_changes
+    if: ${{ needs.apple_changes.outputs.run_apple == 'true' }}
+    runs-on: macos-26
+    timeout-minutes: 20
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Xcode version
+        run: xcodebuild -version
+
+      - name: Test macOS
+        run: |
+          xcodebuild clean test \
+            -project clients/apple/ReTurn.xcodeproj \
+            -scheme ReTurn \
+            -destination 'platform=macOS' \
+            -skip-testing:ReTurnUITests \
+            -resultBundlePath "$RUNNER_TEMP/ReTurn-macOS.xcresult" \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Test iOS Simulator
+        run: |
+          xcodebuild clean test \
+            -project clients/apple/ReTurn.xcodeproj \
+            -scheme ReTurn \
+            -destination 'platform=iOS Simulator,OS=26.5,name=iPhone 17 Pro' \
+            -skip-testing:ReTurnUITests \
+            -parallel-testing-enabled NO \
+            -resultBundlePath "$RUNNER_TEMP/ReTurn-iOS.xcresult" \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Upload Xcode results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcode-results-apple-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/ReTurn-macOS.xcresult
+            ${{ runner.temp }}/ReTurn-iOS.xcresult
+          if-no-files-found: warn
+          retention-days: 7
+
+  # Keep this job name stable: main branch protection requires this aggregate check.
+  swift:
+    name: Swift · macOS + iOS tests
+    needs: [apple_changes, swift_apple]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      DETECT_RESULT: ${{ needs.apple_changes.result }}
+      RUN_APPLE: ${{ needs.apple_changes.outputs.run_apple }}
+      APPLE_RESULT: ${{ needs.swift_apple.result }}
+
+    steps:
+      - name: Verify Apple checks
+        shell: bash
+        run: |
+          if [[ "$DETECT_RESULT" != "success" ]]; then
+            echo "::error::Apple change detection ended with $DETECT_RESULT."
+            exit 1
+          fi
+
+          if [[ "$RUN_APPLE" == "true" ]]; then
+            if [[ "$APPLE_RESULT" == "success" ]]; then
+              echo "Apple changes detected; the macOS and iOS tests passed."
+              exit 0
+            fi
+            echo "::error::Apple changes require the platform test job to pass (Apple=$APPLE_RESULT)."
+            exit 1
+          fi
+
+          if [[ "$RUN_APPLE" == "false" ]]; then
+            if [[ "$APPLE_RESULT" == "skipped" ]]; then
+              echo "No Apple changes detected; the platform test job was skipped."
+              exit 0
+            fi
+            echo "::error::Unexpected Apple job result (Apple=$APPLE_RESULT)."
+            exit 1
+          fi
+
+          echo "::error::Apple change detection returned an invalid value: $RUN_APPLE"
+          exit 1
