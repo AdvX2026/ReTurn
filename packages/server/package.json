@@ -11,7 +11,8 @@
     "test": "node --import tsx --import ./src/test-setup.ts --test src/db/repo.test.ts src/stats/compute.test.ts src/stats/breakdown.test.ts src/stats/profession.test.ts src/services/save.test.ts src/services/weekly.test.ts src/services/v06.workflows.test.ts src/search/search.test.ts src/http.smoke.test.ts src/dev-data/dev-data.test.ts",
     "data:mock": "node --import tsx src/dev-data/cli.ts mock",
     "data:clear": "node --import tsx src/dev-data/cli.ts clear",
-    "data:inspect": "node --import tsx src/dev-data/cli.ts inspect"
+    "data:inspect": "node --import tsx src/dev-data/cli.ts inspect",
+    "openapi": "tsx scripts/generate-openapi.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",
@@ -19,12 +20,13 @@
     "@return/shared": "workspace:*",
     "dotenv": "^16.4.7",
     "fastify": "^5.2.0",
-    "zod": "^3.24.1"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "zod-openapi": "^3.3.0"
   },
   "engines": {
     "node": ">=22.13"
