@@ -1,0 +1,2924 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "ReTurn Server API",
+    "version": "0.1.0",
+    "description": "Home-LAN second brain. Single user, multiple devices (macOS / iOS / Windows). Write endpoints are deliberately unauthenticated inside the trusted LAN. POST /api/health always requires HEALTH_TOKEN. If API_TOKEN is configured, every endpoint except /api/ping and /api/health requires it via X-Return-Token or Bearer authorization.",
+    "license": {
+      "name": "Private — internal use only"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://<pi-host>:8787",
+      "description": "Orange Pi on the home LAN"
+    }
+  ],
+  "security": [
+    {
+      "apiToken": []
+    }
+  ],
+  "paths": {
+    "/api/ping": {
+      "get": {
+        "operationId": "ping",
+        "tags": [
+          "system"
+        ],
+        "security": [],
+        "summary": "Probe / outbox heartbeat",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PingResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation or business-rule failure"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/devices/register": {
+      "post": {
+        "operationId": "registerDevice",
+        "tags": [
+          "devices"
+        ],
+        "summary": "Register or re-register a client device",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "platform": {
+                    "type": "string",
+                    "enum": [
+                      "macos",
+                      "ios",
+                      "linux",
+                      "unknown"
+                    ],
+                    "default": "unknown"
+                  },
+                  "device_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "device_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  },
+                  "required": [
+                    "device_id"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation or business-rule failure"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/nodes": {
+      "post": {
+        "operationId": "createNodes",
+        "tags": [
+          "nodes"
+        ],
+        "summary": "Batch-write nodes (sampling / feeding / offline queue)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "device_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "nodes": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "client_uuid": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "text",
+                            "url",
+                            "voice",
+                            "save_note",
+                            "app_sample",
+                            "tab_sample",
+                            "agent_session",
+                            "git_commit",
+                            "email",
+                            "reminder",
+                            "vscode_recent",
+                            "browse_history",
+                            "health_daily",
+                            "snapshot",
+                            "todo_check",
+                            "idea",
+                            "image"
+                          ]
+                        },
+                        "title": {
+                          "type": "string",
+                          "nullable": true,
+                          "maxLength": 500
+                        },
+                        "content": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "source_meta": {
+                          "type": "object",
+                          "nullable": true,
+                          "additionalProperties": {}
+                        },
+                        "client_created_at": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "date": {
+                          "type": "string",
+                          "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                        }
+                      },
+                      "required": [
+                        "client_uuid",
+                        "kind"
+                      ]
+                    },
+                    "minItems": 1,
+                    "maxItems": 500
+                  }
+                },
+                "required": [
+                  "device_id",
+                  "nodes"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "created": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/NodeRecord"
+                      }
+                    },
+                    "duplicates": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uuid"
+                      }
+                    },
+                    "cadence": {
+                      "type": "string",
+                      "enum": [
+                        "active",
+                        "night"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "created",
+                    "duplicates"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation or business-rule failure"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "get": {
+        "operationId": "listNodes",
+        "tags": [
+          "nodes"
+        ],
+        "summary": "List nodes for a calendar day",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "date",
+            "description": "Calendar date YYYY-MM-DD, server-local timezone",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "Calendar date YYYY-MM-DD, server-local timezone"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "date": {
+                      "type": "string"
+                    },
+                    "nodes": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/NodeRecord"
+                      }
+                    }
+                  },
+                  "required": [
+                    "date",
+                    "nodes"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation or business-rule failure"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/nodes/{id}": {
+      "delete": {
+        "operationId": "deleteNode",
+        "tags": [
+          "nodes"
+        ],
+        "summary": "Delete a node and its derived edges / search index",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    }
+                  },
+                  "required": [
+                    "ok",
+                    "id"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation or business-rule failure"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/voice": {
+      "post": {
+        "operationId": "uploadVoice",
+        "tags": [
+          "voice"
+        ],
+        "summary": "Upload audio; transcribe and store as a voice node",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "device_id",
+                  "file"
+                ],
+                "properties": {
+                  "device_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Device id"
+                  },
+                  "client_uuid": {
+                    "type": "string",
+                    "format": "uuid",
+                    "description": "Idempotency key; must be a valid UUID"
+                  },
+                  "date": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "description": "Day override; default server-local today"
+                  },
+                  "title": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Audio file (webm / m4a)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "node": {
+                      "$ref": "#/components/schemas/NodeRecord"
+                    },
+                    "transcript": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "node",
+                    "transcript"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation or business-rule failure"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/health": {
+      "post": {
+        "operationId": "postHealth",
+        "tags": [
+          "health"
+        ],
+        "summary": "Report daily sleep / steps (idempotent per date)",
+        "security": [
+          {
+            "healthToken": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "date": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "sleep_minutes": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1440
+                  },
+                  "steps": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 200000
+                  }
+                },
+                "required": [
+                  "date",
+                  "sleep_minutes",
+                  "steps"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "node": {
+                      "$ref": "#/components/schemas/NodeRecord"
+                    }
+                  },
+                  "required": [
+                    "node"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation or business-rule failure"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/save": {
+      "post": {
+        "operationId": "saveToday",
+        "tags": [
+          "save"
+        ],
+        "summary": "Nightly checkpoint: ferment, settle stats, write cards (idempotent per date)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "date": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "device_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "note_text": {
+                    "type": "string",
+                    "maxLength": 4000
+                  },
+                  "note_voice_ref": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "date"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation or business-rule failure"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/stats/today": {
+      "get": {
+        "operationId": "getStatsToday",
+        "tags": [
+          "stats"
+        ],
+        "summary": "Live five-dimension stats + character state + collection status",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "date",
+            "description": "Calendar date YYYY-MM-DD, server-local timezone",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "Calendar date YYYY-MM-DD, server-local timezone"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsTodayResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation or business-rule failure"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/profile": {
+      "get": {
+        "operationId": "getProfile",
+        "tags": [
+          "profile"
+        ],
+        "summary": "Single-user space profile",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation or business-rule failure"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "patchProfile",
+        "tags": [
+          "profile"
+        ],
+        "summary": "Update display name / profession / note",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "display_name": {
+                    "type": "string",
+                    "nullable": true,
+                    "maxLength": 80
+                  },
+                  "profession": {
+                    "type": "string",
+                    "enum": [
+                      "coder",
+                      "designer",
+                      "writer",
+                      "communicator",
+                      "explorer",
+                      "generalist"
+                    ]
+                  },
+                  "profession_mode": {
+                    "type": "string",
+                    "enum": [
+                      "auto",
+                      "manual"
+                    ]
+                  },
+                  "note": {
+                    "type": "string",
+                    "nullable": true,
+                    "maxLength": 2000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation or business-rule failure"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/usage": {
+      "get": {
+        "operationId": "getUsage",
+        "tags": [
+          "usage"
+        ],
+        "summary": "Provider call and token aggregates (no content)",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "from",
+            "description": "Calendar date YYYY-MM-DD, server-local timezone",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "Calendar date YYYY-MM-DD, server-local timezone"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "description": "Calendar date YYYY-MM-DD, server-local timezone",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "Calendar date YYYY-MM-DD, server-local timezone"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation or business-rule failure"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/timeline": {
+      "get": {
+        "operationId": "getTimeline",
+        "tags": [
+          "timeline"
+        ],
+        "summary": "Range or single-day timeline projection",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "date",
+            "description": "Calendar date YYYY-MM-DD, server-local timezone",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "Calendar date YYYY-MM-DD, server-local timezone"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "description": "Calendar date YYYY-MM-DD, server-local timezone",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "Calendar date YYYY-MM-DD, server-local timezone"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "description": "Calendar date YYYY-MM-DD, server-local timezone",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "Calendar date YYYY-MM-DD, server-local timezone"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimelineResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation or business-rule failure"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/days": {
+      "get": {
+        "operationId": "getDays",
+        "tags": [
+          "stats"
+        ],
+        "summary": "Recent-day overview (saved flags, summaries, stats, streak)",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "range",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 90
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DaysResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation or business-rule failure"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/search": {
+      "get": {
+        "operationId": "search",
+        "tags": [
+          "search"
+        ],
+        "summary": "Global hybrid search (FTS + optional embedding RRF)",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "description": "Calendar date YYYY-MM-DD, server-local timezone",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "Calendar date YYYY-MM-DD, server-local timezone"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "description": "Calendar date YYYY-MM-DD, server-local timezone",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "Calendar date YYYY-MM-DD, server-local timezone"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kinds",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation or business-rule failure"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/ask": {
+      "post": {
+        "operationId": "ask",
+        "tags": [
+          "search"
+        ],
+        "summary": "RAG question over past records, answer with citations",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "question": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  },
+                  "from": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "to": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  }
+                },
+                "required": [
+                  "question"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AskResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation or business-rule failure"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/chat": {
+      "post": {
+        "operationId": "chat",
+        "tags": [
+          "chat"
+        ],
+        "summary": "Input triage + workflow (idea / retrieval / question / task)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 8000
+                  },
+                  "image": {
+                    "type": "string",
+                    "maxLength": 50000
+                  },
+                  "device_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "intent": {
+                    "type": "string",
+                    "enum": [
+                      "idea",
+                      "retrieval",
+                      "question",
+                      "unknown"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation or business-rule failure"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/messages": {
+      "get": {
+        "operationId": "listMessages",
+        "tags": [
+          "chat"
+        ],
+        "summary": "Now conversation stream, newest first",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListMessagesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation or business-rule failure"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/messages/{id}/intent": {
+      "patch": {
+        "operationId": "patchMessageIntent",
+        "tags": [
+          "chat"
+        ],
+        "summary": "Correct triage intent; optionally re-run the workflow",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "intent": {
+                    "type": "string",
+                    "enum": [
+                      "idea",
+                      "retrieval",
+                      "question",
+                      "unknown"
+                    ]
+                  }
+                },
+                "required": [
+                  "intent"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "$ref": "#/components/schemas/MessageRecord"
+                    },
+                    "follow_up": {
+                      "$ref": "#/components/schemas/ChatResponse"
+                    }
+                  },
+                  "required": [
+                    "message"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation or business-rule failure"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/cards": {
+      "get": {
+        "operationId": "listCards",
+        "tags": [
+          "cards"
+        ],
+        "summary": "Before / future card stream with cursor pagination",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "direction",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "before",
+                "future"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListCardsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation or business-rule failure"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/tasks": {
+      "get": {
+        "operationId": "listTasks",
+        "tags": [
+          "tasks"
+        ],
+        "summary": "List async tasks, optionally filtered by status",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "running",
+                "done",
+                "failed"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListTasksResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation or business-rule failure"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/resume": {
+      "post": {
+        "operationId": "resume",
+        "tags": [
+          "chat"
+        ],
+        "summary": "Short-break recap of the last few hours",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "device_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "hours": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 24
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message_id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "reply": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "message_id",
+                    "reply"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation or business-rule failure"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/todos/{id}": {
+      "patch": {
+        "operationId": "patchTodo",
+        "tags": [
+          "todos"
+        ],
+        "summary": "Check / uncheck a suggested todo",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "done": {
+                    "type": "boolean"
+                  },
+                  "device_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "required": [
+                  "done"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "todo": {
+                      "$ref": "#/components/schemas/TodoRecord"
+                    },
+                    "check_node": {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/NodeRecord"
+                        }
+                      ],
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "todo",
+                    "check_node"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation or business-rule failure"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/todos/{id}/accept": {
+      "post": {
+        "operationId": "acceptTodo",
+        "tags": [
+          "todos"
+        ],
+        "summary": "Adopt a suggestion after writing it to Apple Reminders (positive sample)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "device_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "reminder_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "todo": {
+                      "$ref": "#/components/schemas/TodoRecord"
+                    }
+                  },
+                  "required": [
+                    "todo"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation or business-rule failure"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/todos/{id}/dismiss": {
+      "post": {
+        "operationId": "dismissTodo",
+        "tags": [
+          "todos"
+        ],
+        "summary": "Reject a suggestion (negative sample for the preference loop)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "device_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "todo": {
+                      "$ref": "#/components/schemas/TodoRecord"
+                    }
+                  },
+                  "required": [
+                    "todo"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation or business-rule failure"
+          },
+          "404": {
+            "description": "Resource not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "apiToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Return-Token",
+        "description": "Optional global API token (Bearer authorization also accepted)."
+      },
+      "healthToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Return-Token",
+        "description": "HEALTH_TOKEN, required for POST /api/health."
+      }
+    },
+    "schemas": {
+      "NodeRecord": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "day_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "device_id": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "text",
+              "url",
+              "voice",
+              "save_note",
+              "app_sample",
+              "tab_sample",
+              "agent_session",
+              "git_commit",
+              "email",
+              "reminder",
+              "vscode_recent",
+              "browse_history",
+              "health_daily",
+              "snapshot",
+              "todo_check",
+              "idea",
+              "image"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "content": {
+            "type": "string",
+            "nullable": true
+          },
+          "source_meta": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": {}
+          },
+          "client_uuid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "date": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          }
+        },
+        "required": [
+          "id",
+          "day_id",
+          "device_id",
+          "kind",
+          "title",
+          "content",
+          "source_meta",
+          "client_uuid",
+          "created_at",
+          "date"
+        ]
+      },
+      "TodoRecord": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "day_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "text": {
+            "type": "string"
+          },
+          "done": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "suggested",
+              "accepted",
+              "dismissed"
+            ]
+          },
+          "source_node_id": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
+          "accepted_reminder_id": {
+            "type": "string",
+            "nullable": true
+          },
+          "accepted_at": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "dismissed_at": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "day_id",
+          "text",
+          "done",
+          "status",
+          "source_node_id",
+          "accepted_reminder_id",
+          "accepted_at",
+          "dismissed_at"
+        ]
+      },
+      "MessageRecord": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "agent"
+            ]
+          },
+          "content": {
+            "type": "string"
+          },
+          "intent": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "idea",
+              "retrieval",
+              "question",
+              "unknown",
+              null
+            ]
+          },
+          "task_id": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "meta": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "id",
+          "role",
+          "content",
+          "intent",
+          "task_id",
+          "created_at"
+        ]
+      },
+      "TaskRecord": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "meeting_notes",
+              "image_extract",
+              "generic"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "failed"
+            ]
+          },
+          "input": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "result_message_id": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finished_at": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "status",
+          "input",
+          "result_message_id",
+          "created_at",
+          "finished_at"
+        ]
+      },
+      "CardRecord": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "briefing",
+              "idea",
+              "todo_suggestion",
+              "health",
+              "weekly"
+            ]
+          },
+          "date": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "content": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "date",
+          "content",
+          "created_at"
+        ]
+      },
+      "SaveResponse": {
+        "type": "object",
+        "properties": {
+          "day_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "date": {
+            "type": "string"
+          },
+          "saved_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "already_saved": {
+            "type": "boolean"
+          },
+          "summary": {
+            "type": "string",
+            "nullable": true
+          },
+          "opening_line": {
+            "type": "string",
+            "nullable": true
+          },
+          "briefing": {
+            "type": "string",
+            "nullable": true
+          },
+          "review_points": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "win",
+                    "miss",
+                    "insight",
+                    "other"
+                  ],
+                  "default": "other"
+                }
+              },
+              "required": [
+                "text",
+                "kind"
+              ]
+            }
+          },
+          "todos": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TodoRecord"
+            }
+          },
+          "stats": {
+            "type": "object",
+            "properties": {
+              "intake": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "focus": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "output": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "continuity": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "energy": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              }
+            },
+            "required": [
+              "intake",
+              "focus",
+              "output",
+              "continuity",
+              "energy"
+            ]
+          },
+          "character_state": {
+            "type": "string",
+            "enum": [
+              "tired",
+              "productive",
+              "focused",
+              "inspired",
+              "normal"
+            ]
+          },
+          "streak": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "edges_created": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cards_created": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "cadence": {
+            "type": "string",
+            "enum": [
+              "active",
+              "night"
+            ]
+          }
+        },
+        "required": [
+          "day_id",
+          "date",
+          "saved_at",
+          "already_saved",
+          "summary",
+          "opening_line",
+          "review_points",
+          "todos",
+          "stats",
+          "character_state",
+          "streak",
+          "edges_created"
+        ]
+      },
+      "StatsTodayResponse": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string"
+          },
+          "stats": {
+            "type": "object",
+            "properties": {
+              "intake": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "focus": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "output": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "continuity": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "energy": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 100
+              }
+            },
+            "required": [
+              "intake",
+              "focus",
+              "output",
+              "continuity",
+              "energy"
+            ]
+          },
+          "character_state": {
+            "type": "string",
+            "enum": [
+              "tired",
+              "productive",
+              "focused",
+              "inspired",
+              "normal"
+            ]
+          },
+          "saved": {
+            "type": "boolean"
+          },
+          "collection": {
+            "type": "object",
+            "properties": {
+              "device_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "sample_count": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "last_seen_at": {
+                "type": "string",
+                "nullable": true,
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "device_count",
+              "sample_count",
+              "last_seen_at"
+            ]
+          },
+          "cadence": {
+            "type": "string",
+            "enum": [
+              "active",
+              "night"
+            ]
+          },
+          "profession": {
+            "type": "string",
+            "enum": [
+              "coder",
+              "designer",
+              "writer",
+              "communicator",
+              "explorer",
+              "generalist"
+            ]
+          },
+          "profession_mode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "manual"
+            ]
+          }
+        },
+        "required": [
+          "date",
+          "stats",
+          "character_state",
+          "saved",
+          "collection",
+          "profession",
+          "profession_mode"
+        ]
+      },
+      "UserProfile": {
+        "type": "object",
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 80
+          },
+          "profession": {
+            "type": "string",
+            "enum": [
+              "coder",
+              "designer",
+              "writer",
+              "communicator",
+              "explorer",
+              "generalist"
+            ]
+          },
+          "profession_mode": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "manual"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 2000
+          },
+          "last_inferred_profession": {
+            "type": "string",
+            "enum": [
+              "coder",
+              "designer",
+              "writer",
+              "communicator",
+              "explorer",
+              "generalist"
+            ]
+          },
+          "accepted_todos": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dismissed_todos": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "display_name",
+          "profession",
+          "profession_mode",
+          "note",
+          "last_inferred_profession",
+          "accepted_todos",
+          "dismissed_todos",
+          "updated_at"
+        ]
+      },
+      "TimelineResponse": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          },
+          "segments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "app",
+                    "agent",
+                    "sleep",
+                    "feed",
+                    "cluster",
+                    "briefing"
+                  ]
+                },
+                "shape": {
+                  "type": "string",
+                  "enum": [
+                    "point",
+                    "span"
+                  ]
+                },
+                "importance": {
+                  "type": "string",
+                  "enum": [
+                    "ambient",
+                    "normal",
+                    "major"
+                  ]
+                },
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "input",
+                    "sample",
+                    "derived",
+                    "system"
+                  ]
+                },
+                "provenance": {
+                  "type": "string",
+                  "enum": [
+                    "user",
+                    "auto"
+                  ]
+                },
+                "start": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "end": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "category": {
+                  "type": "string"
+                },
+                "node_id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "meta": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "date": {
+                  "type": "string",
+                  "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                },
+                "cluster_id": {
+                  "type": "string"
+                },
+                "child_ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "child_count": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "children": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "label": {
+                        "type": "string"
+                      },
+                      "start": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "node_id": {
+                        "type": "string",
+                        "format": "uuid"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "label",
+                      "start"
+                    ]
+                  },
+                  "maxItems": 3
+                },
+                "destination": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "none"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "type"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "after"
+                          ]
+                        },
+                        "result_id": {
+                          "type": "string",
+                          "format": "uuid"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "result_id"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "timeline_cluster"
+                          ]
+                        },
+                        "cluster_id": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "cluster_id"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "daily_briefing"
+                          ]
+                        },
+                        "briefing_id": {
+                          "type": "string",
+                          "format": "uuid"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "briefing_id"
+                      ]
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "kind",
+                "shape",
+                "importance",
+                "start",
+                "end",
+                "label"
+              ]
+            }
+          }
+        },
+        "required": [
+          "date",
+          "segments"
+        ]
+      },
+      "DaysResponse": {
+        "type": "object",
+        "properties": {
+          "range": {
+            "type": "integer"
+          },
+          "days": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "date": {
+                  "type": "string"
+                },
+                "saved_at": {
+                  "type": "string",
+                  "nullable": true,
+                  "format": "date-time"
+                },
+                "summary": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "stats": {
+                  "type": "object",
+                  "nullable": true,
+                  "properties": {
+                    "intake": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100
+                    },
+                    "focus": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100
+                    },
+                    "output": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100
+                    },
+                    "continuity": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100
+                    },
+                    "energy": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 100
+                    }
+                  },
+                  "required": [
+                    "intake",
+                    "focus",
+                    "output",
+                    "continuity",
+                    "energy"
+                  ]
+                },
+                "character_state": {
+                  "type": "string",
+                  "nullable": true,
+                  "enum": [
+                    "tired",
+                    "productive",
+                    "focused",
+                    "inspired",
+                    "normal",
+                    null
+                  ]
+                }
+              },
+              "required": [
+                "date",
+                "saved_at",
+                "summary",
+                "stats",
+                "character_state"
+              ]
+            }
+          },
+          "streak": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "range",
+          "days",
+          "streak"
+        ]
+      },
+      "SearchResponse": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "took_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "doc_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "score": {
+                  "type": "number"
+                },
+                "snippet": {
+                  "type": "string"
+                },
+                "node": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/NodeRecord"
+                    }
+                  ],
+                  "nullable": true
+                },
+                "day": {
+                  "type": "object",
+                  "nullable": true,
+                  "properties": {
+                    "date": {
+                      "type": "string"
+                    },
+                    "saved_at": {
+                      "type": "string",
+                      "nullable": true,
+                      "format": "date-time"
+                    },
+                    "summary": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "stats": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "intake": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100
+                        },
+                        "focus": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100
+                        },
+                        "output": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100
+                        },
+                        "continuity": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100
+                        },
+                        "energy": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 100
+                        }
+                      },
+                      "required": [
+                        "intake",
+                        "focus",
+                        "output",
+                        "continuity",
+                        "energy"
+                      ]
+                    },
+                    "character_state": {
+                      "type": "string",
+                      "nullable": true,
+                      "enum": [
+                        "tired",
+                        "productive",
+                        "focused",
+                        "inspired",
+                        "normal",
+                        null
+                      ]
+                    }
+                  },
+                  "required": [
+                    "date",
+                    "saved_at",
+                    "summary",
+                    "stats",
+                    "character_state"
+                  ]
+                }
+              },
+              "required": [
+                "doc_id",
+                "kind",
+                "score",
+                "snippet",
+                "node",
+                "day"
+              ]
+            }
+          }
+        },
+        "required": [
+          "query",
+          "took_ms",
+          "results"
+        ]
+      },
+      "AskResponse": {
+        "type": "object",
+        "properties": {
+          "answer": {
+            "type": "string"
+          },
+          "citations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "node_id": {
+                  "type": "string",
+                  "nullable": true,
+                  "format": "uuid"
+                },
+                "date": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "snippet": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "node_id",
+                "date",
+                "kind",
+                "title",
+                "snippet"
+              ]
+            }
+          },
+          "retrieved": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "answer",
+          "citations",
+          "retrieved"
+        ]
+      },
+      "ChatResponse": {
+        "type": "object",
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "user_message_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "intent": {
+            "type": "string",
+            "enum": [
+              "idea",
+              "retrieval",
+              "question",
+              "unknown"
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "reply": {
+            "type": "string"
+          },
+          "jump": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "date": {
+                "type": "string"
+              },
+              "node_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "required": [
+              "date",
+              "node_ids"
+            ]
+          },
+          "task_id": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "message_id",
+          "user_message_id",
+          "intent",
+          "confidence",
+          "reply"
+        ]
+      },
+      "ListMessagesResponse": {
+        "type": "object",
+        "properties": {
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessageRecord"
+            }
+          },
+          "next_cursor": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "messages",
+          "next_cursor"
+        ]
+      },
+      "ListCardsResponse": {
+        "type": "object",
+        "properties": {
+          "direction": {
+            "type": "string",
+            "enum": [
+              "before",
+              "future"
+            ]
+          },
+          "cards": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CardRecord"
+            }
+          },
+          "next_cursor": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "direction",
+          "cards",
+          "next_cursor"
+        ]
+      },
+      "ListTasksResponse": {
+        "type": "object",
+        "properties": {
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskRecord"
+            }
+          }
+        },
+        "required": [
+          "tasks"
+        ]
+      },
+      "UsageResponse": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "to": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "totals": {
+            "type": "object",
+            "properties": {
+              "calls": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "succeeded": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "failed": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "prompt_tokens": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "completion_tokens": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "total_tokens": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "calls",
+              "succeeded",
+              "failed",
+              "prompt_tokens",
+              "completion_tokens",
+              "total_tokens"
+            ]
+          },
+          "breakdown": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "calls": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "succeeded": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "failed": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "prompt_tokens": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "completion_tokens": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "total_tokens": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "llm",
+                    "transcription",
+                    "vision",
+                    "embedding"
+                  ]
+                },
+                "operation": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "model": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "calls",
+                "succeeded",
+                "failed",
+                "prompt_tokens",
+                "completion_tokens",
+                "total_tokens",
+                "kind",
+                "operation",
+                "model"
+              ]
+            }
+          }
+        },
+        "required": [
+          "from",
+          "to",
+          "totals",
+          "breakdown"
+        ]
+      },
+      "PingResponse": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "server_time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "version": {
+            "type": "string"
+          },
+          "cadence": {
+            "type": "string",
+            "enum": [
+              "active",
+              "night"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "server_time",
+          "version"
+        ]
+      }
+    }
+  }
+}
